@@ -6,7 +6,7 @@
     "jsRules": {},
     "rules": {
         "no-console": [false],
-        "quotemark": [true, "single", "avoid-escape"],
+        "quotemark": [false],
         "member-access": [true, "no-public"],
         "object-literal-key-quotes": [true, "consistent"],
         "no-string-literal": false,
