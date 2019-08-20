@@ -1,0 +1,41 @@
+{
+    "name": "hongo",
+    "version": "0.1.0",
+    "description": "Learning pad for Japanese",
+    "private": true,
+    "main": "build/server.js",
+    "engines": {
+        "node": "^10.14.2"
+    },
+    "scripts": {
+        "start": "ts-node src/server.ts",
+        "build": "npm run build-ts && npm run lint",
+        "watch": "npm run watch-ts",
+        "lint": "tslint -c tslint.json -p tsconfig.json",
+        "ts": "ts-node",
+        "build-ts": "tsc",
+        "watch-ts": "tsc -w",
+        "prepare": "tsc"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ricardobm/hongo.git"
+    },
+    "keywords": [
+        "reporting"
+    ],
+    "bugs": {
+        "url": "https://github.com/ricardobm/hongo/issues"
+    },
+    "homepage": "https://github.com/ricardobm/hongo",
+    "devDependencies": {
+        "@types/express": "^4.17.1",
+        "@types/node": "^12.7.2",
+        "ts-node": "^8.3.0",
+        "tslint": "^5.18.0",
+        "typescript": "^3.5.3"
+    },
+    "dependencies": {
+        "express": "^4.17.1"
+    }
+}
