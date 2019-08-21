@@ -45,7 +45,7 @@ class App extends React.Component {
                     </a>
                     <LoadingMessage loading={this.state.loading} />
                     <ErrorMessage message={this.state.error} />
-                    <div>{List(this.state.items)}</div>
+                    <List items={this.state.items} />
                 </header>
             </div>
         )
@@ -58,12 +58,14 @@ const LoadingMessage: React.FC<{ loading: boolean }> = ({ loading }) =>
 const ErrorMessage: React.FC<{ message: string }> = ({ message }) =>
     message ? <div className="error">Error: {message}</div> : <div />
 
-const ListItem = (item: Item) => (
-    <div key={item.id}>{item.text}</div>
+const ListItem: React.FC<{ item: Item }> = ({ item }) => (
+    <div>{item.text}</div>
 )
 
-function List(list: Item[]) {
-    return list.map(it => ListItem(it))
-}
+const List: React.FC<{ items: Item[] }> = ({ items }) => (
+    <div>
+        {items.map(it => <ListItem key={it.id} item={it} />)}
+    </div>
+)
 
 export default App
