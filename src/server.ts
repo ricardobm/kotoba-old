@@ -17,7 +17,7 @@ const userData = (() => {
     let lastPath = ''
     let curPath = path.resolve('.')
     while (curPath !== lastPath) {
-        if (fs.existsSync(path.join(curPath, DATA_DIR, 'dict'))) {
+        if (fs.existsSync(path.join(curPath, DATA_DIR, 'import'))) {
             return path.resolve(path.join(curPath, DATA_DIR))
         }
         lastPath = curPath
@@ -27,51 +27,56 @@ const userData = (() => {
     process.exit(1)
 })()!
 
-console.log(`Found data directory at ${userData}`)
+main().catch(err => console.error('Error:', err))
 
-const start = process.hrtime()
-loadDicts()
-const end = process.hrtime(start)
-console.log(`Loading took ${(end[0] + end[1] / 1e9).toFixed(3)}s`)
+async function main() {
+    console.log(`Found data directory at ${userData}`)
 
-// Create the Express application
-const app = express()
-app.use(bodyParser.json())
-app.use(bodyParser.urlencoded({ extended: true }))
+    const start = process.hrtime()
+    await loadDicts()
+    const end = process.hrtime(start)
+    console.log(`Loading took ${(end[0] + end[1] / 1e9).toFixed(3)}s`)
 
-app.get('/', (req, res) => {
-    res.send(`Hello from ${APP_NAME}`)
-})
+    // Create the Express application
+    const app = express()
+    app.use(bodyParser.json())
+    app.use(bodyParser.urlencoded({ extended: true }))
 
-app.get('/list', (req, res) => {
-    res.status(200).json({
-        items: [
-            { id: 'A', text: 'Item A' },
-            { id: 'B', text: 'Item B' },
-            { id: 'C', text: 'Item C' },
-        ]
+    app.get('/', (req, res) => {
+        res.send(`Hello from ${APP_NAME}`)
     })
-})
 
-const server = app.listen(PORT, () => {
-    console.log(`${APP_NAME} server started at http://localhost:${PORT}`)
-})
-
-process.once('SIGINT', shutdown)
-
-function shutdown() {
-    console.log('Shutting down...')
-    server.close(() => {
-        process.exit(0)
+    app.get('/list', (req, res) => {
+        res.status(200).json({
+            items: [
+                { id: 'A', text: 'Item A' },
+                { id: 'B', text: 'Item B' },
+                { id: 'C', text: 'Item C' },
+            ]
+        })
     })
+
+    const server = app.listen(PORT, () => {
+        console.log(`${APP_NAME} server started at http://localhost:${PORT}`)
+    })
+
+    process.once('SIGINT', shutdown)
+
+    function shutdown() {
+        console.log('Shutting down...')
+        server.close(() => {
+            process.exit(0)
+        })
+    }
 }
 
-function loadDicts() {
-    const baseDir = path.join(userData, 'dict')
-    const dicts = fs.readdirSync(baseDir)
-        .map(it => path.join(baseDir, it))
-        .filter(it => fs.existsSync(path.join(it, 'index.json')))
-        .map(dict.importDict)
+async function loadDicts() {
+    const baseDir = path.join(userData, 'import')
+    const dicts = await Promise.all(
+        fs.readdirSync(baseDir)
+            .map(it => path.join(baseDir, it))
+            .map(dict.importDict)
+    )
     console.log(dicts.map(
         it => `==> ${it.title} (${it.revision})\n    In ${it.path}\n    Banks: ${it.banks()}`).join('\n'))
 

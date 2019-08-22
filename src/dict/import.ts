@@ -4,6 +4,8 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
+import * as JSZip from 'jszip'
+import { promisify } from 'util'
 
 /**
  * Contains the raw data imported from an Yomichan dictionary folder.
@@ -180,14 +182,58 @@ export type ImportedMeta = {
     data: number,
 }
 
+const readFile = promisify(fs.readFile)
+const readdir  = promisify(fs.readdir)
+
 /**
  * Load an Yomichan dictionary given the base directory.
  *
  * @param basePath  The directory containing `index.json` and other data files.
  */
-export function importDict(basePath: string): ImportedDict {
+export async function importDict(basePath: string): Promise<ImportedDict> {
 
-    const summary = JSON.parse(fs.readFileSync(path.join(basePath, 'index.json'), 'utf-8'))
+    //
+    // Read from the input directory or .zip file:
+    //
+
+    const filterBanks = (name: string) => name !== 'index.json' && path.extname(name).toLowerCase() === '.json'
+
+    let summary: any
+    let files: Array<{name: string, json: any}>
+    if (path.extname(basePath).toLowerCase() === '.zip') {
+        const data = await readFile(basePath)
+        const zip =  await JSZip().loadAsync(data)
+        const index = zip.file('index.json')
+        if (!index) {
+            throw new Error(`'index.json' not found in ${basePath}`)
+        }
+
+        summary = JSON.parse(await index.async('text'))
+        files = await Promise.all(
+            zip.filter(filterBanks).map(async file => {
+                return {
+                    name: file.name,
+                    json: JSON.parse(await file.async('text')),
+                }
+            })
+        )
+    } else {
+        summary = JSON.parse(await readFile(path.join(basePath, 'index.json'), 'utf-8'))
+        files = await Promise.all(
+            (await readdir(basePath)).filter(filterBanks).map(async name => {
+                const fullPath = path.join(basePath, name)
+                return {
+                    name: name,
+                    json: JSON.parse(await readFile(fullPath, 'utf-8')),
+                }
+            })
+        )
+    }
+
+    //
+    // Parse data:
+    //
+
     const out = new ImportedDict()
 
     out.title =     summary.title
@@ -204,11 +250,10 @@ export function importDict(basePath: string): ImportedDict {
     out.kanjiMeta = []
     out.termMeta =  []
 
-    const files = fs.readdirSync(basePath).filter(it => it !== 'index.json' && path.extname(it) === '.json')
     const flagged: {[kind:string]: boolean} = {}
     for (const it of files) {
-        const kind = it.replace(/(_bank(_\d+)?)?\.json$/, '')
-        const data = JSON.parse(fs.readFileSync(path.join(basePath, it), 'utf-8')) as any[][]
+        const kind = it.name.replace(/(_bank(_\d+)?)?\.json$/, '')
+        const data = it.json as any[][]
         switch (kind) {
             case 'term':
                 for (const it of data) {
@@ -261,6 +306,7 @@ export function importDict(basePath: string): ImportedDict {
                     console.error(`[WARN] unrecognized bank kind '${kind}' in ${basePath} (IMPORT)`)
                     flagged[kind] = true
                 }
+                break
         }
     }
 
@@ -277,4 +323,5 @@ export function importDict(basePath: string): ImportedDict {
         const [expression, mode, data] = row
         return { expression, mode, data }
     }
+
 }
