@@ -33,7 +33,8 @@ async function main() {
     console.log(`Found data directory at ${userData}`)
 
     const start = process.hrtime()
-    await loadDicts()
+    // await loadDicts()
+    await loadJisho()
     const end = process.hrtime(start)
     console.log(`Loading took ${(end[0] + end[1] / 1e9).toFixed(3)}s`)
 
@@ -68,6 +69,63 @@ async function main() {
             process.exit(0)
         })
     }
+}
+
+async function loadJisho() {
+    const term = '家'
+    const result = await dict.queryJisho({ term, withSound: true })
+    for (const entry of result) {
+        console.log(`\n\n>>> ${entry.japanese[0].word} 「${entry.japanese[0].reading}」`)
+
+        const tags = [entry.is_common ? 'common' : 'uncommon']
+            .concat(entry.jlpt).concat(entry.tags)
+            .join(', ')
+        if (tags) {
+            console.log(`    [${tags}]`)
+        }
+
+        let counter = 0
+        for (const sense of entry.senses) {
+            counter++
+            console.log()
+            if (sense.parts_of_speech.length) {
+                console.log(`    ${sense.parts_of_speech.join(', ')}`)
+            }
+
+            const number = `${counter}.`
+            const indent = ' '.repeat(number.length)
+            console.log(`    ${number} ${sense.english_definitions.join('; ')}`)
+            if (sense.tags.length) {
+                console.log(`    ${indent} ${sense.tags.join(', ')}`)
+            }
+            if (sense.info.length) {
+                console.log(`    ${indent} ${sense.info.join(', ')}`)
+            }
+            if (sense.see_also.length) {
+                console.log(`    ${indent} See also: ${sense.see_also.join('、')}`)
+            }
+            for (const link of sense.links) {
+                console.log(`    ${indent} - ${link.text} (${link.url})`)
+            }
+            if (sense.antonyms.length) {
+                console.log(`    !! ANTONYMS: ${JSON.stringify(sense.antonyms)}`)
+            }
+            if (sense.source.length) {
+                console.log(`    !! SOURCE: ${JSON.stringify(sense.source)}`)
+            }
+            if (sense.restrictions.length) {
+                console.log(`    !! RESTRICTIONS: ${JSON.stringify(sense.restrictions)}`)
+            }
+        }
+
+        if (entry.japanese.length > 1) {
+            console.log('\n    ## Other forms ##')
+            for (const it of entry.japanese.slice(1)) {
+                console.log(`    ${it.word} 「${it.reading}」`)
+            }
+        }
+    }
+    console.log(`\nFound ${result.length} entry(s) for ${term}\n`)
 }
 
 async function loadDicts() {
