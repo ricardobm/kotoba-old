@@ -36,6 +36,7 @@ async function main() {
     // await loadDicts()
     // await loadJisho()
     // await loadForvo()
+    await loadJapanesePod()
     const end = process.hrtime(start)
     console.log(`\nLoading took ${(end[0] + end[1] / 1e9).toFixed(3)}s`)
 
@@ -69,6 +70,27 @@ async function main() {
         server.close(() => {
             process.exit(0)
         })
+    }
+}
+
+async function loadJapanesePod() {
+    const term = '家'
+    const entries = await dict.queryJapanesePod({
+        term: term,
+        common: false,
+        vulgar: true,
+        starts: false,
+    })
+
+    console.log(`\n#\n# Found ${entries.length} entry(s) for ${term}\n#`)
+    for (const it of entries) {
+        console.log(`\n=> ${it.term} (${it.kana})`)
+        for (const src in it.audio) {
+            console.log(`   > ${it.audio}`)
+        }
+
+        const tags = it.english_info.join(' ')
+        console.log(`   ${it.english} ${tags}`)
     }
 }
 
