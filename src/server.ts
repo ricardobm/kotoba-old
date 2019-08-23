@@ -34,9 +34,10 @@ async function main() {
 
     const start = process.hrtime()
     // await loadDicts()
-    await loadJisho()
+    // await loadJisho()
+    // await loadForvo()
     const end = process.hrtime(start)
-    console.log(`Loading took ${(end[0] + end[1] / 1e9).toFixed(3)}s`)
+    console.log(`\nLoading took ${(end[0] + end[1] / 1e9).toFixed(3)}s`)
 
     // Create the Express application
     const app = express()
@@ -68,6 +69,41 @@ async function main() {
         server.close(() => {
             process.exit(0)
         })
+    }
+}
+
+async function loadForvo() {
+    const term = '家'
+    const entries = await dict.queryForvo(term)
+    console.log(`\n#\n# Search for '${term}' #\n#`)
+    showEntries(entries)
+
+    if (entries.length > 0) {
+        const entry = entries[entries.length-1]
+        const extra = await dict.queryForvoExtra(entry)
+        console.log(`\n## Entry: ${tagLine(entry, false)} ##`)
+        showEntries(extra)
+    }
+
+    function showEntries(entries: dict.ForvoEntry[]) {
+        for (const it of entries) {
+            console.log(`\n=> ${tagLine(it, true)}`)
+            if (it.wordURI) {
+                console.log(`   URL: ${it.wordURI}`)
+            }
+            for (const src of it.mp3) {
+                console.log(`   MP3: ${src}`)
+            }
+            for (const src of it.ogg) {
+                console.log(`   OGG: ${src}`)
+            }
+        }
+    }
+
+    function tagLine(entry: dict.ForvoEntry, detailed: boolean) {
+        const terms = entry.terms.length ? ` (${entry.terms.join(', ')})` : ``
+        const phrase = entry.phrase && detailed ? ` [phrase]` : ``
+        return `${entry.text}${terms}${phrase}`
     }
 }
 
@@ -129,7 +165,7 @@ async function loadJisho() {
             }
         }
 
-        const audio = entry.japanese.filter(x => x.audio.length);
+        const audio = entry.japanese.filter(x => x.audio.length)
         if (audio.length) {
             console.log('\n    ## Audio ##')
             for (const it of audio) {
