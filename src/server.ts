@@ -73,6 +73,10 @@ async function main() {
 
 async function loadJisho() {
     const term = '家'
+    // const term = 'お早うございます'
+    // const term = '使い方'
+    // const term = 'お好み焼き'
+    // const term = 'お風呂に入る'
     const result = await dict.queryJisho({ term, withSound: true })
     for (const entry of result) {
         console.log(`\n\n>>> ${entry.japanese[0].word} 「${entry.japanese[0].reading}」`)
@@ -119,9 +123,20 @@ async function loadJisho() {
         }
 
         if (entry.japanese.length > 1) {
-            console.log('\n    ## Other forms ##')
+            console.log('\n    ## Other forms ##\n')
             for (const it of entry.japanese.slice(1)) {
                 console.log(`    ${it.word} 「${it.reading}」`)
+            }
+        }
+
+        const audio = entry.japanese.filter(x => x.audio.length);
+        if (audio.length) {
+            console.log('\n    ## Audio ##')
+            for (const it of audio) {
+                console.log(`\n    ${it.word} 「${it.reading}」`)
+                for (const src of it.audio) {
+                    console.log(`    > ${src}`)
+                }
             }
         }
     }

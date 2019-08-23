@@ -1,8 +1,12 @@
 import * as requestModule from 'request'
 import * as util from 'util'
+import { JSDOM } from 'jsdom'
 
 const JISHO_API_URI = 'https://jisho.org/api/v1/search/words'
 const JISHO_API_TIMEOUT_MS = 2500
+
+const JISHO_SEARCH_URI = 'https://jisho.org/search/'
+const JISHO_SEARCH_TIMEOUT_MS = 3500
 
 export type JishoArgs = {
     term: string,
@@ -13,6 +17,13 @@ const request = util.promisify(requestModule)
 
 export async function queryJisho(args: JishoArgs) {
     const params = { keyword: args.term }
+
+    const searchPage = args.withSound && request({
+        uri:     JISHO_SEARCH_URI + encodeURIComponent(args.term),
+        method:  'GET',
+        timeout: JISHO_SEARCH_TIMEOUT_MS,
+    })
+
     const response = await request({
         uri:     JISHO_API_URI,
         qs:      params,
@@ -31,6 +42,68 @@ export async function queryJisho(args: JishoArgs) {
         for (const japanese of it.japanese) {
             // Word can be undefined for kana-only terms.
             japanese.word = japanese.word || japanese.reading
+            japanese.audio = []
+        }
+    }
+
+    if (searchPage) {
+        try {
+            const result = await searchPage
+            const dom = new JSDOM(result.body)
+            const doc = dom.window.document
+            for (const audioEl of doc.querySelectorAll('audio')) {
+                const parent = audioEl.closest('div.concept_light-wrapper')
+                if (parent) {
+                    const textEl = parent.querySelector('span.text')
+                    const furiganaEl = parent.querySelector('span.furigana')
+                    if (textEl && furiganaEl) {
+
+                        // The furigana element contains one span per each
+                        // character in the original text. Some spans will be
+                        // empty if the related text segment is kana.
+                        //
+                        // Note that none of the Japanese characters fall under
+                        // the UTF-16 surrogate pairs range.
+
+                        const furigana: string[] = []
+                        const text = (textEl.textContent || '').trim()
+
+                        furiganaEl.querySelectorAll('span').forEach(it => {
+                            furigana.push((it.textContent || '').trim())
+                        })
+
+                        if (furigana.length !== text.length) {
+                            const lenA = furigana.length
+                            const lenB = text.length
+                            console.error(
+                                `[WARN] Jisho furigana for ${text} does not match length (${lenA} !== ${lenB})`)
+                        } else {
+                            for (let i = 0; i < text.length; i++) {
+                                furigana[i] = furigana[i] || text[i]
+                            }
+                        }
+
+                        const reading = furigana.join('')
+                        const audio: string[] = []
+                        audioEl.querySelectorAll('source').forEach(el => {
+                            const src = el.getAttribute('src')
+                            if (src) {
+                                audio.push(src)
+                            }
+                        })
+
+                        for (const it of data) {
+                            for (const jp of it.japanese) {
+                                if (jp.reading === reading && jp.word === text) {
+                                    jp.audio.push(...audio)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error(`[WARN] failed to load audio data from Jisho:`, err)
         }
     }
 
@@ -93,6 +166,9 @@ export type JishoJapanese = {
 
     /** The reading for this term in kana. */
     reading: string,
+
+    /** Audio URLs for this term. Only available when loading audio. */
+    audio: string[],
 }
 
 /**
