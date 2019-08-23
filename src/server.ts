@@ -36,7 +36,8 @@ async function main() {
     // await loadDicts()
     // await loadJisho()
     // await loadForvo()
-    await loadJapanesePod()
+    // await loadJapanesePod()
+    await loadJapanesePodAudio()
     const end = process.hrtime(start)
     console.log(`\nLoading took ${(end[0] + end[1] / 1e9).toFixed(3)}s`)
 
@@ -69,6 +70,40 @@ async function main() {
         console.log('Shutting down...')
         server.close(() => {
             process.exit(0)
+        })
+    }
+}
+
+import { spawn } from 'child_process'
+
+async function loadJapanesePodAudio() {
+    const kanji = '何も'
+    const kana  = 'なにも'
+    const audio = await dict.loadJapanesePodAudio(kanji, kana)
+    if (audio === null) {
+        console.log(`Audio for '${kanji}' (${kana}) not found`)
+    } else {
+        console.log(`Loaded ${audio.name} (${audio.data.length} bytes) -- ${audio.hash}`)
+        await new Promise((resolve, reject) => {
+            const vlc = spawn('C:\\Program Files\\VideoLAN\\VLC\\vlc.exe', ['-', '--play-and-exit', '-I', 'dummy'], {
+                stdio: 'pipe',
+            })
+
+            vlc.stdout.pipe(process.stdout)
+            vlc.stderr.pipe(process.stderr)
+
+            vlc.on('error', err  => {
+                console.error('VLC error:', err)
+                resolve()
+            })
+
+            vlc.on('close', code => {
+                console.log('VLC closed:', code)
+                resolve()
+            })
+
+            vlc.stdin.write(audio.data)
+            vlc.stdin.end()
         })
     }
 }

@@ -1,8 +1,33 @@
 import * as requestModule from 'request'
 import * as util from 'util'
+import * as crypto from 'crypto'
 import { JSDOM } from 'jsdom'
 
 const request = util.promisify(requestModule)
+
+export async function loadJapanesePodAudio(kanji: string, kana: string) {
+
+    const BLACKLIST_HASH   = 'ae6398b5a27bc8c0a771df6c907ade794be15518174773c58c7c7ddd17098906'
+
+    const response = await request({
+        method:   'GET',
+        uri:      'https://assets.languagepod101.com/dictionary/japanese/audiomp3.php',
+        qs:       { kanji, kana },
+        encoding: null,
+    })
+
+    const data = response.body as Buffer
+    if (!data) {
+        return null
+    }
+
+    const hash = crypto.createHash('sha256').update(data).digest('hex')
+    if (hash === BLACKLIST_HASH) {
+        return null
+    }
+
+    return { hash, data, name: `${kanji}_${kana}.mp3` }
+}
 
 /**
  * Arguments to `queryJapanesePod`.
