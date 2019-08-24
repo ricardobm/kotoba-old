@@ -133,7 +133,7 @@ export function EntryFromImportedTerm(origin: string, data: ImportedTerm): Entry
         expression:     data.expression,
         reading:        data.reading,
         score:          data.score,
-        tags:           [], //uniqueStrings(data.termTags.concat(data.rules.concat())),
+        tags:           uniqueStrings(data.termTags.concat(data.rules.concat())),
         extra_forms:    [],
         extra_readings: [],
         english: [
