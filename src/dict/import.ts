@@ -7,6 +7,8 @@ import * as path from 'path'
 import * as JSZip from 'jszip'
 import { promisify } from 'util'
 
+import { Entry, EntrySource } from './dict'
+
 /**
  * Contains the raw data imported from an Yomichan dictionary folder.
  */
@@ -41,6 +43,11 @@ export class ImportedDict {
 
     /** Frequency metadata for kanjis. */
     kanjiMeta: ImportedMeta[]
+
+    /** Return all terms in the dictionary as entries. */
+    getEntries(): Entry[] {
+        return this.terms.map(x => EntryFromImportedTerm(this.title, x))
+    }
 
     count(acc: any) {
         const cur = acc || {}
@@ -80,15 +87,15 @@ export class ImportedDict {
 export type ImportedTerm = {
 
     /** Term expression. */
-    expression: string,
+    expression: string
 
     /** Kana reading for this term. */
-    reading: string,
+    reading: string
 
     /**
      * Tags for the term definitions.
      */
-    definitionTags: string[],
+    definitionTags: string[]
 
     /**
      * Rules that affect the entry inflections. Those are also tags.
@@ -101,44 +108,80 @@ export type ImportedTerm = {
      * - `vk`    Kuru verb - special class (e.g. `いって来る`, `來る`)
      * - `vs`    noun or participle which takes the aux. verb suru
      */
-    rules: string[],
+    rules: string[]
 
     /** Score for this entry. Higher values have precedence. */
-    score: number,
+    score: number
 
     /** Definition for this entry. */
-    glossary: string[],
+    glossary: string[]
 
     /** Sequence number for this entry in the dictionary. */
-    sequence: number,
+    sequence: number
 
     /** Tags for the main term. */
-    termTags: string[],
+    termTags: string[]
+}
+
+/**
+ * Creates an `Entry` from an `ImportedTerm`.
+ */
+export function EntryFromImportedTerm(origin: string, data: ImportedTerm): Entry {
+    const entry: Entry = {
+        source:         EntrySource.Import,
+        origin:         origin,
+        expression:     data.expression,
+        reading:        data.reading,
+        score:          data.score,
+        tags:           [], //uniqueStrings(data.termTags.concat(data.rules.concat())),
+        extra_forms:    [],
+        extra_readings: [],
+        english: [
+            {
+                glossary: data.glossary,
+                tags:     data.definitionTags,
+                info:     [],
+                links:    [],
+            }
+        ]
+    }
+    return entry
+}
+
+function uniqueStrings(src: string[]): string[] {
+    const dup: {[index: string]: boolean} = {}
+    return src.filter(item => {
+        if (dup[item]) {
+            return false
+        }
+        dup[item] = true
+        return true
+    })
 }
 
 /** Dictionary entry for a kanji. */
 export type ImportedKanji = {
 
     /** Kanji character. */
-    character: string,
+    character: string
 
     /** Onyomi (chinese) readings for the Kanji. */
-    onyomi: string[],
+    onyomi: string[]
 
     /** Kunyomi (japanese) readings for the Kanji. */
-    kunyomi: string[],
+    kunyomi: string[]
 
     /** Tags for the Kanji. */
-    tags: string[],
+    tags: string[]
 
     /** Meanings for the kanji. */
-    meanings: string[],
+    meanings: string[]
 
     /**
      * Additional kanji information. The keys in `stats` are further detailed
      * by the dictionary tags.
      */
-    stats: { [key: string]: string },
+    stats: { [key: string]: string }
 }
 
 /**
@@ -149,22 +192,22 @@ export type ImportedKanji = {
 export type ImportedTag = {
 
     /** Name to reference this tag. */
-    name: string,
+    name: string
 
     /** Category for this tag. This can be used to group related tags. */
-    category: string,
+    category: string
 
     /**
      * Sort order for this tag (less is higher). This has higher priority than
      * the name.
      */
-    order: number,
+    order: number
 
     /** Description for this tag. */
-    notes: string,
+    notes: string
 
     /** Unused */
-    score: number,
+    score: number
 }
 
 /**
@@ -173,13 +216,13 @@ export type ImportedTag = {
 export type ImportedMeta = {
 
     /** Kanji or term. */
-    expression: string,
+    expression: string
 
     /** Always `"freq"`. */
-    mode: string,
+    mode: string
 
     /** Metadata value. */
-    data: number,
+    data: number
 }
 
 const readFile = promisify(fs.readFile)

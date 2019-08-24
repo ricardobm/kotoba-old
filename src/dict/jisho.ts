@@ -2,6 +2,8 @@ import * as requestModule from 'request'
 import * as util from 'util'
 import { JSDOM } from 'jsdom'
 
+import { Entry, EntrySource, EntryEnglish } from './dict'
+
 const JISHO_API_URI = 'https://jisho.org/api/v1/search/words'
 const JISHO_API_TIMEOUT_MS = 2500
 
@@ -9,12 +11,153 @@ const JISHO_SEARCH_URI = 'https://jisho.org/search/'
 const JISHO_SEARCH_TIMEOUT_MS = 3500
 
 export type JishoArgs = {
-    term: string,
-    withSound: boolean,
+    term: string
+    withSound: boolean
+}
+
+/** Entry from the Jisho response. */
+export type JishoEntry = {
+    /**
+     * Slug is the Japanese word (e.g. `家`) possibly with an additional
+     * counter (e.g. `家-1`).
+     */
+    slug: string
+
+    /** Is this a common definition? */
+    is_common: boolean,
+
+    /**
+     * Japanese terms for this entry. The first one is the main term (e.g. the
+     * most common) while others are additional forms.
+     */
+    japanese: JishoJapanese[]
+
+    /**
+     * The actual translations (i.e. senses) for the entry.
+     */
+    senses: JishoEnglish[]
+
+    /** JLPT tags (e.g. `jlpt-n5`). */
+    jlpt: string[]
+
+    //
+    // The entries below are not that useful, but are here for completeness:
+    //
+
+    /** Entry tags (e.g. `wanikani8`). */
+    tags: string[]
+
+    /** Attribution sources for this definition. */
+    attribution: {[key: string]: boolean|string}
+
+    /** Position of this entry in the results. */
+    order: number
+}
+
+/**
+ * A Japanese term for a `JishoEntry`. A single entry can have multiple terms.
+ */
+export type JishoJapanese = {
+
+    /**
+     * The japanese word for this term.
+     */
+    word: string
+
+    /** The reading for this term in kana. */
+    reading: string
+
+    /** Audio URLs for this term. Only available when loading audio. */
+    audio: string[]
+}
+
+/**
+ * One English sense for a `JishoEntry`. A single entry can have multiple
+ * senses.
+ */
+export type JishoEnglish = {
+
+    /** List of english definitions for the entry. */
+    english_definitions: string[]
+
+    /**
+     * Additional human readable tags for the entry.
+     *
+     * Examples: `Usually written using kana alone`, `Abbreviation`
+     */
+    tags: string[]
+
+    /**
+     * List of parts of speech for the entry. Those are human readable.
+     *
+     * Examples: `Noun`, `Place`, `Na-adjective`, `Expression`, `Suru verb`
+     * `Adverb taking the 'to' particle`.
+     */
+    parts_of_speech: string[]
+
+    /** Related dictionary entries. */
+    see_also: string[]
+
+    /** Extra information about the entry (e.g. `from 〜のうち`). */
+    info: string[]
+
+    /** Related links (e.g. from Wikipedia). */
+    links: Array<{text: string, url: string}>
+
+    // Couldn't find a sample for the fields below:
+
+    /** Unused */
+    antonyms: any[]
+
+    /** Unused */
+    source: any[]
+
+    /** Unused */
+    restrictions: any[]
+}
+
+/**
+ * Creates an `Entry` from a `JishoEntry`.
+ */
+export function EntryFromJisho(data: JishoEntry): Entry {
+    const tags = data.jlpt
+        .concat(data.tags)
+        .concat(data.is_common ? ['P'] : [])
+    const entry: Entry = {
+        source:         EntrySource.Jisho,
+        origin:         '',
+        expression:     data.japanese[0].word,
+        reading:        data.japanese[0].reading,
+        tags:           tags,
+        extra_forms:    [],
+        extra_readings: [],
+        english:        data.senses.map(mapEnglish),
+        score:         -data.order,
+    }
+    if (data.japanese.length > 1) {
+        const extra = data.japanese.slice(1)
+        entry.extra_forms.push(...extra.map(x => x.word))
+        entry.extra_readings.push(...extra.map(x => x.reading))
+    }
+    return entry
+
+    function mapEnglish(data: JishoEnglish): EntryEnglish {
+        const links =
+            data.see_also.map(x => ({ uri: `see://${x}`, text: x }))
+                .concat(data.links.map(x => ({ uri: x.url, text: x.text })))
+        const english: EntryEnglish = {
+            glossary: data.english_definitions,
+            tags:     data.parts_of_speech.concat(data.tags),
+            info:     data.info,
+            links:    links,
+        }
+        return english
+    }
 }
 
 const request = util.promisify(requestModule)
 
+/** Query `jisho.org`. */
 export async function queryJisho(args: JishoArgs) {
     const params = { keyword: args.term }
 
@@ -38,7 +181,10 @@ export async function queryJisho(args: JishoArgs) {
 
     // Sanitize the response
     const data = body.data || []
+    let counter = 0
     for (const it of data) {
+        it.order = counter
+        counter++
         for (const japanese of it.japanese) {
             // Word can be undefined for kana-only terms.
             japanese.word = japanese.word || japanese.reading
@@ -112,106 +258,8 @@ export async function queryJisho(args: JishoArgs) {
 
 /** Root response from Jisho. */
 type jishoResponse = {
-    data: JishoEntry[],
+    data: JishoEntry[]
     meta: {
-        status: number,
-    },
-}
-
-/** Entry from the Jisho response. */
-export type JishoEntry = {
-    /**
-     * Slug is the Japanese word (e.g. `家`) possibly with an additional
-     * counter (e.g. `家-1`).
-     */
-    slug: string,
-
-    /** Is this a common definition? */
-    is_common: boolean,
-
-    /**
-     * Japanese terms for this entry. The first one is the main term (e.g. the
-     * most common) while others are additional forms.
-     */
-    japanese: JishoJapanese[],
-
-    /**
-     * The actual translations (i.e. senses) for the entry.
-     */
-    senses: JishoEnglish[],
-
-    /** JLPT tags (e.g. `jlpt-n5`). */
-    jlpt: string[],
-
-    //
-    // The entries below are not that useful, but are here for completeness:
-    //
-
-    /** Entry tags (e.g. `wanikani8`). */
-    tags: string[],
-
-    /** Attribution sources for this definition. */
-    attribution: {[key: string]: boolean|string},
-}
-
-/**
- * A Japanese term for a `JishoEntry`. A single entry can have multiple terms.
- */
-export type JishoJapanese = {
-
-    /**
-     * The japanese word for this term.
-     */
-    word: string,
-
-    /** The reading for this term in kana. */
-    reading: string,
-
-    /** Audio URLs for this term. Only available when loading audio. */
-    audio: string[],
-}
-
-/**
- * One English sense for a `JishoEntry`. A single entry can have multiple
- * senses.
- */
-export type JishoEnglish = {
-
-    /** List of english definitions for the entry. */
-    english_definitions: string[],
-
-    /**
-     * Additional human readable tags for the entry.
-     *
-     * Examples: `Usually written using kana alone`, `Abbreviation`
-     */
-    tags: string[],
-
-    /**
-     * List of parts of speech for the entry. Those are human readable.
-     *
-     * Examples: `Noun`, `Place`, `Na-adjective`, `Expression`, `Suru verb`
-     * `Adverb taking the 'to' particle`.
-     */
-    parts_of_speech: string[],
-
-    /** Related dictionary entries. */
-    see_also: string[],
-
-    /** Extra information about the entry (e.g. `from 〜のうち`). */
-    info: string[],
-
-    /** Related links (e.g. from Wikipedia). */
-    links: Array<{text: string, url: string}>,
-
-    // Couldn't find a sample for the fields below:
-
-    /** Unused */
-    antonyms: any[],
-
-    /** Unused */
-    source: any[],
-
-    /** Unused */
-    restrictions: any[],
+        status: number
+    }
 }

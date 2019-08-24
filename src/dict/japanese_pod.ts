@@ -3,31 +3,9 @@ import * as util from 'util'
 import * as crypto from 'crypto'
 import { JSDOM } from 'jsdom'
 
+import { Entry, EntrySource, EntryEnglish } from './dict'
+
 const request = util.promisify(requestModule)
-
-export async function loadJapanesePodAudio(kanji: string, kana: string) {
-
-    const BLACKLIST_HASH   = 'ae6398b5a27bc8c0a771df6c907ade794be15518174773c58c7c7ddd17098906'
-
-    const response = await request({
-        method:   'GET',
-        uri:      'https://assets.languagepod101.com/dictionary/japanese/audiomp3.php',
-        qs:       { kanji, kana },
-        encoding: null,
-    })
-
-    const data = response.body as Buffer
-    if (!data) {
-        return null
-    }
-
-    const hash = crypto.createHash('sha256').update(data).digest('hex')
-    if (hash === BLACKLIST_HASH) {
-        return null
-    }
-
-    return { hash, data, name: `${kanji}_${kana}.mp3` }
-}
 
 /**
  * Arguments to `queryJapanesePod`.
@@ -35,16 +13,16 @@ export async function loadJapanesePodAudio(kanji: string, kana: string) {
 export type JapanesePodArgs = {
 
     /** Term to lookup. */
-    term: string,
+    term: string
 
     /** If `true`, only look the 20,000 most common words. */
-    common?: boolean,
+    common?: boolean
 
     /** If `true`, allow vulgar terms in the results. */
-    vulgar?: boolean,
+    vulgar?: boolean
 
     /** If `true`, match the start of a word instead of exactly. */
-    starts?: boolean,
+    starts?: boolean
 }
 
 /**
@@ -53,23 +31,53 @@ export type JapanesePodArgs = {
 export type JapanesePodEntry = {
 
     /** Main japanese term. */
-    term: string,
+    term: string
 
     /** Kana reading of the term. */
-    kana: string,
+    kana: string
 
     /** Audio URLs. */
-    audio: string[],
+    audio: string[]
 
     /** English definition for the term. */
-    english: string,
+    english: string
 
     /**
      * Additional information to append to the english definition.
      *
      * Appears italicized in grey.
      */
-    english_info: string[],
+    english_info: string[]
+
+    /**
+     * Position of this entry in the results.
+     */
+    order: number
+}
+
+/**
+ * Creates an `Entry` from a `JapanesePodEntry`.
+ */
+export function EntryFromJapanesePod(data: JapanesePodEntry): Entry {
+    const entry: Entry = {
+        source:         EntrySource.JapanesePod,
+        origin:         '',
+        expression:     data.term,
+        reading:        data.kana,
+        score:         -data.order,
+        extra_forms:    [],
+        extra_readings: [],
+        tags:           [],
+        english: [
+            {
+                glossary: [data.english],
+                tags:     [],
+                info:     data.english_info,
+                links:    [],
+            },
+        ],
+    }
+    return entry
 }
 
 /**
@@ -99,7 +107,7 @@ export async function queryJapanesePod(args: JapanesePodArgs) {
     const dom = new JSDOM(response.body)
     const doc = dom.window.document
     const rows = doc.querySelectorAll('div.dc-result-row')
-    rows.forEach(row => {
+    rows.forEach((row, order) => {
         const termEl = row.querySelector('span.dc-vocab')
         const term = (termEl && termEl.textContent || '').trim()
 
@@ -129,9 +137,37 @@ export async function queryJapanesePod(args: JapanesePodArgs) {
         const english = (englishEl && englishEl.textContent || '').trim()
 
         if (term || kana) {
-            results.push({ term, kana, audio, english, english_info })
+            results.push({ term, kana, audio, english, english_info, order })
         }
     })
 
     return results
+}
+
+/**
+ * Load an audio file from `assets.languagepod101.com` given the word and its
+ * kana reading.
+ */
+export async function loadJapanesePodAudio(kanji: string, kana: string) {
+
+    const BLACKLIST_HASH   = 'ae6398b5a27bc8c0a771df6c907ade794be15518174773c58c7c7ddd17098906'
+
+    const response = await request({
+        method:   'GET',
+        uri:      'https://assets.languagepod101.com/dictionary/japanese/audiomp3.php',
+        qs:       { kanji, kana },
+        encoding: null,
+    })
+
+    const data = response.body as Buffer
+    if (!data) {
+        return null
+    }
+
+    const hash = crypto.createHash('sha256').update(data).digest('hex')
+    if (hash === BLACKLIST_HASH) {
+        return null
+    }
+
+    return { hash, data, name: `${kanji}_${kana}.mp3` }
 }

@@ -10,7 +10,7 @@ const FORVO_SEARCH_TIMEOUT_MS = 5000
  */
 export type ForvoEntry = {
     /** Main term for this entry. */
-    text: string,
+    text: string
 
     /**
      * Secondary terms for this entry, when available.
@@ -18,22 +18,22 @@ export type ForvoEntry = {
      * This can be the reading (if the main term is kanji), or can also be
      * the kanji if the main term is kana.
      */
-    terms: string[],
+    terms: string[]
 
     /** Is this entry a phrase? */
-    phrase: boolean,
+    phrase: boolean
 
     /** Mp3 media URLs. */
-    mp3: string[],
+    mp3: string[]
 
     /** Ogg media URLs. */
-    ogg: string[],
+    ogg: string[]
 
     /**
      * URI for the specific word page. This is only available when loading the
      * search.
      */
-    wordURI?: string,
+    wordURI?: string
 }
 
 const request = util.promisify(requestModule)

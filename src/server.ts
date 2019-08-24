@@ -3,6 +3,7 @@ import * as bodyParser from 'body-parser'
 import * as fs from 'fs'
 import * as path from 'path'
 
+import * as common from './common'
 import * as dict from './dict'
 
 const PORT     = 3001
@@ -33,11 +34,11 @@ async function main() {
     console.log(`Found data directory at ${userData}`)
 
     const start = process.hrtime()
-    // await loadDicts()
+    await loadDicts()
     // await loadJisho()
     // await loadForvo()
     // await loadJapanesePod()
-    await loadJapanesePodAudio()
+    // await loadJapanesePodAudio()
     const end = process.hrtime(start)
     console.log(`\nLoading took ${(end[0] + end[1] / 1e9).toFixed(3)}s`)
 
@@ -114,7 +115,7 @@ async function loadJapanesePod() {
         term: term,
         common: false,
         vulgar: true,
-        starts: false,
+        starts: true,
     })
 
     console.log(`\n#\n# Found ${entries.length} entry(s) for ${term}\n#`)
@@ -307,4 +308,22 @@ async function loadDicts() {
     for (const key of Object.keys(allRules).sort()) {
         console.log(`- ${key}: ${ruleSample[key].sort().join(', ')}`)
     }
+
+    console.log(`\nSaving to ${userData}/dict/imported.json`)
+    let allEntries: dict.Entry[] = []
+    for (const it of dicts) {
+        const entries = it.getEntries()
+        allEntries = allEntries.concat(entries)
+    }
+
+    console.log(`${allEntries.length} entries`)
+
+    const name: dict.NameMap = {}
+    const data = dict.serializeEntries(allEntries, name)
+
+    const jsonData = {
+        name: name,
+        data: data,
+    }
+    common.writeText(path.join(userData, 'dict', 'imported.json'), JSON.stringify(jsonData))
 }
