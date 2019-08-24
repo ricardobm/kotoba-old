@@ -1,0 +1,39 @@
+# See https://taskfile.dev/
+
+version: '2'
+
+vars:
+  ARGS: ""
+
+tasks:
+  default:
+    silent: true
+    cmds:
+      - echo
+      - echo Run 'task --list' or 'task -l' for a summary of available tasks.
+      - echo
+
+  build:
+    desc:   Builds the Rust application.
+    silent: true
+    sources:
+      - src/**/*.rs
+    generates:
+      - target/debug/hongo
+      - target/debug/hongo.exe
+    cmds:
+      - cargo build
+      - echo
+
+  run:
+    desc:   Runs the application.
+    deps:   [build]
+    silent: true
+    cmds:
+      - target/debug/hongo {{.ARGS}}
+
+  test:
+    desc:   Runs tests
+    silent: true
+    cmds:
+      - cargo test --all
