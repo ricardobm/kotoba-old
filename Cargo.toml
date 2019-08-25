@@ -7,4 +7,16 @@ description = "Japanese Learning pad"
 repository = "https://github.com/ricardobm/hongo/"
 keywords = ["japanese"]
 
+[profile.dev]
+opt-level = 2
+
 [dependencies]
+regex = "1"
+lazy_static = "1"
+
+[dependencies.serde]
+version   = "1.0"
+features  = ["derive"]
+
+[dependencies.serde_json]
+version = "1.0"
