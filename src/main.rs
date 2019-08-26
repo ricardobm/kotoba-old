@@ -18,8 +18,8 @@ use rand::thread_rng;
 
 const DATA_DIR: &str = "hongo-data";
 
-mod import;
-use import::*;
+mod dict;
+use dict::import::*;
 
 fn main() {
 	std::process::exit(run());
