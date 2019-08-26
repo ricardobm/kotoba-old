@@ -1,6 +1,7 @@
 use std::fmt;
 
 /// Origin for a dictionary entry.
+#[allow(dead_code)]
 pub enum EntrySource {
 	/// Entry was imported from a dictionary file.
 	Import,
@@ -55,9 +56,12 @@ impl fmt::Display for Entry {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "==> {}", self.expressions[0])?;
 		if self.readings[0].len() > 0 {
-			write!(f, " 「{}」", self.readings[1])?;
+			write!(f, " 「{}」", self.readings[0])?;
 		}
-		write!(f, " -- {}", self.score)?;
+		write!(f, " -- score:{}, source:{}", self.score, self.source)?;
+		if self.origin.len() > 0 {
+			write!(f, ", from:{}", self.origin)?;
+		}
 
 		if self.tags.len() > 0 {
 			write!(f, "\n[{}]", self.tags.join(", "))?;
@@ -85,17 +89,17 @@ impl fmt::Display for Entry {
 /// English meaning for an entry.
 pub struct EntryEnglish {
 	/// List of glossary terms for the meaning.
-	glossary: Vec<String>,
+	pub glossary: Vec<String>,
 
 	/// Tags that apply to this meaning. Examples are: parts of speech, names,
 	/// usage, area of knowledge, etc.
-	tags: Vec<String>,
+	pub tags: Vec<String>,
 
 	/// Additional information to append to the entry definition.
-	info: Vec<String>,
+	pub info: Vec<String>,
 
 	/// Related links. Those can be web URLs or other related words.
-	links: Vec<EntryLink>,
+	pub links: Vec<EntryLink>,
 }
 
 impl fmt::Display for EntryEnglish {
@@ -117,10 +121,10 @@ impl fmt::Display for EntryEnglish {
 /// Link to related resources.
 pub struct EntryLink {
 	/// URI for the linked resource.
-	uri: String,
+	pub uri: String,
 
 	/// Text for this link.
-	text: String,
+	pub text: String,
 }
 
 impl fmt::Display for EntryLink {

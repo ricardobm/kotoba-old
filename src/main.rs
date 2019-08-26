@@ -66,6 +66,7 @@ fn run() -> i32 {
 	let duration = start.elapsed();
 	println!("\nImported {} entries in {:?}", imported.len(), duration);
 
+	let mut all_entries = Vec::new();
 	let mut rng = thread_rng();
 	for mut it in imported {
 		println!("\n\n{}", it);
@@ -73,6 +74,10 @@ fn run() -> i32 {
 		it.kanjis.as_mut_slice().shuffle(&mut rng);
 		it.meta_terms.as_mut_slice().shuffle(&mut rng);
 		it.meta_kanjis.as_mut_slice().shuffle(&mut rng);
+
+		for term in &it.terms {
+			all_entries.push(term.to_entry(&it));
+		}
 
 		if it.tags.len() > 0 {
 			println!("\n## Tags ##\n");
@@ -111,6 +116,12 @@ fn run() -> i32 {
 	}
 
 	println!();
+
+	println!("\n## ENTRIES ##\n");
+	all_entries.as_mut_slice().shuffle(&mut rng);
+	for it in all_entries.iter().take(10) {
+		println!("\n{}", it);
+	}
 
 	0
 }

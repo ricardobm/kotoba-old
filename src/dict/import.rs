@@ -1,6 +1,7 @@
 //! Support for importing data from Yomichan style dictionaries.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::fs::File;
@@ -111,6 +112,27 @@ pub struct Term {
 
 	/// Tags for the main term.
 	pub term_tags: Vec<String>,
+}
+
+use super::{Entry, EntryEnglish, EntrySource};
+
+impl Term {
+	pub fn to_entry(&self, parent: &Dict) -> Entry {
+		Entry {
+			source:      EntrySource::Import,
+			origin:      parent.title.clone(),
+			expressions: vec![self.expression.clone()],
+			readings:    vec![self.reading.clone()],
+			score:       self.score,
+			tags:        unique_tags(&self.term_tags, &self.rules),
+			definition:  vec![EntryEnglish {
+				glossary: self.glossary.clone(),
+				tags:     self.definition_tags.clone(),
+				info:     vec![],
+				links:    vec![],
+			}],
+		}
+	}
 }
 
 impl fmt::Display for Term {
@@ -458,4 +480,17 @@ fn get_kind(file_name: &str) -> Option<DataKind> {
 		"term_meta" => Some(DataKind::TermMeta),
 		_ => None,
 	}
+}
+
+fn unique_tags(v1: &Vec<String>, v2: &Vec<String>) -> Vec<String> {
+	let mut out = Vec::new();
+	let mut set = HashSet::new();
+	for it in v1.iter().chain(v2.iter()) {
+		if set.contains(it) {
+			continue;
+		}
+		set.insert(it);
+		out.push(it.clone())
+	}
+	out
 }
