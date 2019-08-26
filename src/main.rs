@@ -5,6 +5,8 @@ extern crate serde_json;
 extern crate rand;
 extern crate regex;
 
+extern crate zip;
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -18,6 +20,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 
 const DATA_DIR: &str = "hongo-data";
+const FROM_ZIP: bool = true;
 
 mod dict;
 use dict::import::*;
@@ -60,7 +63,7 @@ fn run() -> i32 {
 	};
 
 	let mut import_path = PathBuf::from(&user_data);
-	import_path.push("import-files");
+	import_path.push(if FROM_ZIP { "import" } else { "import-files" });
 
 	let start = time::Instant::now();
 	let imported = import_from(&import_path).unwrap();

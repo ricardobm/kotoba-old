@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 use regex::Regex;
 use serde_json;
+use zip::ZipArchive;
 
 /// Dictionary data imported from a Yomichan internal format.
 #[derive(Deserialize)]
@@ -317,8 +318,42 @@ pub fn import_from(import_path: &Path) -> io::Result<Vec<Dict>> {
 	Ok(results)
 }
 
-fn import_from_zip(_zip_path: &Path) -> io::Result<Dict> {
-	panic!("NIE")
+fn import_from_zip(zip_path: &Path) -> io::Result<Dict> {
+	let file = File::open(zip_path)?;
+	let mut archive = ZipArchive::new(file)?;
+
+	let index_file = archive.by_name("index.json")?;
+
+	let mut dict: Dict = serde_json::from_reader(index_file)?;
+	dict.path = PathBuf::from(zip_path);
+
+	for i in 0..archive.len() {
+		let file = archive.by_index(i)?;
+		if !file.is_file() {
+			continue;
+		}
+
+		let path = file.sanitized_name();
+		let name = path.to_string_lossy();
+
+		// Basic checks:
+
+		if name == "index.json" {
+			continue; // we already processed the index.json file
+		}
+
+		if let Some(ext) = path.extension() {
+			if ext != "json" {
+				continue; // not a JSON file
+			}
+		} else {
+			continue; // no extension
+		}
+
+		import_entry(&mut dict, &name, || Ok(file))?;
+	}
+
+	Ok(dict)
 }
 
 fn import_from_dir(dir_path: &Path) -> io::Result<Dict> {
@@ -352,96 +387,108 @@ fn import_from_dir(dir_path: &Path) -> io::Result<Dict> {
 			continue;
 		}
 
-		let kind = get_kind(&entry.file_name().to_string_lossy());
-		if let Some(kind) = kind {
-			let entry_file = BufReader::new(File::open(entry_path)?);
-			match kind {
-				DataKind::Term => {
-					#[derive(Deserialize)]
-					struct TermRow(
-						String,      // expression
-						String,      // reading
-						String,      // definition tags (CSV)
-						String,      // rules (CSV)
-						i32,         // score
-						Vec<String>, // glossary
-						i32,         // sequence
-						String,      // term tags (CSV)
-					);
-					let rows: Vec<TermRow> = serde_json::from_reader(entry_file)?;
-					for it in rows {
-						dict.terms.push(Term {
-							expression:      it.0,
-							reading:         it.1,
-							definition_tags: csv(&it.2),
-							rules:           csv(&it.3),
-							score:           it.4,
-							glossary:        it.5,
-							sequence:        it.6,
-							term_tags:       csv(&it.7),
-						});
-					}
-				}
-				DataKind::Kanji => {
-					#[derive(Deserialize)]
-					struct KanjiRow(
-						char,                    // character
-						String,                  // onyomi (CSV)
-						String,                  // kunyomi (CSV)
-						String,                  // tags (CSV)
-						Vec<String>,             // meanings
-						HashMap<String, String>, // stats
-					);
-					let rows: Vec<KanjiRow> = serde_json::from_reader(entry_file)?;
-					for it in rows {
-						dict.kanjis.push(Kanji {
-							character: it.0,
-							onyomi:    csv(&it.1),
-							kunyomi:   csv(&it.2),
-							tags:      csv(&it.3),
-							meanings:  it.4,
-							stats:     it.5,
-						});
-					}
-				}
-				DataKind::Tag => {
-					#[derive(Deserialize)]
-					struct TagRow(
-						String, // name
-						String, // category
-						i32,    // order
-						String, // notes
-						i32,    // score
-					);
-					let rows: Vec<TagRow> = serde_json::from_reader(entry_file)?;
-					for it in rows {
-						dict.tags.push(Tag {
-							name:     it.0,
-							category: it.1,
-							order:    it.2,
-							notes:    it.3,
-							score:    it.4,
-						});
-					}
-				}
-				DataKind::KanjiMeta => {
-					for it in read_meta(entry_file)? {
-						dict.meta_kanjis.push(it);
-					}
-				}
-				DataKind::TermMeta => {
-					for it in read_meta(entry_file)? {
-						dict.meta_terms.push(it);
-					}
-				}
-			}
-		}
+		let filename = entry.file_name();
+		let filename = filename.to_string_lossy();
+		import_entry(&mut dict, &filename, || Ok(BufReader::new(File::open(entry_path)?)))?;
 	}
 
 	Ok(dict)
 }
 
-fn read_meta<R: io::Read>(input: BufReader<R>) -> io::Result<Vec<Meta>> {
+fn import_entry<F, R>(dict: &mut Dict, filename: &str, open: F) -> io::Result<()>
+where
+	F: FnOnce() -> io::Result<R>,
+	R: io::Read,
+{
+	let kind = get_kind(filename);
+	if let Some(kind) = kind {
+		let entry_file = open()?;
+		match kind {
+			DataKind::Term => {
+				#[derive(Deserialize)]
+				struct TermRow(
+					String,      // expression
+					String,      // reading
+					String,      // definition tags (CSV)
+					String,      // rules (CSV)
+					i32,         // score
+					Vec<String>, // glossary
+					i32,         // sequence
+					String,      // term tags (CSV)
+				);
+				let rows: Vec<TermRow> = serde_json::from_reader(entry_file)?;
+				for it in rows {
+					dict.terms.push(Term {
+						expression:      it.0,
+						reading:         it.1,
+						definition_tags: csv(&it.2),
+						rules:           csv(&it.3),
+						score:           it.4,
+						glossary:        it.5,
+						sequence:        it.6,
+						term_tags:       csv(&it.7),
+					});
+				}
+			}
+			DataKind::Kanji => {
+				#[derive(Deserialize)]
+				struct KanjiRow(
+					char,                    // character
+					String,                  // onyomi (CSV)
+					String,                  // kunyomi (CSV)
+					String,                  // tags (CSV)
+					Vec<String>,             // meanings
+					HashMap<String, String>, // stats
+				);
+				let rows: Vec<KanjiRow> = serde_json::from_reader(entry_file)?;
+				for it in rows {
+					dict.kanjis.push(Kanji {
+						character: it.0,
+						onyomi:    csv(&it.1),
+						kunyomi:   csv(&it.2),
+						tags:      csv(&it.3),
+						meanings:  it.4,
+						stats:     it.5,
+					});
+				}
+			}
+			DataKind::Tag => {
+				#[derive(Deserialize)]
+				struct TagRow(
+					String, // name
+					String, // category
+					i32,    // order
+					String, // notes
+					i32,    // score
+				);
+				let rows: Vec<TagRow> = serde_json::from_reader(entry_file)?;
+				for it in rows {
+					dict.tags.push(Tag {
+						name:     it.0,
+						category: it.1,
+						order:    it.2,
+						notes:    it.3,
+						score:    it.4,
+					});
+				}
+			}
+			DataKind::KanjiMeta => {
+				for it in read_meta(entry_file)? {
+					dict.meta_kanjis.push(it);
+				}
+			}
+			DataKind::TermMeta => {
+				for it in read_meta(entry_file)? {
+					dict.meta_terms.push(it);
+				}
+			}
+		}
+	}
+
+	Ok(())
+}
+
+fn read_meta<R: io::Read>(input: R) -> io::Result<Vec<Meta>> {
 	#[derive(Deserialize)]
 	struct MetaRow(
 		String, // expression
