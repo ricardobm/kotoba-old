@@ -1,0 +1,4 @@
+reorder_imports = true
+enum_discrim_align_threshold = 30
+struct_field_align_threshold = 30
+hard_tabs = true
