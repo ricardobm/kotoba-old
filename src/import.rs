@@ -1,6 +1,7 @@
 //! Support for importing data from Yomichan style dictionaries.
 
 use std::collections::HashMap;
+use std::fmt;
 use std::fs;
 use std::fs::File;
 use std::io;
@@ -51,6 +52,29 @@ pub struct Dict {
 	pub meta_kanjis: Vec<Meta>,
 }
 
+impl fmt::Display for Dict {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(
+			f,
+			"=> {} [{}({})] -- {}\n",
+			self.title,
+			self.revision,
+			self.format,
+			self.path.to_string_lossy()
+		)?;
+		write!(f, " - Terms:  {}\n", self.terms.len())?;
+		write!(f, " - Kanjis: {}\n", self.kanjis.len())?;
+		write!(f, " - Tags:   {}\n", self.tags.len())?;
+		write!(
+			f,
+			" - Meta:   {} / {} (terms / kanjis)",
+			self.meta_terms.len(),
+			self.meta_kanjis.len()
+		)?;
+		Ok(())
+	}
+}
+
 /// Dictionary entry for a term.
 ///
 /// Each entry contains a single definition for the term given by `expression`.
@@ -89,6 +113,39 @@ pub struct Term {
 	pub term_tags: Vec<String>,
 }
 
+impl fmt::Display for Term {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "-> {}", self.expression)?;
+		if self.reading.len() > 0 {
+			write!(f, " 「{}」", self.reading)?;
+		}
+		write!(f, " -- {}/{}", self.sequence, self.score)?;
+		if self.term_tags.len() > 0 {
+			write!(f, "  {}", self.term_tags.join(", "))?;
+		}
+		writeln!(f)?;
+
+		let tags = self.definition_tags.len();
+		let rules = self.rules.len();
+		if tags > 0 || rules > 0 {
+			write!(f, "   [")?;
+			if tags > 0 {
+				write!(f, "tags:  {}", self.definition_tags.join(", "))?;
+			}
+			if rules > 0 {
+				if tags > 0 {
+					write!(f, " / ")?;
+				}
+				write!(f, "rules: {}", self.rules.join(", "))?;
+			}
+			write!(f, "]\n")?;
+		}
+
+		write!(f, "   {}", self.glossary.join("; "))?;
+		Ok(())
+	}
+}
+
 /// Dictionary entry for a kanji.
 pub struct Kanji {
 	/// Kanji character.
@@ -109,6 +166,51 @@ pub struct Kanji {
 	/// Additional kanji information. The keys in `stats` are further detailed
 	/// by the dictionary tags.
 	pub stats: HashMap<String, String>,
+}
+
+impl fmt::Display for Kanji {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "-> {}", self.character)?;
+		let on = self.onyomi.len();
+		let kun = self.kunyomi.len();
+		if on > 0 || kun > 0 {
+			write!(f, " 「")?;
+			if on > 0 {
+				write!(f, "ON: {}", self.onyomi.join("  "))?;
+			}
+			if kun > 0 {
+				if on > 0 {
+					write!(f, " / ")?;
+				}
+				write!(f, "KUN: {}", self.kunyomi.join("  "))?;
+			}
+			write!(f, " 」")?;
+		}
+		writeln!(f)?;
+		if self.tags.len() > 0 {
+			write!(f, "   [{}]\n", self.tags.join(", "))?;
+		}
+		write!(f, "   {}", self.meanings.join("; "))?;
+		if self.stats.len() > 0 {
+			let mut pairs: Vec<_> = self.stats.iter().collect();
+			pairs.sort();
+			let pairs: Vec<_> = pairs
+				.into_iter()
+				.map(|(key, val)| format!("{}: {}", key, val))
+				.collect();
+			let mut counter = 0;
+			for it in pairs {
+				if counter % 8 == 0 {
+					write!(f, "\n   : ")?;
+				} else {
+					write!(f, ", ")?;
+				}
+				write!(f, "{}", it)?;
+				counter += 1;
+			}
+		}
+		Ok(())
+	}
 }
 
 /// Tag for an `Kanji` or `Term`. For kanji dictionary.
@@ -132,6 +234,16 @@ pub struct Tag {
 	pub score: i32,
 }
 
+impl fmt::Display for Tag {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(
+			f,
+			"{} ({}): {} -- {}/{}",
+			self.name, self.category, self.notes, self.order, self.score
+		)
+	}
+}
+
 /// Frequency metadata for kanjis or terms.
 pub struct Meta {
 	/// Kanji or term.
@@ -142,6 +254,12 @@ pub struct Meta {
 
 	/// Metadata value.
 	pub data: i32,
+}
+
+impl fmt::Display for Meta {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{} = {} ({})", self.expression, self.data, self.mode)
+	}
 }
 
 enum DataKind {
@@ -285,10 +403,14 @@ fn import_from_dir(dir_path: &Path) -> io::Result<Dict> {
 					}
 				}
 				DataKind::KanjiMeta => {
-					dict.meta_kanjis = read_meta(entry_file)?;
+					for it in read_meta(entry_file)? {
+						dict.meta_kanjis.push(it);
+					}
 				}
 				DataKind::TermMeta => {
-					dict.meta_terms = read_meta(entry_file)?;
+					for it in read_meta(entry_file)? {
+						dict.meta_terms.push(it);
+					}
 				}
 			}
 		}

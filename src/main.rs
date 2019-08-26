@@ -2,6 +2,7 @@
 extern crate serde;
 extern crate serde_json;
 
+extern crate rand;
 extern crate regex;
 
 #[macro_use]
@@ -11,6 +12,9 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::time;
+
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 
 const DATA_DIR: &str = "hongo-data";
 
@@ -49,10 +53,7 @@ fn run() -> i32 {
 			return 1;
 		}
 		Some(user_data) => {
-			println!(
-				"\nUser data directory is {:}\n",
-				user_data.to_str().unwrap()
-			);
+			println!("\nUser data directory is {:}\n", user_data.to_str().unwrap());
 			user_data
 		}
 	};
@@ -65,25 +66,46 @@ fn run() -> i32 {
 	let duration = start.elapsed();
 	println!("\nImported {} entries in {:?}", imported.len(), duration);
 
-	for it in imported {
-		println!(
-			"\n=> {} ({}) -- {}",
-			it.title,
-			it.revision,
-			it.path.to_string_lossy()
-		);
-		println!("\n## Terms: {}", it.terms.len());
+	let mut rng = thread_rng();
+	for mut it in imported {
+		println!("\n\n{}", it);
+		it.terms.as_mut_slice().shuffle(&mut rng);
+		it.kanjis.as_mut_slice().shuffle(&mut rng);
+		it.meta_terms.as_mut_slice().shuffle(&mut rng);
+		it.meta_kanjis.as_mut_slice().shuffle(&mut rng);
+
+		if it.tags.len() > 0 {
+			println!("\n## Tags ##\n");
+			for tag in it.tags {
+				println!("- {}", tag);
+			}
+		}
+
 		if it.terms.len() > 0 {
-			println!("\nTop 10:\n");
-			for term in it.terms.iter().take(10) {
-				println!("-> {} 「{}」", term.expression, term.reading);
-				if term.term_tags.len() > 0 {
-					println!("    (term: {})", term.term_tags.join(", "));
-				}
-				if term.definition_tags.len() > 0 {
-					println!("    (definition: {})", term.definition_tags.join(", "));
-				}
-				println!("    {}", term.glossary.join("; "));
+			println!("\n## Terms ##\n");
+			for term in it.terms.iter().take(3) {
+				println!("\n{}", term);
+			}
+		}
+
+		if it.kanjis.len() > 0 {
+			println!("\n## Kanjis ##\n");
+			for kanji in it.kanjis.iter().take(3) {
+				println!("\n{}", kanji);
+			}
+		}
+
+		if it.meta_terms.len() > 0 {
+			println!("\n## Meta (Terms) ##\n");
+			for meta in it.meta_terms.iter().take(10) {
+				println!("- {}", meta);
+			}
+		}
+
+		if it.meta_kanjis.len() > 0 {
+			println!("\n## Meta (Kanjis) ##\n");
+			for meta in it.meta_kanjis.iter().take(10) {
+				println!("- {}", meta);
 			}
 		}
 	}
