@@ -10,6 +10,7 @@ extern crate lazy_static;
 
 use std::env;
 use std::fs;
+use std::fs::File;
 use std::path::PathBuf;
 use std::time;
 
@@ -58,7 +59,7 @@ fn run() -> i32 {
 		}
 	};
 
-	let mut import_path = PathBuf::from(user_data);
+	let mut import_path = PathBuf::from(&user_data);
 	import_path.push("import-files");
 
 	let start = time::Instant::now();
@@ -116,6 +117,23 @@ fn run() -> i32 {
 	}
 
 	println!();
+
+	let mut out_path = PathBuf::from(&user_data);
+	out_path.push("imported.json");
+
+	if let Ok(_) = fs::metadata(&out_path) {
+		println!(
+			"\n{} already exists, skipping serialization\n",
+			out_path.to_string_lossy()
+		);
+	} else {
+		let start = time::Instant::now();
+		let out_file = File::create(out_path).unwrap();
+		let writer = std::io::BufWriter::new(out_file);
+		serde_json::to_writer_pretty(writer, &all_entries).unwrap();
+		let duration = start.elapsed();
+		println!("\nSERIALIZATION TOOK {:?}\n", duration);
+	}
 
 	println!("\n## ENTRIES ##\n");
 	all_entries.as_mut_slice().shuffle(&mut rng);

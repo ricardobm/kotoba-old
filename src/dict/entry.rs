@@ -1,7 +1,9 @@
 use std::fmt;
+use serde::Serialize;
 
 /// Origin for a dictionary entry.
 #[allow(dead_code)]
+#[derive(Serialize)]
 pub enum EntrySource {
 	/// Entry was imported from a dictionary file.
 	Import,
@@ -22,6 +24,7 @@ impl fmt::Display for EntrySource {
 }
 
 /// Dictionary entry.
+#[derive(Serialize)]
 pub struct Entry {
 	/// Source for this entry.
 	pub source: EntrySource,
@@ -87,6 +90,7 @@ impl fmt::Display for Entry {
 }
 
 /// English meaning for an entry.
+#[derive(Serialize)]
 pub struct EntryEnglish {
 	/// List of glossary terms for the meaning.
 	pub glossary: Vec<String>,
@@ -119,6 +123,7 @@ impl fmt::Display for EntryEnglish {
 }
 
 /// Link to related resources.
+#[derive(Serialize)]
 pub struct EntryLink {
 	/// URI for the linked resource.
 	pub uri: String,

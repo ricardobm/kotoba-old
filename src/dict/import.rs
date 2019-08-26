@@ -152,7 +152,7 @@ impl fmt::Display for Term {
 		if tags > 0 || rules > 0 {
 			write!(f, "   [")?;
 			if tags > 0 {
-				write!(f, "tags:  {}", self.definition_tags.join(", "))?;
+				write!(f, "tags: {}", self.definition_tags.join(", "))?;
 			}
 			if rules > 0 {
 				if tags > 0 {
@@ -464,7 +464,7 @@ fn csv(ls: &str) -> Vec<String> {
 	if ls.len() == 0 {
 		Vec::new()
 	} else {
-		ls.split(",").map(|s| String::from(s)).collect()
+		ls.split(' ').map(|s| String::from(s)).collect()
 	}
 }
 
