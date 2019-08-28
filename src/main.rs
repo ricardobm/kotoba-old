@@ -1,3 +1,5 @@
+extern crate itertools;
+
 #[macro_use]
 extern crate serde;
 extern crate serde_json;
@@ -20,10 +22,10 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 
 const DATA_DIR: &str = "hongo-data";
-const FROM_ZIP: bool = true;
+const FROM_ZIP: bool = false;
 
 mod dict;
-use dict::import::*;
+use dict::import;
 
 fn main() {
 	std::process::exit(run());
@@ -66,22 +68,23 @@ fn run() -> i32 {
 	import_path.push(if FROM_ZIP { "import" } else { "import-files" });
 
 	let start = time::Instant::now();
-	let imported = import_from(&import_path).unwrap();
+	let imported = import::import_from(&import_path).unwrap();
 	let duration = start.elapsed();
 	println!("\nImported {} entries in {:?}", imported.len(), duration);
 
-	let mut all_entries = Vec::new();
+	let mut builder = dict::DictBuilder::new();
+
 	let mut rng = thread_rng();
 	for mut it in imported {
+		{
+			it.append_to(&mut builder);
+		}
+
 		println!("\n\n{}", it);
 		it.terms.as_mut_slice().shuffle(&mut rng);
 		it.kanjis.as_mut_slice().shuffle(&mut rng);
 		it.meta_terms.as_mut_slice().shuffle(&mut rng);
 		it.meta_kanjis.as_mut_slice().shuffle(&mut rng);
-
-		for term in &it.terms {
-			all_entries.push(term.to_entry(&it));
-		}
 
 		if it.tags.len() > 0 {
 			println!("\n## Tags ##\n");
@@ -119,7 +122,9 @@ fn run() -> i32 {
 		}
 	}
 
-	println!();
+	let mut dict = builder.build();
+
+	println!("\n#\n# Total entries: {}\n#\n", dict.count());
 
 	let mut out_path = PathBuf::from(&user_data);
 	out_path.push("imported.json");
@@ -131,16 +136,16 @@ fn run() -> i32 {
 		);
 	} else {
 		let start = time::Instant::now();
-		let out_file = File::create(out_path).unwrap();
-		let writer = std::io::BufWriter::new(out_file);
-		serde_json::to_writer_pretty(writer, &all_entries).unwrap();
+		// let out_file = File::create(out_path).unwrap();
+		// let writer = std::io::BufWriter::new(out_file);
+		// serde_json::to_writer_pretty(writer, &all_entries).unwrap();
 		let duration = start.elapsed();
 		println!("\nSERIALIZATION TOOK {:?}\n", duration);
 	}
 
 	println!("\n## ENTRIES ##\n");
-	all_entries.as_mut_slice().shuffle(&mut rng);
-	for it in all_entries.iter().take(10) {
+	dict.shuffle(&mut rng);
+	for it in dict.entries().into_iter().take(10) {
 		println!("\n{}", it);
 	}
 

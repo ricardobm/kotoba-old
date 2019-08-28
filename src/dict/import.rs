@@ -1,7 +1,7 @@
 //! Support for importing data from Yomichan style dictionaries.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::fs::File;
@@ -52,6 +52,58 @@ pub struct Dict {
 	/// Frequency metadata for kanjis.
 	#[serde(skip)]
 	pub meta_kanjis: Vec<Meta>,
+}
+
+impl Dict {
+	pub fn append_to<'a>(&self, builder: &mut super::DictBuilder) {
+		if self.terms.len() == 0 {
+			return;
+		}
+
+		let mut tag_map = HashMap::new();
+		for it in &self.tags {
+			let tag_id = builder.add_tag(&it.name, |_, tag| {
+				tag.with_category(&it.category)
+					.with_description(&it.notes)
+					.with_order(it.order);
+			});
+			tag_map.insert(Cow::from(&it.name), tag_id);
+		}
+
+		for it in &self.terms {
+			builder.add_entry(super::EntrySource::Import, &self.title, |builder, entry| {
+				entry.add_expression(&it.expression);
+				entry.add_reading(&it.reading);
+				entry.with_score(it.score);
+				add_tags(builder, entry, &mut tag_map, it.term_tags.iter().chain(it.rules.iter()));
+				entry.add_definition(builder, &it.glossary[0], |builder, def| {
+					def.append_glossary(it.glossary.iter().skip(1));
+					add_tags(builder, def, &mut tag_map, &it.definition_tags);
+				});
+			});
+		}
+	}
+}
+
+fn add_tags<'a, T, L, S>(
+	builder: &mut super::DictBuilder,
+	entry: &mut T,
+	tag_map: &mut HashMap<Cow<'a, str>, super::TagId>,
+	tags: L,
+) where
+	T: super::WithTags,
+	L: IntoIterator<Item = S>,
+	S: Into<Cow<'a, str>>,
+{
+	for tag in tags.into_iter() {
+		let key = tag.into();
+		if let Some(&tag_id) = tag_map.get(&key) {
+			entry.with_tag(tag_id);
+		} else {
+			let tag_id = builder.add_tag(key.clone(), |_, _| {});
+			tag_map.insert(key, tag_id);
+		}
+	}
 }
 
 impl fmt::Display for Dict {
@@ -113,27 +165,6 @@ pub struct Term {
 
 	/// Tags for the main term.
 	pub term_tags: Vec<String>,
-}
-
-use super::{Entry, EntryEnglish, EntrySource};
-
-impl Term {
-	pub fn to_entry(&self, parent: &Dict) -> Entry {
-		Entry {
-			source:      EntrySource::Import,
-			origin:      parent.title.clone(),
-			expressions: vec![self.expression.clone()],
-			readings:    vec![self.reading.clone()],
-			score:       self.score,
-			tags:        unique_tags(&self.term_tags, &self.rules),
-			definition:  vec![EntryEnglish {
-				glossary: self.glossary.clone(),
-				tags:     self.definition_tags.clone(),
-				info:     vec![],
-				links:    vec![],
-			}],
-		}
-	}
 }
 
 impl fmt::Display for Term {
@@ -527,17 +558,4 @@ fn get_kind(file_name: &str) -> Option<DataKind> {
 		"term_meta" => Some(DataKind::TermMeta),
 		_ => None,
 	}
-}
-
-fn unique_tags(v1: &Vec<String>, v2: &Vec<String>) -> Vec<String> {
-	let mut out = Vec::new();
-	let mut set = HashSet::new();
-	for it in v1.iter().chain(v2.iter()) {
-		if set.contains(it) {
-			continue;
-		}
-		set.insert(it);
-		out.push(it.clone())
-	}
-	out
 }
