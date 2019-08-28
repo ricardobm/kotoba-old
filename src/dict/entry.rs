@@ -1,84 +1,16 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::fmt;
 use std::iter::IntoIterator;
 
 use itertools::Itertools;
 use rand::prelude::SliceRandom;
 
-struct InternalData {
-	str_table: Vec<String>,
-	str_index: HashMap<InternalString, usize>,
-}
-
-type StringIndex = usize;
-
-impl<'a> InternalData {
-	pub fn new() -> InternalData {
-		let mut result = InternalData {
-			str_table: Vec::new(),
-			str_index: HashMap::new(),
-		};
-		result.intern(String::new());
-		result
-	}
-
-	pub fn intern<S: Into<Cow<'a, str>>>(&mut self, value: S) -> StringIndex {
-		let cow = value.into();
-		let key = InternalString::from(&cow);
-		if let Some(&index) = self.str_index.get(&key) {
-			index
-		} else {
-			// Push a new entry into the table.
-			self.str_table.push(cow.into());
-
-			// Generate a new key pointing to the entry in the table.
-			let key = InternalString::from(self.str_table.last().unwrap().as_str());
-			self.str_index.insert(key, self.str_table.len() - 1);
-			self.str_table.len() - 1
-		}
-	}
-}
-
-#[allow(dead_code)]
-#[derive(Copy, Clone)]
-struct InternalString {
-	ptr: *const str,
-}
-
-#[allow(dead_code)]
-impl InternalString {
-	fn from<S>(value: S) -> InternalString
-	where
-		S: AsRef<str>,
-	{
-		let ptr = value.as_ref() as *const str;
-		InternalString { ptr }
-	}
-}
-
-impl std::cmp::PartialEq for InternalString {
-	fn eq(&self, other: &Self) -> bool {
-		if self.ptr == other.ptr {
-			true
-		} else {
-			unsafe { (*self.ptr) == (*other.ptr) }
-		}
-	}
-}
-
-impl std::cmp::Eq for InternalString {}
-
-impl std::hash::Hash for InternalString {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		unsafe { (*self.ptr).hash(state) }
-	}
-}
+use super::strings::{StringIndex, StringTable};
 
 pub struct DictBuilder {
-	internal: InternalData,
-	entries:  Vec<EntryData>,
-	tags:     Vec<TagData>,
+	strings: StringTable,
+	entries: Vec<EntryData>,
+	tags:    Vec<TagData>,
 }
 
 pub type TagId = usize;
@@ -87,17 +19,17 @@ pub type TagId = usize;
 impl DictBuilder {
 	pub fn new() -> DictBuilder {
 		DictBuilder {
-			internal: InternalData::new(),
-			entries:  Vec::new(),
-			tags:     Vec::new(),
+			strings: StringTable::new(),
+			entries: Vec::new(),
+			tags:    Vec::new(),
 		}
 	}
 
 	pub fn build(self) -> Dict {
 		Dict {
-			internal: self.internal,
-			entries:  self.entries,
-			tags:     self.tags,
+			strings: self.strings,
+			entries: self.entries,
+			tags:    self.tags,
 		}
 	}
 
@@ -127,11 +59,11 @@ impl DictBuilder {
 	}
 
 	fn do_add_entry<'a>(&mut self, entry: EntryBuilder<'a>) {
-		self.entries.push(EntryData::from_builder(&mut self.internal, entry));
+		self.entries.push(EntryData::from_builder(&mut self.strings, entry));
 	}
 
 	fn do_add_tag<'a>(&mut self, tag: TagBuilder<'a>) -> TagId {
-		self.tags.push(TagData::from_builder(&mut self.internal, tag));
+		self.tags.push(TagData::from_builder(&mut self.strings, tag));
 		self.tags.len() - 1
 	}
 }
@@ -187,16 +119,16 @@ struct EntryData {
 }
 
 impl<'a> EntryData {
-	pub fn from_builder(internal: &mut InternalData, builder: EntryBuilder<'a>) -> EntryData {
+	pub fn from_builder(strings: &mut StringTable, builder: EntryBuilder<'a>) -> EntryData {
 		EntryData {
 			source:      builder.source,
-			origin:      internal.intern(builder.origin),
-			expressions: builder.expressions.into_iter().map(|it| internal.intern(it)).collect(),
-			readings:    builder.readings.into_iter().map(|it| internal.intern(it)).collect(),
+			origin:      strings.intern(builder.origin),
+			expressions: builder.expressions.into_iter().map(|it| strings.intern(it)).collect(),
+			readings:    builder.readings.into_iter().map(|it| strings.intern(it)).collect(),
 			definitions: builder
 				.definitions
 				.into_iter()
-				.map(|it| DefinitionData::from_builder(internal, it))
+				.map(|it| DefinitionData::from_builder(strings, it))
 				.collect(),
 			tags:        builder.tags,
 			score:       builder.score,
@@ -313,17 +245,17 @@ struct DefinitionData {
 }
 
 impl<'a> DefinitionData {
-	pub fn from_builder(internal: &mut InternalData, builder: DefinitionBuilder<'a>) -> DefinitionData {
+	pub fn from_builder(strings: &mut StringTable, builder: DefinitionBuilder<'a>) -> DefinitionData {
 		DefinitionData {
-			glossary: builder.glossary.into_iter().map(|it| internal.intern(it)).collect(),
+			glossary: builder.glossary.into_iter().map(|it| strings.intern(it)).collect(),
 			tags:     builder.tags,
-			info:     builder.info.into_iter().map(|it| internal.intern(it)).collect(),
+			info:     builder.info.into_iter().map(|it| strings.intern(it)).collect(),
 			links:    builder
 				.links
 				.into_iter()
 				.map(|it| LinkData {
-					uri:  internal.intern(it.uri),
-					text: internal.intern(it.text),
+					uri:  strings.intern(it.uri),
+					text: strings.intern(it.text),
 				})
 				.collect(),
 		}
@@ -425,11 +357,11 @@ struct TagData {
 }
 
 impl<'a> TagData {
-	pub fn from_builder(internal: &mut InternalData, builder: TagBuilder<'a>) -> TagData {
+	pub fn from_builder(strings: &mut StringTable, builder: TagBuilder<'a>) -> TagData {
 		TagData {
-			name:        internal.intern(builder.name),
-			category:    internal.intern(builder.category),
-			description: internal.intern(builder.description),
+			name:        strings.intern(builder.name),
+			category:    strings.intern(builder.category),
+			description: strings.intern(builder.description),
 			order:       builder.order,
 		}
 	}
@@ -454,9 +386,9 @@ impl<'a> TagBuilder<'a> {
 }
 
 pub struct Dict {
-	internal: InternalData,
-	entries:  Vec<EntryData>,
-	tags:     Vec<TagData>,
+	strings: StringTable,
+	entries: Vec<EntryData>,
+	tags:    Vec<TagData>,
 }
 
 impl Dict {
@@ -473,7 +405,7 @@ impl Dict {
 	}
 
 	pub(self) fn string<'a>(&'a self, index: StringIndex) -> &'a str {
-		self.internal.str_table[index].as_str()
+		self.strings.get(index)
 	}
 
 	pub(self) fn tag<'a>(&'a self, tag_id: TagId) -> Tag<'a> {
