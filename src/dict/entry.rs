@@ -37,7 +37,8 @@ impl Dict {
 
 	/// Helper internal method to get a [Tag] from a [TagId].
 	pub(self) fn tag<'a>(&'a self, tag_id: TagId) -> Tag<'a> {
-		Tag::from(self, &self.tags[tag_id])
+		let TagId(index) = tag_id;
+		Tag::from(self, &self.tags[index])
 	}
 }
 
@@ -283,8 +284,9 @@ impl<'a> Tag<'a> {
 	}
 }
 
-/// Handle to reference a tag.
-pub type TagId = usize;
+/// Handle to reference a tag both internally and with builders.
+#[derive(Copy, Clone, Debug)]
+pub struct TagId(usize);
 
 /// Builder used to construct the entries for a [Dict].
 pub struct DictBuilder {
@@ -345,7 +347,7 @@ impl DictBuilder {
 
 	fn do_add_tag<'a>(&mut self, tag: TagBuilder<'a>) -> TagId {
 		self.tags.push(TagData::from_builder(&mut self.strings, tag));
-		self.tags.len() - 1
+		TagId(self.tags.len() - 1)
 	}
 }
 
