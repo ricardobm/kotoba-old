@@ -7,384 +7,7 @@ use rand::prelude::SliceRandom;
 
 use super::strings::{StringIndex, StringTable};
 
-pub struct DictBuilder {
-	strings: StringTable,
-	entries: Vec<EntryData>,
-	tags:    Vec<TagData>,
-}
-
-pub type TagId = usize;
-
-#[allow(dead_code)]
-impl DictBuilder {
-	pub fn new() -> DictBuilder {
-		DictBuilder {
-			strings: StringTable::new(),
-			entries: Vec::new(),
-			tags:    Vec::new(),
-		}
-	}
-
-	pub fn build(self) -> Dict {
-		Dict {
-			strings: self.strings,
-			entries: self.entries,
-			tags:    self.tags,
-		}
-	}
-
-	pub fn add_tag<'a, F, S>(&mut self, tag_name: S, config: F) -> TagId
-	where
-		F: FnOnce(&mut DictBuilder, &mut TagBuilder<'a>),
-		S: Into<Cow<'a, str>>,
-	{
-		let mut tag = TagBuilder {
-			name:        tag_name.into(),
-			category:    Cow::default(),
-			description: Cow::default(),
-			order:       0,
-		};
-		config(self, &mut tag);
-		self.do_add_tag(tag)
-	}
-
-	pub fn add_entry<'a, F, S>(&mut self, source: EntrySource, origin: S, config: F)
-	where
-		F: FnOnce(&mut DictBuilder, &mut EntryBuilder<'a>),
-		S: Into<Cow<'a, str>>,
-	{
-		let mut entry = EntryBuilder::new(source, origin);
-		config(self, &mut entry);
-		self.do_add_entry(entry);
-	}
-
-	fn do_add_entry<'a>(&mut self, entry: EntryBuilder<'a>) {
-		self.entries.push(EntryData::from_builder(&mut self.strings, entry));
-	}
-
-	fn do_add_tag<'a>(&mut self, tag: TagBuilder<'a>) -> TagId {
-		self.tags.push(TagData::from_builder(&mut self.strings, tag));
-		self.tags.len() - 1
-	}
-}
-
-pub trait WithTags {
-	fn with_tag(&mut self, tag: TagId) -> &mut Self;
-
-	fn with_tags<L>(&mut self, tags: L) -> &mut Self
-	where
-		L: IntoIterator<Item = TagId>;
-}
-
-/// Dictionary entry.
-#[allow(dead_code)]
-pub struct EntryBuilder<'a> {
-	/// Source for this entry.
-	pub(self) source: EntrySource,
-
-	/// Additional origin information for this entry (human readable). The exact
-	/// format and information depend on the source.
-	pub(self) origin: Cow<'a, str>,
-
-	/// Japanese expressions for this entry. The first entry is the main form.
-	pub(self) expressions: Vec<Cow<'a, str>>,
-
-	/// Respective kana readings for the `expressions`. An entry may be the
-	/// empty string if the expression itself is already kana, or if a reading
-	/// is not applicable.
-	pub(self) readings: Vec<Cow<'a, str>>,
-
-	/// English definitions for this entry.
-	pub(self) definitions: Vec<DefinitionBuilder<'a>>,
-
-	/// Tags that apply to the entry itself. Possible examples are JLPT
-	/// level, if the term is common, frequency information, etc.
-	pub(self) tags: Vec<TagId>,
-
-	/// Numeric score of this entry (in case of multiple possibilities).
-	///
-	/// Higher values appear first. This does not affect entry with different
-	/// origins.
-	pub(self) score: i32,
-}
-
-struct EntryData {
-	source:      EntrySource,
-	origin:      StringIndex,
-	expressions: Vec<StringIndex>,
-	readings:    Vec<StringIndex>,
-	definitions: Vec<DefinitionData>,
-	tags:        Vec<TagId>,
-	score:       i32,
-}
-
-impl<'a> EntryData {
-	pub fn from_builder(strings: &mut StringTable, builder: EntryBuilder<'a>) -> EntryData {
-		EntryData {
-			source:      builder.source,
-			origin:      strings.intern(builder.origin),
-			expressions: builder.expressions.into_iter().map(|it| strings.intern(it)).collect(),
-			readings:    builder.readings.into_iter().map(|it| strings.intern(it)).collect(),
-			definitions: builder
-				.definitions
-				.into_iter()
-				.map(|it| DefinitionData::from_builder(strings, it))
-				.collect(),
-			tags:        builder.tags,
-			score:       builder.score,
-		}
-	}
-}
-
-#[allow(dead_code)]
-impl<'a> EntryBuilder<'a> {
-	pub(self) fn new<S: Into<Cow<'a, str>>>(source: EntrySource, origin: S) -> EntryBuilder<'a> {
-		EntryBuilder {
-			source:      source,
-			origin:      origin.into(),
-			expressions: Vec::new(),
-			readings:    Vec::new(),
-			definitions: Vec::new(),
-			tags:        Vec::new(),
-			score:       0,
-		}
-	}
-
-	pub fn add_expression<S: Into<Cow<'a, str>>>(&mut self, expr: S) -> &mut Self {
-		self.expressions.push(expr.into());
-		self
-	}
-
-	pub fn append_expressions<L, S>(&mut self, expr: L) -> &mut Self
-	where
-		L: IntoIterator<Item = S>,
-		S: Into<Cow<'a, str>>,
-	{
-		for it in expr.into_iter() {
-			self.expressions.push(it.into());
-		}
-		self
-	}
-
-	pub fn add_reading<S: Into<Cow<'a, str>>>(&mut self, expr: S) -> &mut Self {
-		self.readings.push(expr.into());
-		self
-	}
-
-	pub fn append_readings<L, S>(&mut self, expr: L) -> &mut Self
-	where
-		L: IntoIterator<Item = S>,
-		S: Into<Cow<'a, str>>,
-	{
-		for it in expr.into_iter() {
-			self.readings.push(it.into());
-		}
-		self
-	}
-
-	pub fn with_score(&mut self, score: i32) -> &mut Self {
-		self.score = score;
-		self
-	}
-
-	pub fn add_definition<F, S>(&mut self, dict: &mut DictBuilder, glossary: S, config: F) -> &mut Self
-	where
-		F: FnOnce(&mut DictBuilder, &mut DefinitionBuilder<'a>),
-		S: Into<Cow<'a, str>>,
-	{
-		let mut item = DefinitionBuilder {
-			glossary: vec![glossary.into()],
-			tags:     Vec::new(),
-			info:     Vec::new(),
-			links:    Vec::new(),
-		};
-		config(dict, &mut item);
-		self.definitions.push(item);
-		self
-	}
-}
-
-impl<'a> WithTags for EntryBuilder<'a> {
-	fn with_tag(&mut self, tag: TagId) -> &mut Self {
-		self.tags.push(tag);
-		self
-	}
-
-	fn with_tags<L>(&mut self, tags: L) -> &mut Self
-	where
-		L: IntoIterator<Item = TagId>,
-	{
-		for tag in tags.into_iter() {
-			self.tags.push(tag);
-		}
-		self
-	}
-}
-
-#[allow(dead_code)]
-pub struct DefinitionBuilder<'a> {
-	/// List of glossary terms for the meaning.
-	pub glossary: Vec<Cow<'a, str>>,
-
-	/// Tags that apply to this meaning. Examples are: parts of speech, names,
-	/// usage, area of knowledge, etc.
-	pub tags: Vec<TagId>,
-
-	/// Additional information to append to the entry definition.
-	pub info: Vec<Cow<'a, str>>,
-
-	/// Related links. Those can be web URLs or other related words.
-	pub links: Vec<EntryLinkInfo<'a>>,
-}
-
-struct DefinitionData {
-	glossary: Vec<StringIndex>,
-	tags:     Vec<TagId>,
-	info:     Vec<StringIndex>,
-	links:    Vec<LinkData>,
-}
-
-impl<'a> DefinitionData {
-	pub fn from_builder(strings: &mut StringTable, builder: DefinitionBuilder<'a>) -> DefinitionData {
-		DefinitionData {
-			glossary: builder.glossary.into_iter().map(|it| strings.intern(it)).collect(),
-			tags:     builder.tags,
-			info:     builder.info.into_iter().map(|it| strings.intern(it)).collect(),
-			links:    builder
-				.links
-				.into_iter()
-				.map(|it| LinkData {
-					uri:  strings.intern(it.uri),
-					text: strings.intern(it.text),
-				})
-				.collect(),
-		}
-	}
-}
-
-struct LinkData {
-	uri:  StringIndex,
-	text: StringIndex,
-}
-
-#[allow(dead_code)]
-impl<'a> DefinitionBuilder<'a> {
-	pub fn add_glossary<S: Into<Cow<'a, str>>>(&mut self, expr: S) -> &mut Self {
-		self.glossary.push(expr.into());
-		self
-	}
-
-	pub fn append_glossary<L, S>(&mut self, expr: L) -> &mut Self
-	where
-		L: IntoIterator<Item = S>,
-		S: Into<Cow<'a, str>>,
-	{
-		for it in expr.into_iter() {
-			self.glossary.push(it.into());
-		}
-		self
-	}
-
-	pub fn add_info<S: Into<Cow<'a, str>>>(&mut self, expr: S) -> &mut Self {
-		self.info.push(expr.into());
-		self
-	}
-
-	pub fn append_info<L, S>(&mut self, expr: L) -> &mut Self
-	where
-		L: IntoIterator<Item = S>,
-		S: Into<Cow<'a, str>>,
-	{
-		for it in expr.into_iter() {
-			self.info.push(it.into());
-		}
-		self
-	}
-
-	pub fn add_link<S: Into<Cow<'a, str>>>(&mut self, uri: S, text: S) -> &mut Self {
-		self.links.push(EntryLinkInfo {
-			uri:  uri.into(),
-			text: text.into(),
-		});
-		self
-	}
-}
-
-impl<'a> WithTags for DefinitionBuilder<'a> {
-	fn with_tag(&mut self, tag: TagId) -> &mut Self {
-		self.tags.push(tag);
-		self
-	}
-
-	fn with_tags<L>(&mut self, tags: L) -> &mut Self
-	where
-		L: IntoIterator<Item = TagId>,
-	{
-		for tag in tags.into_iter() {
-			self.tags.push(tag);
-		}
-		self
-	}
-}
-
-pub struct EntryLinkInfo<'a> {
-	/// URI for the linked resource.
-	pub uri: Cow<'a, str>,
-
-	/// Text for this link.
-	pub text: Cow<'a, str>,
-}
-
-pub struct TagBuilder<'a> {
-	/// Short key for this tag that is used in the terms.
-	pub name: Cow<'a, str>,
-
-	/// Category name for this tag. Can be used to group tags by usage.
-	pub category: Cow<'a, str>,
-
-	/// Human readable description for the tag.
-	pub description: Cow<'a, str>,
-
-	/// Sorting value for the tag. Lower values mean higher precedence.
-	pub order: i32,
-}
-
-struct TagData {
-	name:        StringIndex,
-	category:    StringIndex,
-	description: StringIndex,
-	order:       i32,
-}
-
-impl<'a> TagData {
-	pub fn from_builder(strings: &mut StringTable, builder: TagBuilder<'a>) -> TagData {
-		TagData {
-			name:        strings.intern(builder.name),
-			category:    strings.intern(builder.category),
-			description: strings.intern(builder.description),
-			order:       builder.order,
-		}
-	}
-}
-
-#[allow(dead_code)]
-impl<'a> TagBuilder<'a> {
-	pub fn with_category<S: Into<Cow<'a, str>>>(&mut self, category: S) -> &mut Self {
-		self.category = category.into();
-		self
-	}
-
-	pub fn with_description<S: Into<Cow<'a, str>>>(&mut self, description: S) -> &mut Self {
-		self.description = description.into();
-		self
-	}
-
-	pub fn with_order(&mut self, order: i32) -> &mut Self {
-		self.order = order;
-		self
-	}
-}
-
+/// Dictionary of Japanese entries.
 pub struct Dict {
 	strings: StringTable,
 	entries: Vec<EntryData>,
@@ -392,46 +15,29 @@ pub struct Dict {
 }
 
 impl Dict {
+	/// All dictionary entries as a vector.
 	pub fn entries<'a>(&'a self) -> Vec<Entry<'a>> {
 		self.entries.iter().map(|it| Entry::from(self, it)).collect()
 	}
 
+	/// Number of entries in the dictionary.
 	pub fn count(&self) -> usize {
 		self.entries.len()
 	}
 
+	/// Shuffle all entries randomly.
 	pub fn shuffle(&mut self, rng: &mut rand::prelude::ThreadRng) {
 		self.entries.as_mut_slice().shuffle(rng);
 	}
 
+	/// Helper internal method to get a string from the internal [StringTable].
 	pub(self) fn string<'a>(&'a self, index: StringIndex) -> &'a str {
 		self.strings.get(index)
 	}
 
+	/// Helper internal method to get a [Tag] from a [TagId].
 	pub(self) fn tag<'a>(&'a self, tag_id: TagId) -> Tag<'a> {
 		Tag::from(self, &self.tags[tag_id])
-	}
-}
-
-/// Origin for a dictionary entry.
-#[allow(dead_code)]
-#[derive(Copy, Clone)]
-pub enum EntrySource {
-	/// Entry was imported from a dictionary file.
-	Import      = 0,
-	/// Entry was imported from `jisho.org`.
-	Jisho       = 1,
-	/// Entry was imported from `japanesepod101.com`.
-	JapanesePod = 2,
-}
-
-impl fmt::Display for EntrySource {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			EntrySource::Import => write!(f, "import"),
-			EntrySource::Jisho => write!(f, "jisho"),
-			EntrySource::JapanesePod => write!(f, "japanesepod101"),
-		}
 	}
 }
 
@@ -533,7 +139,29 @@ impl<'a> fmt::Display for Entry<'a> {
 	}
 }
 
-/// English meaning for an entry.
+/// Origin for a dictionary entry.
+#[allow(dead_code)]
+#[derive(Copy, Clone)]
+pub enum EntrySource {
+	/// Entry was imported from a dictionary file.
+	Import      = 0,
+	/// Entry was imported from `jisho.org`.
+	Jisho       = 1,
+	/// Entry was imported from `japanesepod101.com`.
+	JapanesePod = 2,
+}
+
+impl fmt::Display for EntrySource {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			EntrySource::Import => write!(f, "import"),
+			EntrySource::Jisho => write!(f, "jisho"),
+			EntrySource::JapanesePod => write!(f, "japanesepod101"),
+		}
+	}
+}
+
+/// English definition for an Entry.
 #[derive(Copy, Clone)]
 pub struct Definition<'a> {
 	dict: &'a Dict,
@@ -592,7 +220,7 @@ impl<'a> fmt::Display for Definition<'a> {
 	}
 }
 
-/// Link to related resources.
+/// Link to related resources or entries.
 #[derive(Copy, Clone)]
 pub struct EntryLink<'a> {
 	dict: &'a Dict,
@@ -621,7 +249,7 @@ impl<'a> fmt::Display for EntryLink<'a> {
 	}
 }
 
-/// Tag for a term or kanji in the dictionary.
+/// Tag descriptor for a term or kanji in the dictionary.
 #[derive(Copy, Clone)]
 pub struct Tag<'a> {
 	dict: &'a Dict,
@@ -652,6 +280,379 @@ impl<'a> Tag<'a> {
 	/// Sorting value for the tag. Lower values mean higher precedence.
 	pub fn order(&'a self) -> i32 {
 		self.data.order
+	}
+}
+
+/// Handle to reference a tag.
+pub type TagId = usize;
+
+/// Builder used to construct the entries for a [Dict].
+pub struct DictBuilder {
+	strings: StringTable,
+	entries: Vec<EntryData>,
+	tags:    Vec<TagData>,
+}
+
+#[allow(dead_code)]
+impl DictBuilder {
+	pub fn new() -> DictBuilder {
+		DictBuilder {
+			strings: StringTable::new(),
+			entries: Vec::new(),
+			tags:    Vec::new(),
+		}
+	}
+
+	/// Generate a new Dict with the entries in the builder.
+	pub fn build(self) -> Dict {
+		Dict {
+			strings: self.strings,
+			entries: self.entries,
+			tags:    self.tags,
+		}
+	}
+
+	/// Register a new tag and returns its [TagId] handle.
+	pub fn add_tag<'a, F, S>(&mut self, tag_name: S, config: F) -> TagId
+	where
+		F: FnOnce(&mut DictBuilder, &mut TagBuilder<'a>),
+		S: Into<Cow<'a, str>>,
+	{
+		let mut tag = TagBuilder {
+			name:        tag_name.into(),
+			category:    Cow::default(),
+			description: Cow::default(),
+			order:       0,
+		};
+		config(self, &mut tag);
+		self.do_add_tag(tag)
+	}
+
+	/// Add a new entry to the builder.
+	pub fn add_entry<'a, F, S>(&mut self, source: EntrySource, origin: S, config: F)
+	where
+		F: FnOnce(&mut DictBuilder, &mut EntryBuilder<'a>),
+		S: Into<Cow<'a, str>>,
+	{
+		let mut entry = EntryBuilder::new(source, origin);
+		config(self, &mut entry);
+		self.do_add_entry(entry);
+	}
+
+	fn do_add_entry<'a>(&mut self, entry: EntryBuilder<'a>) {
+		self.entries.push(EntryData::from_builder(&mut self.strings, entry));
+	}
+
+	fn do_add_tag<'a>(&mut self, tag: TagBuilder<'a>) -> TagId {
+		self.tags.push(TagData::from_builder(&mut self.strings, tag));
+		self.tags.len() - 1
+	}
+}
+
+/// Trait implemented by the builder that allow tags.
+pub trait WithTags {
+	/// Add a registered tag to the current entry.
+	fn with_tag(&mut self, tag: TagId) -> &mut Self;
+
+	/// Add a list of registered tags to the current entry.
+	fn with_tags<L>(&mut self, tags: L) -> &mut Self
+	where
+		L: IntoIterator<Item = TagId>;
+}
+
+/// Builder to configure a dictionary entry.
+#[allow(dead_code)]
+pub struct EntryBuilder<'a> {
+	pub(self) source:      EntrySource,
+	pub(self) origin:      Cow<'a, str>,
+	pub(self) expressions: Vec<Cow<'a, str>>,
+	pub(self) readings:    Vec<Cow<'a, str>>,
+	pub(self) definitions: Vec<DefinitionBuilder<'a>>,
+	pub(self) tags:        Vec<TagId>,
+	pub(self) score:       i32,
+}
+
+#[allow(dead_code)]
+impl<'a> EntryBuilder<'a> {
+	pub(self) fn new<S: Into<Cow<'a, str>>>(source: EntrySource, origin: S) -> EntryBuilder<'a> {
+		EntryBuilder {
+			source:      source,
+			origin:      origin.into(),
+			expressions: Vec::new(),
+			readings:    Vec::new(),
+			definitions: Vec::new(),
+			tags:        Vec::new(),
+			score:       0,
+		}
+	}
+
+	/// Add an expression to the entry. See [Entry::expression].
+	pub fn add_expression<S: Into<Cow<'a, str>>>(&mut self, expr: S) -> &mut Self {
+		self.expressions.push(expr.into());
+		self
+	}
+
+	/// Add a list of expressions to the entry. See [Entry::expression].
+	pub fn append_expressions<L, S>(&mut self, expr: L) -> &mut Self
+	where
+		L: IntoIterator<Item = S>,
+		S: Into<Cow<'a, str>>,
+	{
+		for it in expr.into_iter() {
+			self.expressions.push(it.into());
+		}
+		self
+	}
+
+	/// Add a reading to the entry. See [Entry::reading].
+	pub fn add_reading<S: Into<Cow<'a, str>>>(&mut self, expr: S) -> &mut Self {
+		self.readings.push(expr.into());
+		self
+	}
+
+	/// Add a list of readings to the entry. See [Entry::reading].
+	pub fn append_readings<L, S>(&mut self, expr: L) -> &mut Self
+	where
+		L: IntoIterator<Item = S>,
+		S: Into<Cow<'a, str>>,
+	{
+		for it in expr.into_iter() {
+			self.readings.push(it.into());
+		}
+		self
+	}
+
+	/// Set the entry score. See [Entry::score].
+	pub fn with_score(&mut self, score: i32) -> &mut Self {
+		self.score = score;
+		self
+	}
+
+	/// Add a definition to the entry. See [Definition].
+	pub fn add_definition<F, S>(&mut self, dict: &mut DictBuilder, glossary: S, config: F) -> &mut Self
+	where
+		F: FnOnce(&mut DictBuilder, &mut DefinitionBuilder<'a>),
+		S: Into<Cow<'a, str>>,
+	{
+		let mut item = DefinitionBuilder {
+			glossary: vec![glossary.into()],
+			tags:     Vec::new(),
+			info:     Vec::new(),
+			links:    Vec::new(),
+		};
+		config(dict, &mut item);
+		self.definitions.push(item);
+		self
+	}
+}
+
+impl<'a> WithTags for EntryBuilder<'a> {
+	fn with_tag(&mut self, tag: TagId) -> &mut Self {
+		self.tags.push(tag);
+		self
+	}
+
+	fn with_tags<L>(&mut self, tags: L) -> &mut Self
+	where
+		L: IntoIterator<Item = TagId>,
+	{
+		for tag in tags.into_iter() {
+			self.tags.push(tag);
+		}
+		self
+	}
+}
+
+/// Builder to configure a [Definition] for an [Entry].
+#[allow(dead_code)]
+pub struct DefinitionBuilder<'a> {
+	pub(self) glossary: Vec<Cow<'a, str>>,
+	pub(self) tags:     Vec<TagId>,
+	pub(self) info:     Vec<Cow<'a, str>>,
+	pub(self) links:    Vec<EntryLinkBuilder<'a>>,
+}
+
+#[allow(dead_code)]
+impl<'a> DefinitionBuilder<'a> {
+	/// Add a glossary entry for the definition. See [Definition::glossary].
+	pub fn add_glossary<S: Into<Cow<'a, str>>>(&mut self, expr: S) -> &mut Self {
+		self.glossary.push(expr.into());
+		self
+	}
+
+	/// Add a list of glossary entries for the definition. See [Definition::glossary].
+	pub fn append_glossary<L, S>(&mut self, expr: L) -> &mut Self
+	where
+		L: IntoIterator<Item = S>,
+		S: Into<Cow<'a, str>>,
+	{
+		for it in expr.into_iter() {
+			self.glossary.push(it.into());
+		}
+		self
+	}
+
+	/// Add an information entry for the definition. See [Definition::info].
+	pub fn add_info<S: Into<Cow<'a, str>>>(&mut self, expr: S) -> &mut Self {
+		self.info.push(expr.into());
+		self
+	}
+
+	/// Add a list of information entries for the definition. See [Definition::info].
+	pub fn append_info<L, S>(&mut self, expr: L) -> &mut Self
+	where
+		L: IntoIterator<Item = S>,
+		S: Into<Cow<'a, str>>,
+	{
+		for it in expr.into_iter() {
+			self.info.push(it.into());
+		}
+		self
+	}
+
+	/// Add a link to this definition. See [Definition::link].
+	pub fn add_link<S: Into<Cow<'a, str>>>(&mut self, uri: S, text: S) -> &mut Self {
+		self.links.push(EntryLinkBuilder {
+			uri:  uri.into(),
+			text: text.into(),
+		});
+		self
+	}
+}
+
+impl<'a> WithTags for DefinitionBuilder<'a> {
+	fn with_tag(&mut self, tag: TagId) -> &mut Self {
+		self.tags.push(tag);
+		self
+	}
+
+	fn with_tags<L>(&mut self, tags: L) -> &mut Self
+	where
+		L: IntoIterator<Item = TagId>,
+	{
+		for tag in tags.into_iter() {
+			self.tags.push(tag);
+		}
+		self
+	}
+}
+
+/// Used internally to keep link data during building.
+struct EntryLinkBuilder<'a> {
+	pub uri:  Cow<'a, str>,
+	pub text: Cow<'a, str>,
+}
+
+/// Builder to configure a [Tag].
+pub struct TagBuilder<'a> {
+	pub(self) name:        Cow<'a, str>,
+	pub(self) category:    Cow<'a, str>,
+	pub(self) description: Cow<'a, str>,
+	pub(self) order:       i32,
+}
+
+#[allow(dead_code)]
+impl<'a> TagBuilder<'a> {
+	/// Set the tag's category. See [Tag::category].
+	pub fn with_category<S: Into<Cow<'a, str>>>(&mut self, category: S) -> &mut Self {
+		self.category = category.into();
+		self
+	}
+
+	/// Set the tag's description. See [Tag::description].
+	pub fn with_description<S: Into<Cow<'a, str>>>(&mut self, description: S) -> &mut Self {
+		self.description = description.into();
+		self
+	}
+
+	/// Set the tag's order. See [Tag::order].
+	pub fn with_order(&mut self, order: i32) -> &mut Self {
+		self.order = order;
+		self
+	}
+}
+
+//
+// INTERNAL DATA
+// =============
+//
+// Structures used to keep the dictionary data internally. All strings are
+// stored with their [Dict::strings] ids and tags are referenced by [TagId].
+//
+
+struct EntryData {
+	source:      EntrySource,
+	origin:      StringIndex,
+	expressions: Vec<StringIndex>,
+	readings:    Vec<StringIndex>,
+	definitions: Vec<DefinitionData>,
+	tags:        Vec<TagId>,
+	score:       i32,
+}
+
+impl<'a> EntryData {
+	pub fn from_builder(strings: &mut StringTable, builder: EntryBuilder<'a>) -> EntryData {
+		EntryData {
+			source:      builder.source,
+			origin:      strings.intern(builder.origin),
+			expressions: builder.expressions.into_iter().map(|it| strings.intern(it)).collect(),
+			readings:    builder.readings.into_iter().map(|it| strings.intern(it)).collect(),
+			definitions: builder
+				.definitions
+				.into_iter()
+				.map(|it| DefinitionData::from_builder(strings, it))
+				.collect(),
+			tags:        builder.tags,
+			score:       builder.score,
+		}
+	}
+}
+
+struct DefinitionData {
+	glossary: Vec<StringIndex>,
+	tags:     Vec<TagId>,
+	info:     Vec<StringIndex>,
+	links:    Vec<LinkData>,
+}
+
+impl<'a> DefinitionData {
+	pub fn from_builder(strings: &mut StringTable, builder: DefinitionBuilder<'a>) -> DefinitionData {
+		DefinitionData {
+			glossary: builder.glossary.into_iter().map(|it| strings.intern(it)).collect(),
+			tags:     builder.tags,
+			info:     builder.info.into_iter().map(|it| strings.intern(it)).collect(),
+			links:    builder
+				.links
+				.into_iter()
+				.map(|it| LinkData {
+					uri:  strings.intern(it.uri),
+					text: strings.intern(it.text),
+				})
+				.collect(),
+		}
+	}
+}
+
+struct LinkData {
+	uri:  StringIndex,
+	text: StringIndex,
+}
+
+struct TagData {
+	name:        StringIndex,
+	category:    StringIndex,
+	description: StringIndex,
+	order:       i32,
+}
+
+impl<'a> TagData {
+	pub fn from_builder(strings: &mut StringTable, builder: TagBuilder<'a>) -> TagData {
+		TagData {
+			name:        strings.intern(builder.name),
+			category:    strings.intern(builder.category),
+			description: strings.intern(builder.description),
+			order:       builder.order,
+		}
 	}
 }
 
