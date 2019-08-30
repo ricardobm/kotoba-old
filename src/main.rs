@@ -15,7 +15,7 @@ extern crate lazy_static;
 use std::env;
 use std::fs;
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time;
 
 use rand::seq::SliceRandom;
@@ -26,6 +26,7 @@ const FROM_ZIP: bool = false;
 
 mod dict;
 use dict::import;
+use dict::Dict;
 
 fn main() {
 	std::process::exit(run());
@@ -59,18 +60,56 @@ fn run() -> i32 {
 			return 1;
 		}
 		Some(user_data) => {
-			println!("\nUser data directory is {:}\n", user_data.to_str().unwrap());
+			println!("\nUser data directory is {:}", user_data.to_str().unwrap());
 			user_data
 		}
 	};
 
+	let mut dict_path = PathBuf::from(&user_data);
+	dict_path.push("dict");
+
+	let mut ok_file = PathBuf::from(&dict_path);
+	ok_file.push("ok.dat");
+
+	if let Ok(_) = fs::metadata(&ok_file) {
+		println!("\nLoading dictionary data from {}...", dict_path.to_string_lossy());
+
+		let start = time::Instant::now();
+		let mut dict = Dict::load(&dict_path).unwrap();
+		println!("Loaded {} entries in {:?}", dict.count(), start.elapsed());
+
+		let mut rng = thread_rng();
+		println!("\n##\n## ENTRIES ##\n##");
+		dict.shuffle(&mut rng);
+		for it in dict.entries().into_iter().take(10) {
+			println!("\n{}", it);
+		}
+	} else {
+		println!("\nDictionary data not found, importing...");
+
+		let dict = import_entries(&user_data);
+
+		println!("\nSaving dictionary data to {}...", dict_path.to_string_lossy());
+		let start = time::Instant::now();
+		dict.save(&dict_path).unwrap();
+		File::create(&ok_file).unwrap();
+		let duration = start.elapsed();
+		println!("\n#\n# Serialization took {:?}\n#", duration);
+	}
+
+	println!();
+
+	0
+}
+
+fn import_entries(user_data: &Path) -> Dict {
 	let mut import_path = PathBuf::from(&user_data);
 	import_path.push(if FROM_ZIP { "import" } else { "import-files" });
 
 	let start = time::Instant::now();
 	let imported = import::import_from(&import_path).unwrap();
 	let duration = start.elapsed();
-	println!("\nImported {} entries in {:?}", imported.len(), duration);
+	println!("\nLoaded {} import files in {:?}", imported.len(), duration);
 
 	let mut builder = dict::DictBuilder::new();
 
@@ -122,34 +161,14 @@ fn run() -> i32 {
 		}
 	}
 
-	let mut dict = builder.build();
+	let dict = builder.build();
 
-	println!("\n#\n# Total entries: {}\n#\n", dict.count());
-
-	let mut out_path = PathBuf::from(&user_data);
-	out_path.push("imported.json");
-
-	if let Ok(_) = fs::metadata(&out_path) {
-		println!(
-			"\n{} already exists, skipping serialization\n",
-			out_path.to_string_lossy()
-		);
-	} else {
-		let start = time::Instant::now();
-		// let out_file = File::create(out_path).unwrap();
-		// let writer = std::io::BufWriter::new(out_file);
-		// serde_json::to_writer_pretty(writer, &all_entries).unwrap();
-		let duration = start.elapsed();
-		println!("\nSERIALIZATION TOOK {:?}\n", duration);
-	}
-
-	println!("\n## ENTRIES ##\n");
-	dict.shuffle(&mut rng);
-	for it in dict.entries().into_iter().take(10) {
-		println!("\n{}", it);
-	}
-
-	0
+	println!(
+		"\n#\n#Imported {} total entries in {:?}\n#",
+		dict.count(),
+		start.elapsed()
+	);
+	dict
 }
 
 #[cfg(test)]

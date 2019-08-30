@@ -1,9 +1,15 @@
 use std::borrow::Cow;
 use std::fmt;
+use std::fs::File;
+use std::io;
+use std::io::{BufRead, Write};
 use std::iter::IntoIterator;
+use std::path::Path;
 
 use itertools::Itertools;
 use rand::prelude::SliceRandom;
+
+use serde_json;
 
 use super::strings::{StringIndex, StringTable};
 
@@ -39,6 +45,67 @@ impl Dict {
 	pub(self) fn tag<'a>(&'a self, tag_id: TagId) -> Tag<'a> {
 		let TagId(index) = tag_id;
 		Tag::from(self, &self.tags[index])
+	}
+
+	/// Save the dictionary data to the given path.
+	pub fn save(&self, base_path: &Path) -> io::Result<()> {
+		let mut strings_file = base_path.to_path_buf();
+		strings_file.push("strings.dat");
+		let mut entries_file = base_path.to_path_buf();
+		entries_file.push("entries.json");
+		let mut tags_file = base_path.to_path_buf();
+		tags_file.push("tags.json");
+
+		let fs = File::create(&entries_file)?;
+		let fs = io::BufWriter::new(fs);
+		serde_json::to_writer(fs, &self.entries)?;
+
+		let fs = File::create(&tags_file)?;
+		let fs = io::BufWriter::new(fs);
+		serde_json::to_writer(fs, &self.tags)?;
+
+		let fs = File::create(&strings_file)?;
+		let mut fs = io::BufWriter::new(fs);
+		let mut first = true;
+		for it in self.strings.entries() {
+			if !first {
+				fs.write("\n".as_bytes())?;
+			}
+			fs.write(it.as_bytes())?;
+			first = false;
+		}
+
+		Ok(())
+	}
+
+	/// Load the dictionary data from the given path.
+	pub fn load(base_path: &Path) -> io::Result<Dict> {
+		let mut strings_file = base_path.to_path_buf();
+		strings_file.push("strings.dat");
+		let mut entries_file = base_path.to_path_buf();
+		entries_file.push("entries.json");
+		let mut tags_file = base_path.to_path_buf();
+		tags_file.push("tags.json");
+
+		let entries_file = File::open(entries_file)?;
+		let entries_file = io::BufReader::new(entries_file);
+		let tags_file = File::open(tags_file)?;
+		let tags_file = io::BufReader::new(tags_file);
+
+		let mut out = Dict {
+			strings: StringTable::new(),
+			entries: serde_json::from_reader(entries_file)?,
+			tags:    serde_json::from_reader(tags_file)?,
+		};
+
+		let strings_file = File::open(strings_file)?;
+		let strings_file = io::BufReader::new(strings_file);
+		for line in strings_file.lines() {
+			let line = line?;
+			out.strings.push(line);
+		}
+
+		Ok(out)
 	}
 }
 
@@ -142,7 +209,7 @@ impl<'a> fmt::Display for Entry<'a> {
 
 /// Origin for a dictionary entry.
 #[allow(dead_code)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum EntrySource {
 	/// Entry was imported from a dictionary file.
 	Import      = 0,
@@ -285,7 +352,7 @@ impl<'a> Tag<'a> {
 }
 
 /// Handle to reference a tag both internally and with builders.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct TagId(usize);
 
 /// Builder used to construct the entries for a [Dict].
@@ -582,6 +649,7 @@ impl<'a> TagBuilder<'a> {
 // stored with their [Dict::strings] ids and tags are referenced by [TagId].
 //
 
+#[derive(Serialize, Deserialize)]
 struct EntryData {
 	source:      EntrySource,
 	origin:      StringIndex,
@@ -610,6 +678,7 @@ impl<'a> EntryData {
 	}
 }
 
+#[derive(Serialize, Deserialize)]
 struct DefinitionData {
 	glossary: Vec<StringIndex>,
 	tags:     Vec<TagId>,
@@ -635,11 +704,13 @@ impl<'a> DefinitionData {
 	}
 }
 
+#[derive(Serialize, Deserialize)]
 struct LinkData {
 	uri:  StringIndex,
 	text: StringIndex,
 }
 
+#[derive(Serialize, Deserialize)]
 struct TagData {
 	name:        StringIndex,
 	category:    StringIndex,

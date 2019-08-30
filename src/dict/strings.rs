@@ -8,7 +8,7 @@ pub struct StringTable {
 }
 
 /// Index for an interned string in a `StringTable`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StringIndex(usize);
 
 impl StringTable {
@@ -61,15 +61,18 @@ impl StringTable {
 		if let Some(&index) = self.str_index.get(&key) {
 			index
 		} else {
-			// Push a new entry into the table.
-			self.str_table.push(cow.into());
-
-			// Generate a new key pointing to the entry in the table.
-			let key = InternalString::from(self.str_table.last().unwrap().as_str());
-			let index = StringIndex(self.str_table.len());
-			self.str_index.insert(key, index);
-			index
+			self.push(cow)
 		}
+	}
+
+	/// Appends a string to the table directly, using the current position as
+	/// its index. This should be used only to deserialize a string table.
+	pub fn push<'a, S: Into<String>>(&mut self, value: S) -> StringIndex {
+		self.str_table.push(value.into());
+		let key = InternalString::from(self.str_table.last().unwrap().as_str());
+		let index = StringIndex(self.str_table.len());
+		self.str_index.insert(key, index);
+		index
 	}
 }
 
