@@ -9,9 +9,6 @@ use std::path::Path;
 use itertools::Itertools;
 use rand::prelude::SliceRandom;
 
-use serde_json;
-use serde_tuple::*;
-
 use super::strings::{StringIndex, StringTable};
 
 /// Dictionary of Japanese entries.
@@ -20,6 +17,10 @@ pub struct Dict {
 	entries: Vec<EntryData>,
 	tags:    Vec<TagData>,
 }
+
+const TAGS_FILE: &'static str = "tags.dat";
+const STRINGS_FILE: &'static str = "strings.dat";
+const ENTRIES_FILE: &'static str = "entries.dat";
 
 impl Dict {
 	/// All dictionary entries as a vector.
@@ -51,19 +52,23 @@ impl Dict {
 	/// Save the dictionary data to the given path.
 	pub fn save(&self, base_path: &Path) -> io::Result<()> {
 		let mut strings_file = base_path.to_path_buf();
-		strings_file.push("strings.dat");
+		strings_file.push(STRINGS_FILE);
 		let mut entries_file = base_path.to_path_buf();
-		entries_file.push("entries.json");
+		entries_file.push(ENTRIES_FILE);
 		let mut tags_file = base_path.to_path_buf();
-		tags_file.push("tags.json");
+		tags_file.push(TAGS_FILE);
 
 		let fs = File::create(&entries_file)?;
 		let fs = io::BufWriter::new(fs);
-		serde_json::to_writer(fs, &self.entries)?;
+		if let Err(err) = bincode::serialize_into(fs, &self.entries) {
+			return io::Result::Err(io::Error::new(io::ErrorKind::Other, err));
+		}
 
 		let fs = File::create(&tags_file)?;
 		let fs = io::BufWriter::new(fs);
-		serde_json::to_writer(fs, &self.tags)?;
+		if let Err(err) = bincode::serialize_into(fs, &self.tags) {
+			return io::Result::Err(io::Error::new(io::ErrorKind::Other, err));
+		}
 
 		let fs = File::create(&strings_file)?;
 		let mut fs = io::BufWriter::new(fs);
@@ -82,11 +87,11 @@ impl Dict {
 	/// Load the dictionary data from the given path.
 	pub fn load(base_path: &Path) -> io::Result<Dict> {
 		let mut strings_file = base_path.to_path_buf();
-		strings_file.push("strings.dat");
+		strings_file.push(STRINGS_FILE);
 		let mut entries_file = base_path.to_path_buf();
-		entries_file.push("entries.json");
+		entries_file.push(ENTRIES_FILE);
 		let mut tags_file = base_path.to_path_buf();
-		tags_file.push("tags.json");
+		tags_file.push(TAGS_FILE);
 
 		let entries_file = File::open(entries_file)?;
 		let entries_file = io::BufReader::new(entries_file);
@@ -95,8 +100,20 @@ impl Dict {
 
 		let mut out = Dict {
 			strings: StringTable::new(),
-			entries: serde_json::from_reader(entries_file)?,
-			tags:    serde_json::from_reader(tags_file)?,
+
+			entries: match bincode::deserialize_from(entries_file) {
+				Ok(val) => val,
+				Err(err) => {
+					return io::Result::Err(io::Error::new(io::ErrorKind::Other, err));
+				}
+			},
+
+			tags: match bincode::deserialize_from(tags_file) {
+				Ok(val) => val,
+				Err(err) => {
+					return io::Result::Err(io::Error::new(io::ErrorKind::Other, err));
+				}
+			},
 		};
 
 		let data = std::fs::read_to_string(strings_file)?;
@@ -619,7 +636,7 @@ impl<'a> TagBuilder<'a> {
 // stored with their [Dict::strings] ids and tags are referenced by [TagId].
 //
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize, Deserialize)]
 struct EntryData {
 	origin:      StringIndex,
 	expressions: Vec<StringIndex>,
@@ -646,7 +663,7 @@ impl<'a> EntryData {
 	}
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize, Deserialize)]
 struct DefinitionData {
 	glossary: Vec<StringIndex>,
 	tags:     Vec<TagId>,
@@ -672,13 +689,13 @@ impl<'a> DefinitionData {
 	}
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize, Deserialize)]
 struct LinkData {
 	uri:  StringIndex,
 	text: StringIndex,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize, Deserialize)]
 struct TagData {
 	name:        StringIndex,
 	category:    StringIndex,

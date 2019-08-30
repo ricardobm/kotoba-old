@@ -5,6 +5,8 @@ extern crate serde;
 extern crate serde_json;
 extern crate serde_tuple;
 
+extern crate bincode;
+
 extern crate rand;
 extern crate regex;
 
