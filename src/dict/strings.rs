@@ -61,18 +61,23 @@ impl StringTable {
 		if let Some(&index) = self.str_index.get(&key) {
 			index
 		} else {
-			self.push(cow)
+			self.str_table.push(cow.into());
+			let index = self.str_table.len();
+			let key = InternalString::from(unsafe { self.str_table.get_unchecked(index - 1).as_str() });
+			let index = StringIndex(index);
+			self.str_index.insert(key, index);
+			index
 		}
 	}
 
 	/// Appends a string to the table directly, using the current position as
-	/// its index. This should be used only to deserialize a string table.
-	pub fn push<'a, S: Into<String>>(&mut self, value: S) -> StringIndex {
+	/// its index.
+	///
+	/// NOTE: This should be used only to deserialize a string table that will
+	/// never be modified, as it does not modify the intern indexes.
+	#[inline]
+	pub fn load<'a, S: Into<String>>(&mut self, value: S) {
 		self.str_table.push(value.into());
-		let key = InternalString::from(self.str_table.last().unwrap().as_str());
-		let index = StringIndex(self.str_table.len());
-		self.str_index.insert(key, index);
-		index
 	}
 }
 
@@ -83,6 +88,7 @@ struct InternalString {
 }
 
 impl InternalString {
+	#[inline]
 	fn from<S>(value: S) -> InternalString
 	where
 		S: AsRef<str>,

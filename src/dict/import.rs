@@ -71,7 +71,7 @@ impl Dict {
 		}
 
 		for it in &self.terms {
-			builder.add_entry(super::EntrySource::Import, &self.title, |builder, entry| {
+			builder.add_entry(&self.title, |builder, entry| {
 				entry.add_expression(&it.expression);
 				entry.add_reading(&it.reading);
 				entry.with_score(it.score);

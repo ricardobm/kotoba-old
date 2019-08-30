@@ -3,6 +3,7 @@ extern crate itertools;
 #[macro_use]
 extern crate serde;
 extern crate serde_json;
+extern crate serde_tuple;
 
 extern crate rand;
 extern crate regex;
@@ -164,7 +165,7 @@ fn import_entries(user_data: &Path) -> Dict {
 	let dict = builder.build();
 
 	println!(
-		"\n#\n#Imported {} total entries in {:?}\n#",
+		"\n#\n# Imported {} total entries in {:?}\n#",
 		dict.count(),
 		start.elapsed()
 	);

@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::fs::File;
 use std::io;
-use std::io::{BufRead, Write};
+use std::io::Write;
 use std::iter::IntoIterator;
 use std::path::Path;
 
@@ -10,6 +10,7 @@ use itertools::Itertools;
 use rand::prelude::SliceRandom;
 
 use serde_json;
+use serde_tuple::*;
 
 use super::strings::{StringIndex, StringTable};
 
@@ -98,11 +99,9 @@ impl Dict {
 			tags:    serde_json::from_reader(tags_file)?,
 		};
 
-		let strings_file = File::open(strings_file)?;
-		let strings_file = io::BufReader::new(strings_file);
-		for line in strings_file.lines() {
-			let line = line?;
-			out.strings.push(line);
+		let data = std::fs::read_to_string(strings_file)?;
+		for line in data.lines() {
+			out.strings.load(line);
 		}
 
 		Ok(out)
@@ -119,11 +118,6 @@ pub struct Entry<'a> {
 impl<'a> Entry<'a> {
 	pub(self) fn from(dict: &'a Dict, data: &'a EntryData) -> Entry<'a> {
 		Entry { dict, data }
-	}
-
-	/// Source for this entry.
-	pub fn source(&'a self) -> EntrySource {
-		self.data.source
 	}
 
 	/// Additional origin information for this entry (human readable). The exact
@@ -177,7 +171,7 @@ impl<'a> fmt::Display for Entry<'a> {
 			write!(f, " 「{}」", readings[0])?;
 		}
 
-		write!(f, " -- score:{}, source:{}", self.score(), self.source())?;
+		write!(f, " -- score:{}", self.score())?;
 		let origin = self.origin();
 		if origin.len() > 0 {
 			write!(f, ", from:{}", origin)?;
@@ -204,28 +198,6 @@ impl<'a> fmt::Display for Entry<'a> {
 		}
 
 		Ok(())
-	}
-}
-
-/// Origin for a dictionary entry.
-#[allow(dead_code)]
-#[derive(Copy, Clone, Serialize, Deserialize)]
-pub enum EntrySource {
-	/// Entry was imported from a dictionary file.
-	Import      = 0,
-	/// Entry was imported from `jisho.org`.
-	Jisho       = 1,
-	/// Entry was imported from `japanesepod101.com`.
-	JapanesePod = 2,
-}
-
-impl fmt::Display for EntrySource {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			EntrySource::Import => write!(f, "import"),
-			EntrySource::Jisho => write!(f, "jisho"),
-			EntrySource::JapanesePod => write!(f, "japanesepod101"),
-		}
 	}
 }
 
@@ -398,12 +370,12 @@ impl DictBuilder {
 	}
 
 	/// Add a new entry to the builder.
-	pub fn add_entry<'a, F, S>(&mut self, source: EntrySource, origin: S, config: F)
+	pub fn add_entry<'a, F, S>(&mut self, origin: S, config: F)
 	where
 		F: FnOnce(&mut DictBuilder, &mut EntryBuilder<'a>),
 		S: Into<Cow<'a, str>>,
 	{
-		let mut entry = EntryBuilder::new(source, origin);
+		let mut entry = EntryBuilder::new(origin);
 		config(self, &mut entry);
 		self.do_add_entry(entry);
 	}
@@ -432,7 +404,6 @@ pub trait WithTags {
 /// Builder to configure a dictionary entry.
 #[allow(dead_code)]
 pub struct EntryBuilder<'a> {
-	pub(self) source:      EntrySource,
 	pub(self) origin:      Cow<'a, str>,
 	pub(self) expressions: Vec<Cow<'a, str>>,
 	pub(self) readings:    Vec<Cow<'a, str>>,
@@ -443,9 +414,8 @@ pub struct EntryBuilder<'a> {
 
 #[allow(dead_code)]
 impl<'a> EntryBuilder<'a> {
-	pub(self) fn new<S: Into<Cow<'a, str>>>(source: EntrySource, origin: S) -> EntryBuilder<'a> {
+	pub(self) fn new<S: Into<Cow<'a, str>>>(origin: S) -> EntryBuilder<'a> {
 		EntryBuilder {
-			source:      source,
 			origin:      origin.into(),
 			expressions: Vec::new(),
 			readings:    Vec::new(),
@@ -649,9 +619,8 @@ impl<'a> TagBuilder<'a> {
 // stored with their [Dict::strings] ids and tags are referenced by [TagId].
 //
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize_tuple, Deserialize_tuple)]
 struct EntryData {
-	source:      EntrySource,
 	origin:      StringIndex,
 	expressions: Vec<StringIndex>,
 	readings:    Vec<StringIndex>,
@@ -663,7 +632,6 @@ struct EntryData {
 impl<'a> EntryData {
 	pub fn from_builder(strings: &mut StringTable, builder: EntryBuilder<'a>) -> EntryData {
 		EntryData {
-			source:      builder.source,
 			origin:      strings.intern(builder.origin),
 			expressions: builder.expressions.into_iter().map(|it| strings.intern(it)).collect(),
 			readings:    builder.readings.into_iter().map(|it| strings.intern(it)).collect(),
@@ -678,7 +646,7 @@ impl<'a> EntryData {
 	}
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize_tuple, Deserialize_tuple)]
 struct DefinitionData {
 	glossary: Vec<StringIndex>,
 	tags:     Vec<TagId>,
@@ -704,13 +672,13 @@ impl<'a> DefinitionData {
 	}
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize_tuple, Deserialize_tuple)]
 struct LinkData {
 	uri:  StringIndex,
 	text: StringIndex,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize_tuple, Deserialize_tuple)]
 struct TagData {
 	name:        StringIndex,
 	category:    StringIndex,
@@ -757,33 +725,29 @@ mod tests {
 			tag.with_category("cat B3").with_description("desc B3").with_order(101);
 		});
 
-		builder.add_entry(
-			EntrySource::Import,
-			"some origin",
-			|builder, entry: &mut EntryBuilder| {
-				entry
-					.add_expression("expr 1")
-					.append_expressions(vec!["expr 2", "expr 3"])
-					.add_expression("expr 4");
-				entry
-					.add_reading("read 1")
-					.append_readings(vec!["read 2", "read 3"])
-					.add_reading("read 4");
-				entry.with_score(123);
-				entry.add_definition(builder, "word 1", |_, def: &mut DefinitionBuilder| {
-					def.add_glossary("word 2")
-						.append_glossary(vec!["word 3", "word 4"])
-						.add_glossary("word 5");
-					def.add_info("info 1")
-						.append_info(vec!["info 2", "info 3"])
-						.add_info("info 4");
-					def.add_link("uri 1", "text 1")
-						.add_link("uri 2", "text 2")
-						.add_link("uri 3", "text 3");
-					def.with_tag(tag_b1).with_tags(vec![tag_b2, tag_b3]);
-				});
-				entry.with_tag(tag_a1).with_tags(vec![tag_a2, tag_a3]);
-			},
-		)
+		builder.add_entry("some origin", |builder, entry: &mut EntryBuilder| {
+			entry
+				.add_expression("expr 1")
+				.append_expressions(vec!["expr 2", "expr 3"])
+				.add_expression("expr 4");
+			entry
+				.add_reading("read 1")
+				.append_readings(vec!["read 2", "read 3"])
+				.add_reading("read 4");
+			entry.with_score(123);
+			entry.add_definition(builder, "word 1", |_, def: &mut DefinitionBuilder| {
+				def.add_glossary("word 2")
+					.append_glossary(vec!["word 3", "word 4"])
+					.add_glossary("word 5");
+				def.add_info("info 1")
+					.append_info(vec!["info 2", "info 3"])
+					.add_info("info 4");
+				def.add_link("uri 1", "text 1")
+					.add_link("uri 2", "text 2")
+					.add_link("uri 3", "text 3");
+				def.with_tag(tag_b1).with_tags(vec![tag_b2, tag_b3]);
+			});
+			entry.with_tag(tag_a1).with_tags(vec![tag_a2, tag_a3]);
+		})
 	}
 }
