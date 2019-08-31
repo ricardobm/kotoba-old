@@ -32,6 +32,8 @@ Japanese learning pad
   - Table
   - Conversion romaji / hiragana / katakana
   - Drawing guide
+- Flash cards
+- Sentence translation / analysis / pronunciation
 - Integration
   - Anki (??)
   - Forvo
