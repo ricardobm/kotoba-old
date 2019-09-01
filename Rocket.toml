@@ -2,7 +2,7 @@
 port = 3001
 
 [development]
-address = "localhost"
+address = "0.0.0.0"
 keep_alive = 5
 log = "normal"
 

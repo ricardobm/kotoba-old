@@ -19,6 +19,7 @@ extern crate lazy_static;
 
 #[macro_use]
 extern crate rocket;
+extern crate rocket_contrib;
 
 use std::env;
 use std::fs;
