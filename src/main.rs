@@ -1,3 +1,5 @@
+#![feature(proc_macro_hygiene, decl_macro)]
+
 extern crate itertools;
 
 #[macro_use]
@@ -15,6 +17,9 @@ extern crate zip;
 #[macro_use]
 extern crate lazy_static;
 
+#[macro_use]
+extern crate rocket;
+
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -30,6 +35,8 @@ const FROM_ZIP: bool = false;
 mod dict;
 use dict::import;
 use dict::Dict;
+
+mod server;
 
 fn main() {
 	std::process::exit(run());
@@ -101,6 +108,8 @@ fn run() -> i32 {
 	}
 
 	println!();
+
+	server::launch();
 
 	0
 }

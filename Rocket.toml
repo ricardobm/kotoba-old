@@ -1,0 +1,17 @@
+[global]
+port = 3001
+
+[development]
+address = "localhost"
+keep_alive = 5
+log = "normal"
+
+[staging]
+address = "0.0.0.0"
+keep_alive = 5
+log = "normal"
+
+[production]
+address = "0.0.0.0"
+keep_alive = 5
+log = "critical"
