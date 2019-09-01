@@ -1,4 +1,5 @@
 .vscode/*
+.trigger
 
 # Don't ignore the settings file
 !.vscode/settings.json

@@ -4,7 +4,7 @@ port = 3001
 [development]
 address = "0.0.0.0"
 keep_alive = 5
-log = "normal"
+log = "critical"
 
 [staging]
 address = "0.0.0.0"
