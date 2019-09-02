@@ -47,6 +47,14 @@ tasks:
       - echo Execute 'task watch-check' to update the .trigger file
       - cargo watch --no-gitignore -w .trigger -x run
 
+  web:
+    desc: Runs the web application in watch mode.
+    dir:  web/client
+    env:
+      BROWSER: chrome
+    cmds:
+      - npm start
+
   test:
     desc:   Runs tests
     silent: true
