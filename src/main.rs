@@ -21,7 +21,6 @@ extern crate lazy_static;
 extern crate rocket;
 extern crate rocket_contrib;
 
-use std::env;
 use std::fs;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -30,8 +29,10 @@ use std::time;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
-const DATA_DIR: &str = "hongo-data";
 const FROM_ZIP: bool = false;
+const DUMP_WORD_SAMPLE: bool = false;
+
+mod config;
 
 mod dict;
 use dict::import;
@@ -44,61 +45,19 @@ fn main() {
 }
 
 fn run() -> i32 {
-	// Find the User data directory
-	let mut cur_dir = env::current_dir().unwrap();
-	let user_data = loop {
-		let mut data_path = PathBuf::from(&cur_dir);
-		data_path.push(DATA_DIR);
+	let data_dir = config::data_directory();
+	println!("\nUser data directory is {}", data_dir.to_string_lossy());
 
-		let mut test_path = PathBuf::from(&data_path);
-		test_path.push("import");
-		if let Ok(md) = fs::metadata(&test_path) {
-			if md.is_dir() {
-				break Some(data_path);
-			}
-		}
-
-		if let Some(dir) = cur_dir.parent() {
-			cur_dir = dir.to_path_buf();
-		} else {
-			break None;
-		}
-	};
-
-	let user_data = match user_data {
-		None => {
-			eprintln!("\nError: could not find the user directory");
-			return 1;
-		}
-		Some(user_data) => {
-			println!("\nUser data directory is {:}", user_data.to_str().unwrap());
-			user_data
-		}
-	};
-
-	let mut dict_path = PathBuf::from(&user_data);
+	let mut dict_path = PathBuf::from(&data_dir);
 	dict_path.push("dict");
 
 	let mut ok_file = PathBuf::from(&dict_path);
 	ok_file.push("ok.dat");
 
-	if let Ok(_) = fs::metadata(&ok_file) {
-		println!("\nLoading dictionary data from {}...", dict_path.to_string_lossy());
-
-		let start = time::Instant::now();
-		let mut dict = Dict::load(&dict_path).unwrap();
-		println!("Loaded {} entries in {:?}", dict.count(), start.elapsed());
-
-		let mut rng = thread_rng();
-		println!("\n##\n## ENTRIES ##\n##");
-		dict.shuffle(&mut rng);
-		for it in dict.entries().into_iter().take(10) {
-			println!("\n{}", it);
-		}
-	} else {
+	if let Err(_) = fs::metadata(&ok_file) {
 		println!("\nDictionary data not found, importing...");
 
-		let dict = import_entries(&user_data);
+		let dict = import_entries(data_dir);
 
 		println!("\nSaving dictionary data to {}...", dict_path.to_string_lossy());
 		let start = time::Instant::now();
@@ -106,6 +65,22 @@ fn run() -> i32 {
 		File::create(&ok_file).unwrap();
 		let duration = start.elapsed();
 		println!("\n#\n# Serialization took {:?}\n#", duration);
+	}
+
+	println!("\nLoading dictionary data from {}...", dict_path.to_string_lossy());
+
+	let start = time::Instant::now();
+	let dict = Dict::load(&dict_path).unwrap();
+	println!("Loaded {} entries in {:?}", dict.count(), start.elapsed());
+
+	if DUMP_WORD_SAMPLE {
+		let mut dict = dict;
+		let mut rng = thread_rng();
+		println!("\n##\n## ENTRIES ##\n##");
+		dict.shuffle(&mut rng);
+		for it in dict.entries().into_iter().take(10) {
+			println!("\n{}", it);
+		}
 	}
 
 	println!();
@@ -133,43 +108,46 @@ fn import_entries(user_data: &Path) -> Dict {
 		}
 
 		println!("\n\n{}", it);
-		it.terms.as_mut_slice().shuffle(&mut rng);
-		it.kanjis.as_mut_slice().shuffle(&mut rng);
-		it.meta_terms.as_mut_slice().shuffle(&mut rng);
-		it.meta_kanjis.as_mut_slice().shuffle(&mut rng);
 
-		if it.tags.len() > 0 {
-			println!("\n## Tags ##\n");
-			for tag in it.tags {
-				println!("- {}", tag);
+		if DUMP_WORD_SAMPLE {
+			it.terms.as_mut_slice().shuffle(&mut rng);
+			it.kanjis.as_mut_slice().shuffle(&mut rng);
+			it.meta_terms.as_mut_slice().shuffle(&mut rng);
+			it.meta_kanjis.as_mut_slice().shuffle(&mut rng);
+
+			if it.tags.len() > 0 {
+				println!("\n## Tags ##\n");
+				for tag in it.tags {
+					println!("- {}", tag);
+				}
 			}
-		}
 
-		if it.terms.len() > 0 {
-			println!("\n## Terms ##\n");
-			for term in it.terms.iter().take(3) {
-				println!("\n{}", term);
+			if it.terms.len() > 0 {
+				println!("\n## Terms ##\n");
+				for term in it.terms.iter().take(3) {
+					println!("\n{}", term);
+				}
 			}
-		}
 
-		if it.kanjis.len() > 0 {
-			println!("\n## Kanjis ##\n");
-			for kanji in it.kanjis.iter().take(3) {
-				println!("\n{}", kanji);
+			if it.kanjis.len() > 0 {
+				println!("\n## Kanjis ##\n");
+				for kanji in it.kanjis.iter().take(3) {
+					println!("\n{}", kanji);
+				}
 			}
-		}
 
-		if it.meta_terms.len() > 0 {
-			println!("\n## Meta (Terms) ##\n");
-			for meta in it.meta_terms.iter().take(10) {
-				println!("- {}", meta);
+			if it.meta_terms.len() > 0 {
+				println!("\n## Meta (Terms) ##\n");
+				for meta in it.meta_terms.iter().take(10) {
+					println!("- {}", meta);
+				}
 			}
-		}
 
-		if it.meta_kanjis.len() > 0 {
-			println!("\n## Meta (Kanjis) ##\n");
-			for meta in it.meta_kanjis.iter().take(10) {
-				println!("- {}", meta);
+			if it.meta_kanjis.len() > 0 {
+				println!("\n## Meta (Kanjis) ##\n");
+				for meta in it.meta_kanjis.iter().take(10) {
+					println!("- {}", meta);
+				}
 			}
 		}
 	}
