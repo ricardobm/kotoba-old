@@ -7,6 +7,9 @@ pub struct StringTable {
 	str_index: HashMap<InternalString, StringIndex>,
 }
 
+unsafe impl Send for StringTable {}
+unsafe impl Sync for StringTable {}
+
 /// Index for an interned string in a `StringTable`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StringIndex(usize);

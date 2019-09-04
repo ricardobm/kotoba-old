@@ -9,13 +9,18 @@ use std::path::Path;
 use itertools::Itertools;
 use rand::prelude::SliceRandom;
 
+use super::index::IndexTable;
+pub use super::index::SearchMode;
 use super::strings::{StringIndex, StringTable};
+
+use wana_kana::to_romaji::to_romaji;
 
 /// Dictionary of Japanese entries.
 pub struct Dict {
 	strings: StringTable,
 	entries: Vec<EntryData>,
 	tags:    Vec<TagData>,
+	index:   IndexTable,
 }
 
 const TAGS_FILE: &'static str = "tags.dat";
@@ -36,6 +41,54 @@ impl Dict {
 	/// Shuffle all entries randomly.
 	pub fn shuffle(&mut self, rng: &mut rand::prelude::ThreadRng) {
 		self.entries.as_mut_slice().shuffle(rng);
+	}
+
+	pub fn search<'a, S: Into<String>>(&'a self, query: S, mode: SearchMode) -> Vec<Entry<'a>> {
+		let mut text = query.into();
+
+		// The kana library completely barfs on "っっ", so replace it by "っ".
+		while text.contains("っっ") {
+			text = text.replace("っっ", "っ");
+		}
+
+		let kana = to_romaji(&text);
+
+		let results = self.index.search(text, mode).chain(self.index.search(kana, mode));
+		results
+			.map(|(_str, pos)| Entry::from(self, &self.entries[pos]))
+			.collect()
+	}
+
+	/// Rebuilds the internal dictionary index.
+	pub fn rebuild_index(&mut self) {
+		self.index.clear();
+		for (pos, it) in self.entries.iter().enumerate() {
+			for &expr in &it.expressions {
+				let s = self.string(expr).to_owned();
+				self.index.insert(s, pos);
+			}
+
+			for &reading in &it.readings {
+				let s = self.string(reading).to_owned();
+				self.index.insert(&s, pos);
+
+				// The kana library completely barfs on "っっ", so we handle the
+				// only know case.
+				if s == "ぶほっっ" {
+					self.index.insert("boohoo", pos);
+				} else {
+					// let kana = match std::panic::catch_unwind(|| to_romaji(&s)) {
+					// 	Ok(value) => value,
+					// 	Err(_) => {
+					// 		println!("Kana conversion failed for {}", s);
+					// 		std::process::exit(2);
+					// 	}
+					// };
+					let kana = to_romaji(&s);
+					self.index.insert(kana, pos);
+				}
+			}
+		}
 	}
 
 	/// Helper internal method to get a string from the internal [StringTable].
@@ -114,6 +167,8 @@ impl Dict {
 					return io::Result::Err(io::Error::new(io::ErrorKind::Other, err));
 				}
 			},
+
+			index: IndexTable::new(),
 		};
 
 		let data = std::fs::read_to_string(strings_file)?;
@@ -367,6 +422,7 @@ impl DictBuilder {
 			strings: self.strings,
 			entries: self.entries,
 			tags:    self.tags,
+			index:   IndexTable::new(),
 		}
 	}
 

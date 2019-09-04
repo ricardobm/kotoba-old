@@ -1,4 +1,5 @@
 #![feature(proc_macro_hygiene, decl_macro)]
+#![feature(duration_float)]
 
 extern crate itertools;
 
@@ -20,6 +21,8 @@ extern crate lazy_static;
 #[macro_use]
 extern crate rocket;
 extern crate rocket_contrib;
+
+extern crate wana_kana;
 
 use std::fs;
 use std::fs::File;
@@ -70,11 +73,14 @@ fn run() -> i32 {
 	println!("\nLoading dictionary data from {}...", dict_path.to_string_lossy());
 
 	let start = time::Instant::now();
-	let dict = Dict::load(&dict_path).unwrap();
+	let mut dict = Dict::load(&dict_path).unwrap();
 	println!("Loaded {} entries in {:?}", dict.count(), start.elapsed());
 
+	let start = time::Instant::now();
+	dict.rebuild_index();
+	println!("Indexed in {:?}", start.elapsed());
+
 	if DUMP_WORD_SAMPLE {
-		let mut dict = dict;
 		let mut rng = thread_rng();
 		println!("\n##\n## ENTRIES ##\n##");
 		dict.shuffle(&mut rng);
@@ -85,7 +91,7 @@ fn run() -> i32 {
 
 	println!();
 
-	server::launch();
+	server::launch(dict);
 
 	0
 }
