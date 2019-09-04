@@ -43,8 +43,8 @@ impl Dict {
 		self.entries.as_mut_slice().shuffle(rng);
 	}
 
-	pub fn search<'a, S: Into<String>>(&'a self, query: S, mode: SearchMode) -> Vec<Entry<'a>> {
-		let mut text = query.into();
+	pub fn search<'a, S: AsRef<str>>(&'a self, query: S, mode: SearchMode) -> Vec<Entry<'a>> {
+		let mut text = query.as_ref().to_lowercase();
 
 		// The kana library completely barfs on "っっ", so replace it by "っ".
 		while text.contains("っっ") {
@@ -53,8 +53,73 @@ impl Dict {
 
 		let kana = to_romaji(&text);
 
-		let results = self.index.search(text, mode).chain(self.index.search(kana, mode));
+		// Search with both the original text and romaji
+		let mut results: Vec<_> = self
+			.index
+			.search(&text, mode)
+			.chain(self.index.search(&kana, mode))
+			.unique()
+			.collect();
+
+		// Sort the matches
+		// ================
+		//
+		// Matches are sorted by their mode and then lexicographically. As for
+		// the mode, matches are sorted as follows: full matches first, followed
+		// by matched by prefixes, suffixes and finally partial matches.
+
+		// TODO: match by frequency list
+
+		#[derive(PartialEq, PartialOrd, Eq, Ord, Copy, Clone)]
+		enum MatchMode {
+			Full,
+			Prefix,
+			Suffix,
+			Contains,
+		}
+
+		fn get_match_mode<S1, S2, S3>(text: S1, kana: S2, item: S3) -> MatchMode
+		where
+			S1: AsRef<str>,
+			S2: AsRef<str>,
+			S3: AsRef<str>,
+		{
+			let text = text.as_ref();
+			let kana = kana.as_ref();
+			let item = item.as_ref();
+			let query = if item.contains(text) { text } else { kana };
+			if query == item {
+				MatchMode::Full
+			} else if item.starts_with(query) {
+				MatchMode::Prefix
+			} else if item.ends_with(query) {
+				MatchMode::Suffix
+			} else {
+				MatchMode::Contains
+			}
+		}
+
+		let text = &text;
+		let kana = &kana;
+		results.sort_by(|&(str_a, pos_a), &(str_b, pos_b)| {
+			let mode_a = get_match_mode(text, kana, str_a);
+			let mode_b = get_match_mode(text, kana, str_b);
+			let mode_cmp = mode_a.cmp(&mode_b);
+			if mode_cmp == std::cmp::Ordering::Equal {
+				let str_cmp = str_a.cmp(str_b);
+				if str_cmp == std::cmp::Ordering::Equal {
+					pos_a.cmp(&pos_b)
+				} else {
+					str_cmp
+				}
+			} else {
+				mode_cmp
+			}
+		});
+
 		results
+			.into_iter()
+			.take(250)
 			.map(|(_str, pos)| Entry::from(self, &self.entries[pos]))
 			.collect()
 	}
