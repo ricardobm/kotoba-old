@@ -164,7 +164,7 @@ impl Dict {
 	/// Helper internal method to get a [Tag] from a [TagId].
 	pub(self) fn tag<'a>(&'a self, tag_id: TagId) -> Tag<'a> {
 		let TagId(index) = tag_id;
-		Tag::from(self, &self.tags[index])
+		Tag::from(self, &self.tags[index], index)
 	}
 
 	/// Save the dictionary data to the given path.
@@ -431,12 +431,18 @@ impl<'a> fmt::Display for EntryLink<'a> {
 pub struct Tag<'a> {
 	dict: &'a Dict,
 	data: &'a TagData,
+	index: usize,
 }
 
 #[allow(dead_code)]
 impl<'a> Tag<'a> {
-	pub(self) fn from(dict: &'a Dict, data: &'a TagData) -> Tag<'a> {
-		Tag { dict, data }
+	pub(self) fn from(dict: &'a Dict, data: &'a TagData, index: usize) -> Tag<'a> {
+		Tag { dict, data, index }
+	}
+
+	/// Returns the index for this tag. The index is unique between all tags.
+	pub fn index(&'a self) -> usize {
+		self.index
 	}
 
 	/// Short key for this tag that is used in the terms.

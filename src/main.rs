@@ -43,6 +43,8 @@ use dict::Dict;
 
 mod server;
 
+mod japanese;
+
 fn main() {
 	std::process::exit(run());
 }
@@ -91,7 +93,7 @@ fn run() -> i32 {
 
 	println!();
 
-	server::launch(dict);
+	server::launch(japanese::Dictionary::new(dict));
 
 	0
 }

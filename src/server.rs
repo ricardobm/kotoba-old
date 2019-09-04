@@ -1,7 +1,7 @@
 use rocket::State;
 use rocket_contrib::json::Json;
 
-use super::dict::{Dict, SearchMode};
+use super::japanese;
 
 #[get("/")]
 fn index() -> &'static str {
@@ -37,67 +37,20 @@ fn list() -> Json<Vec<Item>> {
 	Json(out)
 }
 
-#[derive(Serialize)]
-struct SearchResult {
-	pub count:   usize,
-	pub elapsed: f64,
-	pub entries: Vec<SearchEntry>,
+#[derive(Serialize, Deserialize)]
+struct SearchOptions {
+	query: String,
+
+	#[serde(default)]
+	options: japanese::SearchOptions,
 }
 
-#[derive(Serialize)]
-struct SearchEntry {
-	pub expression: String,
-	pub reading:    String,
-	pub forms:      Vec<(String, String)>,
-	pub definition: Vec<SearchDefinition>,
+#[post("/search", data = "<input>")]
+fn search(input: Json<SearchOptions>, dict: State<japanese::Dictionary>) -> Json<japanese::QueryResult> {
+	Json(dict.query_with_options(&input.query, input.options))
 }
 
-#[derive(Serialize)]
-struct SearchDefinition {
-	pub glossary: Vec<String>,
-	pub info:     Vec<String>,
-	pub tags:     Vec<String>,
-}
-
-#[get("/search?<q>")]
-fn search(q: String, dict: State<Dict>) -> Json<SearchResult> {
-	let start = std::time::Instant::now();
-	let results = dict.search(q, SearchMode::Contains);
-	let mut entries = Vec::new();
-	for it in results {
-		let expressions = it.expressions();
-		let readings = it.readings();
-		let mut result = SearchEntry {
-			expression: String::from(expressions[0]),
-			reading:    String::from(readings[0]),
-			forms:      Vec::new(),
-			definition: Vec::new(),
-		};
-		for (i, expr) in expressions.into_iter().enumerate().skip(1) {
-			let expr = String::from(expr);
-			let reading = String::from(readings[i]);
-			result.forms.push((expr, reading));
-		}
-		for it in it.definition() {
-			let def = SearchDefinition {
-				glossary: it.glossary().into_iter().map(String::from).collect(),
-				info:     it.info().into_iter().map(String::from).collect(),
-				tags:     it.tags().into_iter().map(|x| String::from(x.name())).collect(),
-			};
-			result.definition.push(def);
-		}
-		entries.push(result);
-	}
-
-	let count = entries.len();
-	Json(SearchResult {
-		entries: entries,
-		count:   count,
-		elapsed: start.elapsed().as_secs_f64(),
-	})
-}
-
-pub fn launch(dict: Dict) {
+pub fn launch(dict: japanese::Dictionary) {
 	rocket::ignite()
 		.manage(dict)
 		.mount("/api", routes![index, list, search])
