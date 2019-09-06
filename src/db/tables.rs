@@ -161,15 +161,15 @@ impl Root {
 				write!(f, "\n\n## Tags\n")?;
 				tags.sort_by(|a, b| a.key.to_lowercase().cmp(&b.key.to_lowercase()));
 				for it in tags {
-					write!(f, "\n  | {}", it)?;
+					write!(f, "\n   | {}", it)?;
 				}
 			}
 		}
 
 		if self.sources.len() > 0 {
 			write!(f, "\n\n## Sources ##\n")?;
-			for it in &self.sources {
-				write!(f, "\n- {}", it)?;
+			for (i, it) in self.sources.iter().enumerate() {
+				write!(f, "\n   {}. {}", i + 1, it)?;
 			}
 		}
 
@@ -347,6 +347,9 @@ pub struct TagRow {
 
 	/// Order value for this tag (lesser values sorted first).
 	pub order: i32,
+
+	/// Tag source dictionary.
+	pub source: SourceId,
 }
 
 //
@@ -461,9 +464,10 @@ impl DbDisplay for KanjiRow {
 
 impl fmt::Display for TagRow {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let SourceId(source) = self.source;
 		write!(
 			f,
-			"{name:16} | {desc:75} | {cat:14} | {order:3} | {key}",
+			"{name:16} | {desc:75} | {cat:14} | {order:3} | {key:18} ({src})",
 			cat = self.category,
 			name = self.name,
 			desc = if self.description.len() > 0 {
@@ -472,7 +476,8 @@ impl fmt::Display for TagRow {
 				"--"
 			},
 			key = self.key,
-			order = self.order
+			order = self.order,
+			src = source + 1
 		)
 	}
 }

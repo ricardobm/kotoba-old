@@ -75,6 +75,7 @@ impl Dict {
 				category:    it.category.clone(),
 				description: it.notes.clone(),
 				order:       it.order,
+				source:      source_id,
 			});
 			tag_map.insert(Cow::from(&it.name), tag_id);
 		}
@@ -88,12 +89,12 @@ impl Dict {
 				definition: vec![db::DefinitionRow {
 					text: it.glossary.clone(),
 					info: Vec::new(),
-					tags: add_tags(db, &mut tag_map, &it.definition_tags),
+					tags: add_tags(db, source_id, &mut tag_map, &it.definition_tags),
 					link: Vec::new(),
 				}],
 				source:     source_id,
 				forms:      Vec::new(),
-				tags:       add_tags(db, &mut tag_map, tags),
+				tags:       add_tags(db, source_id, &mut tag_map, tags),
 				frequency:  None,
 				score:      it.score,
 			};
@@ -106,12 +107,12 @@ impl Dict {
 				character: it.character,
 				onyomi:    it.onyomi.clone(),
 				kunyomi:   it.kunyomi.clone(),
-				tags:      add_tags(db, &mut tag_map, &it.tags),
+				tags:      add_tags(db, source_id, &mut tag_map, &it.tags),
 				meanings:  it.meanings.clone(),
 				stats:     HashMap::new(),
 				frequency: None,
 			};
-			add_tags(db, &mut tag_map, it.stats.keys());
+			add_tags(db, source_id, &mut tag_map, it.stats.keys());
 			for (key, value) in &it.stats {
 				let tag_id = tag_map.get(&Cow::from(key)).unwrap();
 				kanji.stats.insert(*tag_id, value.clone());
@@ -143,7 +144,12 @@ impl Dict {
 
 /// Adds any missing `tags` to the database and returns a HashSet with all the
 /// given tags' IDs.
-fn add_tags<'a, L, S>(db: &mut db::Root, tag_map: &mut HashMap<Cow<'a, str>, db::TagId>, tags: L) -> HashSet<db::TagId>
+fn add_tags<'a, L, S>(
+	db: &mut db::Root,
+	source_id: db::SourceId,
+	tag_map: &mut HashMap<Cow<'a, str>, db::TagId>,
+	tags: L,
+) -> HashSet<db::TagId>
 where
 	L: IntoIterator<Item = S>,
 	S: Into<Cow<'a, str>>,
@@ -162,6 +168,7 @@ where
 					category:    String::new(),
 					description: String::new(),
 					order:       0,
+					source:      source_id,
 				});
 				tag_map.insert(key, tag_id);
 				out.insert(tag_id);
