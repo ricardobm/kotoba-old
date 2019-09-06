@@ -40,11 +40,11 @@ pub struct Dict {
 	#[serde(skip)]
 	pub terms: Vec<Term>,
 
-	/// List of imported kanjis.
+	/// List of imported kanji.
 	#[serde(skip)]
-	pub kanjis: Vec<Kanji>,
+	pub kanji: Vec<Kanji>,
 
-	/// Definition of tags used by the dictionary terms/kanjis.
+	/// Definition of tags used by the dictionary terms/kanji.
 	#[serde(skip)]
 	pub tags: Vec<Tag>,
 
@@ -52,9 +52,9 @@ pub struct Dict {
 	#[serde(skip)]
 	pub meta_terms: Vec<Meta>,
 
-	/// Frequency metadata for kanjis.
+	/// Frequency metadata for kanji.
 	#[serde(skip)]
-	pub meta_kanjis: Vec<Meta>,
+	pub meta_kanji: Vec<Meta>,
 }
 
 impl Dict {
@@ -101,8 +101,8 @@ impl Dict {
 			db.terms.push(term);
 		}
 
-		// Add kanjis
-		for it in &self.kanjis {
+		// Add kanji
+		for it in &self.kanji {
 			let mut kanji = db::KanjiRow {
 				character: it.character,
 				onyomi:    it.onyomi.clone(),
@@ -117,17 +117,16 @@ impl Dict {
 				let tag_id = tag_map.get(&Cow::from(key)).unwrap();
 				kanji.stats.insert(*tag_id, value.clone());
 			}
-			db.kanjis.push(kanji);
+			db.kanji.push(kanji);
 		}
 
-		// Add meta rows for kanjis
-		for it in &self.meta_kanjis {
+		// Add meta rows for kanji
+		for it in &self.meta_kanji {
 			let meta = db::MetaRow {
 				expression: it.expression.clone(),
 				value:      it.data,
-				kanji:      true,
 			};
-			db.meta.push(meta);
+			db.meta_kanji.push(meta);
 		}
 
 		// Add meta rows for terms
@@ -135,9 +134,8 @@ impl Dict {
 			let meta = db::MetaRow {
 				expression: it.expression.clone(),
 				value:      it.data,
-				kanji:      false,
 			};
-			db.meta.push(meta);
+			db.meta_terms.push(meta);
 		}
 	}
 }
@@ -189,13 +187,13 @@ impl fmt::Display for Dict {
 			self.path.to_string_lossy()
 		)?;
 		write!(f, " - Terms:  {}\n", self.terms.len())?;
-		write!(f, " - Kanjis: {}\n", self.kanjis.len())?;
+		write!(f, " - Kanji: {}\n", self.kanji.len())?;
 		write!(f, " - Tags:   {}\n", self.tags.len())?;
 		write!(
 			f,
-			" - Meta:   {} / {} (terms / kanjis)",
+			" - Meta:   {} / {} (terms / kanji)",
 			self.meta_terms.len(),
-			self.meta_kanjis.len()
+			self.meta_kanji.len()
 		)?;
 		Ok(())
 	}
@@ -370,7 +368,7 @@ impl fmt::Display for Tag {
 	}
 }
 
-/// Frequency metadata for kanjis or terms.
+/// Frequency metadata for kanji or terms.
 pub struct Meta {
 	/// Kanji or term.
 	pub expression: String,
@@ -546,7 +544,7 @@ where
 				);
 				let rows: Vec<KanjiRow> = serde_json::from_reader(entry_file)?;
 				for it in rows {
-					dict.kanjis.push(Kanji {
+					dict.kanji.push(Kanji {
 						character: it.0,
 						onyomi:    csv(&it.1),
 						kunyomi:   csv(&it.2),
@@ -578,7 +576,7 @@ where
 			}
 			DataKind::KanjiMeta => {
 				for it in read_meta(entry_file)? {
-					dict.meta_kanjis.push(it);
+					dict.meta_kanji.push(it);
 				}
 			}
 			DataKind::TermMeta => {

@@ -11,11 +11,12 @@ use itertools::*;
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Root {
-	pub kanjis:  Vec<KanjiRow>,
-	pub terms:   Vec<TermRow>,
-	pub tags:    Vec<TagRow>,
-	pub sources: Vec<SourceRow>,
-	pub meta:    Vec<MetaRow>,
+	pub kanji:      Vec<KanjiRow>,
+	pub terms:      Vec<TermRow>,
+	pub tags:       Vec<TagRow>,
+	pub sources:    Vec<SourceRow>,
+	pub meta_kanji: Vec<MetaRow>,
+	pub meta_terms: Vec<MetaRow>,
 
 	#[serde(skip)]
 	tag_keys: HashSet<String>,
@@ -31,11 +32,12 @@ trait DbDisplay {
 impl Root {
 	pub fn new() -> Root {
 		Root {
-			kanjis:  Vec::new(),
-			terms:   Vec::new(),
-			tags:    Vec::new(),
-			sources: Vec::new(),
-			meta:    Vec::new(),
+			kanji:      Vec::new(),
+			terms:      Vec::new(),
+			tags:       Vec::new(),
+			sources:    Vec::new(),
+			meta_kanji: Vec::new(),
+			meta_terms: Vec::new(),
 
 			tag_keys: HashSet::new(),
 			from:     String::from("new"),
@@ -127,11 +129,14 @@ impl Root {
 
 			let mut rng = rand::thread_rng();
 
-			if self.kanjis.len() > 0 {
-				let mut kanjis = self.kanjis.iter().collect::<Vec<_>>();
-				write!(f, "\n\n## Kanjis")?;
-				kanjis.as_mut_slice().shuffle(&mut rng);
-				for (i, it) in kanjis.into_iter().take(sample_n).enumerate() {
+			if self.kanji.len() > 0 {
+				let mut kanji = self.kanji.iter().collect::<Vec<_>>();
+				kanji.sort_by(|a, b| (b.frequency, b.character).cmp(&(a.frequency, a.character)));
+				kanji.truncate(2500);
+
+				write!(f, "\n\n## Kanji")?;
+				kanji.as_mut_slice().shuffle(&mut rng);
+				for (i, it) in kanji.into_iter().take(sample_n).enumerate() {
 					write!(f, "\n\n=> {:02} - ", i + 1)?;
 					it.fmt(self, f)?;
 				}
@@ -139,6 +144,9 @@ impl Root {
 
 			if self.terms.len() > 0 {
 				let mut terms = self.terms.iter().collect::<Vec<_>>();
+				terms.sort_by(|a, b| (b.frequency, &b.expression).cmp(&(a.frequency, &a.expression)));
+				terms.truncate(5000);
+
 				write!(f, "\n\n## Terms")?;
 				terms.as_mut_slice().shuffle(&mut rng);
 				for (i, it) in terms.into_iter().take(sample_n).enumerate() {
@@ -147,9 +155,18 @@ impl Root {
 				}
 			}
 
-			if self.meta.len() > 0 {
-				let mut meta = self.meta.iter().collect::<Vec<_>>();
-				write!(f, "\n\n## Meta\n")?;
+			if self.meta_kanji.len() > 0 {
+				let mut meta = self.meta_kanji.iter().collect::<Vec<_>>();
+				write!(f, "\n\n## Meta (kanji)\n")?;
+				meta.as_mut_slice().shuffle(&mut rng);
+				for (i, it) in meta.into_iter().take(sample_n).enumerate() {
+					write!(f, "\n=> {:02} - {}", i + 1, it)?;
+				}
+			}
+
+			if self.meta_terms.len() > 0 {
+				let mut meta = self.meta_terms.iter().collect::<Vec<_>>();
+				write!(f, "\n\n## Meta (terms)\n")?;
 				meta.as_mut_slice().shuffle(&mut rng);
 				for (i, it) in meta.into_iter().take(sample_n).enumerate() {
 					write!(f, "\n=> {:02} - {}", i + 1, it)?;
@@ -177,8 +194,8 @@ impl Root {
 		if self.sources.len() > 0 {
 			write!(f, "\n- {} sources", self.sources.len())?;
 		}
-		if self.kanjis.len() > 0 {
-			write!(f, "\n- {} kanjis", self.kanjis.len())?;
+		if self.kanji.len() > 0 {
+			write!(f, "\n- {} kanji", self.kanji.len())?;
 		}
 		if self.terms.len() > 0 {
 			write!(f, "\n- {} terms", self.terms.len())?;
@@ -186,11 +203,58 @@ impl Root {
 		if self.tags.len() > 0 {
 			write!(f, "\n- {} tags", self.tags.len())?;
 		}
-		if self.meta.len() > 0 {
-			write!(f, "\n- {} meta entries", self.meta.len())?;
+		if self.meta_kanji.len() > 0 {
+			write!(f, "\n- {} meta (kanji)", self.meta_kanji.len())?;
+		}
+		if self.meta_terms.len() > 0 {
+			write!(f, "\n- {} meta (terms)", self.meta_terms.len())?;
 		}
 
 		Ok(())
+	}
+
+	/// Update frequency information for terms and kanji.
+	///
+	/// Returns the updated count for `(kanji, terms)`.
+	pub fn update_frequency(&mut self) -> (usize, usize) {
+		let mut kanji_count = 0;
+		let mut terms_count = 0;
+
+		//
+		// Update kanji:
+		//
+
+		let mut kanji_map = HashMap::new();
+		for it in &self.meta_kanji {
+			if let Some(chr) = it.expression.chars().next() {
+				kanji_map.insert(chr, it.value);
+				kanji_count += 1;
+			}
+		}
+
+		for it in self.kanji.iter_mut() {
+			if let Some(value) = kanji_map.get(&it.character) {
+				it.frequency = Some(*value);
+			}
+		}
+
+		//
+		// Update terms:
+		//
+
+		let mut terms_map = HashMap::new();
+		for it in &self.meta_terms {
+			terms_map.insert(it.expression.as_str(), it.value);
+		}
+
+		for it in self.terms.iter_mut() {
+			if let Some(value) = terms_map.get(it.expression.as_str()) {
+				it.frequency = Some(*value);
+				terms_count += 1;
+			}
+		}
+
+		(kanji_count, terms_count)
 	}
 }
 
@@ -304,7 +368,7 @@ pub struct SourceRow {
 	pub revision: String,
 }
 
-/// Frequency metadata for kanjis or terms.
+/// Frequency metadata for kanji or terms.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MetaRow {
 	/// Term or kanji.
@@ -312,9 +376,6 @@ pub struct MetaRow {
 
 	/// Frequency value.
 	pub value: u64,
-
-	/// True when the frequency is for a kanji.
-	pub kanji: bool,
 }
 
 /// Index for a [TagRow] in a [Root].
@@ -330,7 +391,7 @@ impl TagId {
 
 /// Tag for an [KanjiRow] or [TermRow].
 ///
-/// For kanjis, this is also used to describe the `stats` keys.
+/// For kanji, this is also used to describe the `stats` keys.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TagRow {
 	/// Unique string key for this tag.
@@ -484,8 +545,7 @@ impl fmt::Display for TagRow {
 
 impl fmt::Display for MetaRow {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let mode = if self.kanji { "kanji" } else { "term" };
-		write!(f, "{} = {} ({})", self.expression, self.value, mode)
+		write!(f, "{} = {}", self.expression, self.value)
 	}
 }
 
