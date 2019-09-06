@@ -60,10 +60,6 @@ pub struct Dict {
 impl Dict {
 	#[allow(dead_code)]
 	pub fn append_to<'a>(&self, db: &mut db::Root) {
-		if self.terms.len() == 0 {
-			return;
-		}
-
 		// Add ourselves as a source
 		let source_id = db.add_source(db::SourceRow {
 			name:     self.title.clone(),
