@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt;
 use std::fs::File;
 use std::io;
 use std::path::Path;
+
+use itertools::*;
 
 /// Main serialization structure for the dictionary database.
 #[allow(dead_code)]
@@ -14,7 +17,15 @@ pub struct Root {
 	pub sources: Vec<SourceRow>,
 	pub meta:    Vec<MetaRow>,
 
+	#[serde(skip)]
 	tag_keys: HashSet<String>,
+
+	#[serde(skip)]
+	from: String,
+}
+
+trait DbDisplay {
+	fn fmt<W: std::io::Write>(&self, root: &Root, f: &mut W) -> io::Result<()>;
 }
 
 impl Root {
@@ -27,6 +38,7 @@ impl Root {
 			meta:    Vec::new(),
 
 			tag_keys: HashSet::new(),
+			from:     String::from("new"),
 		}
 	}
 
@@ -37,17 +49,19 @@ impl Root {
 	/// - If the path exists, but there was an error loading, returns `Err(_)`.
 	pub fn load<P: AsRef<Path>>(path: P) -> io::Result<Option<Root>> {
 		let path = path.as_ref();
+		let from = path.to_string_lossy();
 		if !path.exists() {
 			Ok(None)
 		} else {
 			let db_file = File::open(path)?;
 			let db_file = io::BufReader::new(db_file);
-			let db: Root = match bincode::deserialize_from(db_file) {
+			let mut db: Root = match bincode::deserialize_from(db_file) {
 				Ok(val) => val,
 				Err(err) => {
 					return io::Result::Err(io::Error::new(io::ErrorKind::Other, err));
 				}
 			};
+			db.from = String::from(from);
 			Ok(Some(db))
 		}
 	}
@@ -91,13 +105,92 @@ impl Root {
 		}
 
 		self.tags.push(tag);
-		TagId(self.tags.len())
+		TagId(self.tags.len() - 1)
 	}
 
 	/// Add a [SourceRow] to the database, returning the new [SourceId].
 	pub fn add_source(&mut self, source: SourceRow) -> SourceId {
 		self.sources.push(source);
-		SourceId(self.sources.len())
+		SourceId(self.sources.len() - 1)
+	}
+
+	/// Dump a sample of the data.
+	#[allow(dead_code)]
+	pub fn dump<W>(&self, sample_n: usize, f: &mut W) -> io::Result<()>
+	where
+		W: std::io::Write,
+	{
+		write!(f, "# Database ({}) #", self.from)?;
+
+		if sample_n > 0 {
+			use rand::prelude::SliceRandom;
+
+			let mut rng = rand::thread_rng();
+
+			if self.kanjis.len() > 0 {
+				let mut kanjis = self.kanjis.iter().collect::<Vec<_>>();
+				write!(f, "\n\n## Kanjis")?;
+				kanjis.as_mut_slice().shuffle(&mut rng);
+				for (i, it) in kanjis.into_iter().take(sample_n).enumerate() {
+					write!(f, "\n\n=> {:02} - ", i + 1)?;
+					it.fmt(self, f)?;
+				}
+			}
+
+			if self.terms.len() > 0 {
+				let mut terms = self.terms.iter().collect::<Vec<_>>();
+				write!(f, "\n\n## Terms")?;
+				terms.as_mut_slice().shuffle(&mut rng);
+				for (i, it) in terms.into_iter().take(sample_n).enumerate() {
+					write!(f, "\n\n=> {:02} - ", i + 1)?;
+					it.fmt(self, f)?;
+				}
+			}
+
+			if self.meta.len() > 0 {
+				let mut meta = self.meta.iter().collect::<Vec<_>>();
+				write!(f, "\n\n## Meta\n")?;
+				meta.as_mut_slice().shuffle(&mut rng);
+				for (i, it) in meta.into_iter().take(sample_n).enumerate() {
+					write!(f, "\n=> {:02} - {}", i + 1, it)?;
+				}
+			}
+
+			if self.tags.len() > 0 {
+				let mut tags = self.tags.iter().collect::<Vec<_>>();
+				write!(f, "\n\n## Tags\n")?;
+				tags.sort_by(|a, b| a.key.to_lowercase().cmp(&b.key.to_lowercase()));
+				for it in tags {
+					write!(f, "\n  | {}", it)?;
+				}
+			}
+		}
+
+		if self.sources.len() > 0 {
+			write!(f, "\n\n## Sources ##\n")?;
+			for it in &self.sources {
+				write!(f, "\n- {}", it)?;
+			}
+		}
+
+		write!(f, "\n\n## Summary ##\n")?;
+		if self.sources.len() > 0 {
+			write!(f, "\n- {} sources", self.sources.len())?;
+		}
+		if self.kanjis.len() > 0 {
+			write!(f, "\n- {} kanjis", self.kanjis.len())?;
+		}
+		if self.terms.len() > 0 {
+			write!(f, "\n- {} terms", self.terms.len())?;
+		}
+		if self.tags.len() > 0 {
+			write!(f, "\n- {} tags", self.tags.len())?;
+		}
+		if self.meta.len() > 0 {
+			write!(f, "\n- {} meta entries", self.meta.len())?;
+		}
+
+		Ok(())
 	}
 }
 
@@ -194,6 +287,13 @@ pub struct LinkRow {
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
 pub struct SourceId(usize);
 
+impl SourceId {
+	fn as_index(&self) -> usize {
+		let SourceId(index) = self;
+		*index
+	}
+}
+
 /// Available sources for [KanjiRow] and [TermRow].
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SourceRow {
@@ -221,6 +321,13 @@ pub struct MetaRow {
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct TagId(usize);
 
+impl TagId {
+	fn as_index(&self) -> usize {
+		let TagId(index) = self;
+		*index
+	}
+}
+
 /// Tag for an [KanjiRow] or [TermRow].
 ///
 /// For kanjis, this is also used to describe the `stats` keys.
@@ -240,4 +347,169 @@ pub struct TagRow {
 
 	/// Order value for this tag (lesser values sorted first).
 	pub order: i32,
+}
+
+//
+// Display implementation
+//
+
+impl DbDisplay for TermRow {
+	fn fmt<W: std::io::Write>(&self, root: &Root, f: &mut W) -> io::Result<()> {
+		write!(f, "{}", self.expression)?;
+		if self.reading.len() > 0 {
+			write!(f, " 「{}」", self.reading)?;
+		}
+
+		write!(f, " -- score:{}", self.score)?;
+
+		if let Some(frequency) = self.frequency {
+			write!(f, ", freq:{}", frequency)?;
+		}
+
+		let origin = &root.sources[self.source.as_index()];
+		if origin.name.len() > 0 {
+			write!(f, ", from:{}", origin.name)?;
+		}
+
+		write_tags(&self.tags, "\n   ", root, f)?;
+
+		for (i, it) in self.definition.iter().enumerate() {
+			write!(f, "\n\n   {}. ", i + 1)?;
+			it.fmt(root, f)?;
+		}
+
+		if self.forms.len() > 0 {
+			write!(f, "\n\n   ## Other forms ##\n")?;
+			for it in &self.forms {
+				write!(f, "\n   - {}", it.expression)?;
+				if it.reading.len() > 0 {
+					write!(f, " 「{}」", it.reading)?;
+				}
+			}
+		}
+
+		Ok(())
+	}
+}
+
+impl DbDisplay for DefinitionRow {
+	fn fmt<W: std::io::Write>(&self, root: &Root, f: &mut W) -> io::Result<()> {
+		write!(f, "{}", self.text.join(", "))?;
+		if self.info.len() > 0 {
+			write!(f, " -- {}", self.info.join(", "))?;
+		}
+
+		write_tags(&self.tags, "\n   ", root, f)?;
+
+		for it in &self.link {
+			write!(f, "\n   - {}", it.uri)?;
+			if it.title.len() > 0 {
+				write!(f, " ({})", it.title)?;
+			}
+		}
+
+		Ok(())
+	}
+}
+
+impl DbDisplay for KanjiRow {
+	fn fmt<W: std::io::Write>(&self, root: &Root, f: &mut W) -> io::Result<()> {
+		write!(f, "{}", self.character)?;
+		let on = self.onyomi.len();
+		let kun = self.kunyomi.len();
+		if on > 0 || kun > 0 {
+			write!(f, " 「")?;
+			if on > 0 {
+				write!(f, "ON: {}", self.onyomi.join("  "))?;
+			}
+			if kun > 0 {
+				if on > 0 {
+					write!(f, " / ")?;
+				}
+				write!(f, "KUN: {}", self.kunyomi.join("  "))?;
+			}
+			write!(f, " 」")?;
+		}
+
+		if let Some(frequency) = self.frequency {
+			write!(f, " -- freq:{}", frequency)?;
+		}
+
+		write_tags(&self.tags, "\n   ", root, f)?;
+
+		write!(f, "\n   {}", self.meanings.join("; "))?;
+
+		if self.stats.len() > 0 {
+			let pairs = self
+				.stats
+				.iter()
+				.map(|(tag_id, value)| (&root.tags[tag_id.as_index()].name, value))
+				.sorted()
+				.map(|(key, val)| format!("{:>10}: {}", key, val));
+
+			let mut counter = 0;
+			for it in pairs {
+				if counter % 4 == 0 {
+					write!(f, "\n   | ")?;
+				} else {
+					write!(f, " ")?;
+				}
+				write!(f, "{:20}", it)?;
+				counter += 1;
+			}
+		}
+		Ok(())
+	}
+}
+
+impl fmt::Display for TagRow {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(
+			f,
+			"{name:12} | {desc:75} | {cat:14} | {order:3} | {key}",
+			cat = self.category,
+			name = self.name,
+			desc = if self.description.len() > 0 {
+				self.description.as_str()
+			} else {
+				"--"
+			},
+			key = self.key,
+			order = self.order
+		)
+	}
+}
+
+impl fmt::Display for MetaRow {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let mode = if self.kanji { "kanji" } else { "term" };
+		write!(f, "{} = {} ({})", self.expression, self.value, mode)
+	}
+}
+
+impl fmt::Display for SourceRow {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let revision = if self.revision.len() > 0 {
+			format!(" ({})", self.revision)
+		} else {
+			String::new()
+		};
+		write!(f, "{}{}", self.name, revision)
+	}
+}
+
+fn write_tags<L, T, W>(tags: L, prefix: &str, root: &Root, f: &mut W) -> io::Result<()>
+where
+	L: IntoIterator<Item = T>,
+	T: std::borrow::Borrow<TagId>,
+	W: std::io::Write,
+{
+	let tags = tags
+		.into_iter()
+		.map(|t| &root.tags[t.borrow().as_index()])
+		.collect::<Vec<_>>();
+	if tags.len() > 0 {
+		write!(f, "{}[{}]", prefix, tags.iter().map(|it| &it.name).join(", "))?;
+	}
+	Ok(())
 }
