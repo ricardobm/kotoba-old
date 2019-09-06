@@ -24,156 +24,85 @@ extern crate rocket_contrib;
 
 extern crate wana_kana;
 
-use std::fs;
-use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time;
-
-use rand::seq::SliceRandom;
-use rand::thread_rng;
 
 const FROM_ZIP: bool = false;
 const DUMP_WORD_SAMPLE: bool = false;
 
 mod config;
-
-mod dict;
-use dict::import;
-use dict::Dict;
-
-mod server;
-
+mod db;
+mod import;
 mod japanese;
+mod server;
 
 fn main() {
 	std::process::exit(run());
 }
 
+#[allow(dead_code)]
 fn run() -> i32 {
 	let data_dir = config::data_directory();
 	println!("\nUser data directory is {}", data_dir.to_string_lossy());
 
 	let mut dict_path = PathBuf::from(&data_dir);
 	dict_path.push("dict");
+	dict_path.push("imported.db");
 
-	let mut ok_file = PathBuf::from(&dict_path);
-	ok_file.push("ok.dat");
+	let dict_path_str = dict_path.to_string_lossy();
 
-	if let Err(_) = fs::metadata(&ok_file) {
-		println!("\nDictionary data not found, importing...");
+	let start = time::Instant::now();
+	let mut db = if let Some(db) = db::Root::load(&dict_path).unwrap() {
+		println!(
+			"Loaded database from {} in {:.3}s",
+			dict_path_str,
+			start.elapsed().as_secs_f64()
+		);
+		db
+	} else {
+		println!("Database not found in {}!", dict_path_str);
 
-		let dict = import_entries(data_dir);
+		let import_path = {
+			let mut p = PathBuf::from(data_dir);
+			p.push(if FROM_ZIP { "import" } else { "import-files" });
+			p
+		};
+		println!("Importing from {}...", import_path.to_string_lossy());
 
-		println!("\nSaving dictionary data to {}...", dict_path.to_string_lossy());
+		let mut db = db::Root::new();
+		import::from_yomichan(&mut db, import_path).unwrap();
+		println!(
+			"... imported{} files in {:.3}s",
+			if FROM_ZIP { " zip" } else { "" },
+			start.elapsed().as_secs_f64()
+		);
+
 		let start = time::Instant::now();
-		dict.save(&dict_path).unwrap();
-		File::create(&ok_file).unwrap();
-		let duration = start.elapsed();
-		println!("\n#\n# Serialization took {:?}\n#", duration);
-	}
+		let (kanji_count, terms_count) = db.update_frequency();
+		println!(
+			"... updated frequency metadata for {} kanji and {} terms in {:.3}s",
+			kanji_count,
+			terms_count,
+			start.elapsed().as_secs_f64()
+		);
 
-	println!("\nLoading dictionary data from {}...", dict_path.to_string_lossy());
-
-	let start = time::Instant::now();
-	let mut dict = Dict::load(&dict_path).unwrap();
-	println!("Loaded {} entries in {:?}", dict.count(), start.elapsed());
-
-	let start = time::Instant::now();
-	dict.rebuild_index();
-	println!("Indexed in {:?}", start.elapsed());
+		let start = time::Instant::now();
+		db.save(dict_path).unwrap();
+		println!("Saved database in {:.3}s", start.elapsed().as_secs_f64());
+		db
+	};
 
 	if DUMP_WORD_SAMPLE {
-		let mut rng = thread_rng();
-		println!("\n##\n## ENTRIES ##\n##");
-		dict.shuffle(&mut rng);
-		for it in dict.entries().into_iter().take(10) {
-			println!("\n{}", it);
-		}
+		println!();
+		db.dump(10, &mut std::io::stdout()).unwrap();
+		println!();
 	}
-
-	println!();
-
-	server::launch(japanese::Dictionary::new(dict));
-
-	0
-}
-
-fn import_entries(user_data: &Path) -> Dict {
-	let mut import_path = PathBuf::from(&user_data);
-	import_path.push(if FROM_ZIP { "import" } else { "import-files" });
 
 	let start = time::Instant::now();
-	let imported = import::import_from(&import_path).unwrap();
-	let duration = start.elapsed();
-	println!("\nLoaded {} import files in {:?}", imported.len(), duration);
+	db.update_index();
+	println!("Updated indexes in {:.3}s", start.elapsed().as_secs_f64());
 
-	let mut builder = dict::DictBuilder::new();
+	server::launch(japanese::Dictionary::new(db));
 
-	let mut rng = thread_rng();
-	for mut it in imported {
-		{
-			it.append_to(&mut builder);
-		}
-
-		println!("\n\n{}", it);
-
-		if DUMP_WORD_SAMPLE {
-			it.terms.as_mut_slice().shuffle(&mut rng);
-			it.kanjis.as_mut_slice().shuffle(&mut rng);
-			it.meta_terms.as_mut_slice().shuffle(&mut rng);
-			it.meta_kanjis.as_mut_slice().shuffle(&mut rng);
-
-			if it.tags.len() > 0 {
-				println!("\n## Tags ##\n");
-				for tag in it.tags {
-					println!("- {}", tag);
-				}
-			}
-
-			if it.terms.len() > 0 {
-				println!("\n## Terms ##\n");
-				for term in it.terms.iter().take(3) {
-					println!("\n{}", term);
-				}
-			}
-
-			if it.kanjis.len() > 0 {
-				println!("\n## Kanjis ##\n");
-				for kanji in it.kanjis.iter().take(3) {
-					println!("\n{}", kanji);
-				}
-			}
-
-			if it.meta_terms.len() > 0 {
-				println!("\n## Meta (Terms) ##\n");
-				for meta in it.meta_terms.iter().take(10) {
-					println!("- {}", meta);
-				}
-			}
-
-			if it.meta_kanjis.len() > 0 {
-				println!("\n## Meta (Kanjis) ##\n");
-				for meta in it.meta_kanjis.iter().take(10) {
-					println!("- {}", meta);
-				}
-			}
-		}
-	}
-
-	let dict = builder.build();
-
-	println!(
-		"\n#\n# Imported {} total entries in {:?}\n#",
-		dict.count(),
-		start.elapsed()
-	);
-	dict
-}
-
-#[cfg(test)]
-mod tests {
-	#[test]
-	fn should_succeed() {
-		assert_eq!(42, 42);
-	}
+	0
 }

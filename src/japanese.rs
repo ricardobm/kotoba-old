@@ -1,7 +1,6 @@
 //! Entry point for japanese word and kanji queries.
 
 use std::collections::HashMap;
-use std::collections::HashSet;
 
 use itertools::*;
 use wana_kana::is_kanji::is_kanji;
@@ -163,103 +162,6 @@ pub struct QueryResult {
 
 	/// Options used in the search.
 	pub options: SearchOptions,
-}
-
-/// Identifier for a tag.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct TagId(String);
-
-/// Entry for a kanji in the dictionary.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Kanji {
-	/// Kanji character.
-	pub character: char,
-
-	/// Onyomi (chinese) readings for the Kanji.
-	pub onyomi: Vec<String>,
-
-	/// Kunyomi (japanese) readings for the Kanji.
-	pub kunyomi: Vec<String>,
-
-	/// ID of the tags that apply to this kanji.
-	pub tags: HashSet<TagId>,
-
-	/// English meanings for the kanji.
-	pub meanings: Vec<String>,
-
-	/// Additional kanji information. The key meanings are detailed as tags.
-	pub stats: HashMap<TagId, String>,
-
-	/// Frequency information for this kanji, if available.
-	pub frequency: Option<u32>,
-}
-
-/// Main entry for a word in the dictionary.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Term {
-	/// Main expression.
-	pub expression: String,
-
-	/// Kana reading for the main expression.
-	pub reading: String,
-
-	/// Definitions for this term.
-	pub definition: Vec<Definition>,
-
-	/// Description of the origin for this entry.
-	pub origin: String,
-
-	/// Additional forms for the term, if any.
-	pub forms: Vec<Form>,
-
-	/// ID of the tags that apply to this term.
-	pub tags: HashSet<TagId>,
-
-	/// Frequency information for this term, if available.
-	pub frequency: Option<u32>,
-}
-
-/// English definition for a [Term].
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Definition {
-	/// Definition text entries.
-	pub text: Vec<String>,
-
-	/// Additional information to append after this entry text.
-	pub info: Vec<String>,
-
-	/// ID of the tags that apply to this definition.
-	pub tags: HashSet<TagId>,
-
-	/// Resources linked to this definition.
-	pub link: Vec<Link>,
-}
-
-/// Additional `(expression, reading)` for a [Term].
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Form(String, String);
-
-/// Linked resource in the form `(URI, title)`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Link(String, String);
-
-/// Information for a tag.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Tag {
-	/// The ID for this tag referenced by a [Entry] or [Definition].
-	pub id: TagId,
-
-	/// Short display name for this tag.
-	pub name: String,
-
-	/// Category name for this tag.
-	pub category: String,
-
-	/// Longer display description for this tag.
-	pub description: String,
-
-	/// Order value for this tag (lesser values sorted first).
-	pub order: i32,
 }
 
 pub fn to_romaji<'a, S>(input: S) -> String
