@@ -287,15 +287,25 @@ pub struct Tag {
 	pub order: i32,
 }
 
-fn to_romaji<'a, S: InputString<'a>>(input: S) -> String {
+pub fn to_romaji<'a, S>(input: S) -> String
+where
+	S: InputString<'a> + std::fmt::Display,
+{
 	let mut text = String::from(input.into());
 
 	// The kana library completely barfs on "っっ", so replace it by "っ".
 	while text.contains("っっ") {
 		text = text.replace("っっ", "っ");
 	}
+	while text.contains("ッッ") {
+		text = text.replace("ッッ", "ッ");
+	}
 
-	wana_kana::to_romaji::to_romaji(text.as_str())
+	let result = std::panic::catch_unwind(|| wana_kana::to_romaji::to_romaji(text.as_str()));
+	match result {
+		Ok(value) => value,
+		Err(_) => panic!(format!("\n!\n! FAILED: to_romaji({})\n!\n", text)),
+	}
 }
 
 struct TagMap {
