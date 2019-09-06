@@ -437,25 +437,22 @@ impl DbDisplay for KanjiRow {
 
 		write_tags(&self.tags, "\n   ", root, f)?;
 
-		write!(f, "\n   {}", self.meanings.join("; "))?;
+		write!(f, "\n\n   {}", self.meanings.join("; "))?;
 
 		if self.stats.len() > 0 {
 			let pairs = self
 				.stats
 				.iter()
 				.map(|(tag_id, value)| (&root.tags[tag_id.as_index()].name, value))
-				.sorted()
-				.map(|(key, val)| format!("{:>10}: {}", key, val));
-
-			let mut counter = 0;
-			for it in pairs {
-				if counter % 4 == 0 {
-					write!(f, "\n   | ")?;
+				.sorted();
+			write!(f, "\n")?;
+			for (i, (key, val)) in pairs.enumerate() {
+				if i % 4 == 0 {
+					write!(f, "\n   ")?;
 				} else {
-					write!(f, " ")?;
+					write!(f, "      ")?;
 				}
-				write!(f, "{:20}", it)?;
-				counter += 1;
+				write!(f, "|| {:16} | {:^10} ||", key, val)?;
 			}
 		}
 		Ok(())
@@ -466,7 +463,7 @@ impl fmt::Display for TagRow {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(
 			f,
-			"{name:12} | {desc:75} | {cat:14} | {order:3} | {key}",
+			"{name:16} | {desc:75} | {cat:14} | {order:3} | {key}",
 			cat = self.category,
 			name = self.name,
 			desc = if self.description.len() > 0 {
