@@ -7,9 +7,11 @@ use std::path::Path;
 
 use itertools::*;
 
+use super::search::{update_mem_index, MemoryIndex};
+
 /// Main serialization structure for the dictionary database.
 #[allow(dead_code)]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct Root {
 	pub kanji:      Vec<KanjiRow>,
 	pub terms:      Vec<TermRow>,
@@ -23,6 +25,9 @@ pub struct Root {
 
 	#[serde(skip)]
 	from: String,
+
+	#[serde(skip)]
+	pub(super) mem_index: MemoryIndex,
 }
 
 trait DbDisplay {
@@ -41,6 +46,8 @@ impl Root {
 
 			tag_keys: HashSet::new(),
 			from:     String::from("new"),
+
+			mem_index: MemoryIndex::new(),
 		}
 	}
 
@@ -79,35 +86,24 @@ impl Root {
 		Ok(())
 	}
 
+	/// Updates the internal indexes of the database.
+	pub fn update_index(&mut self) {
+		update_mem_index(self);
+	}
+
 	/// Add a [TagRow] to the database, returning the new [TagId].
 	///
 	/// Note that this will automatically generate a unique [TagRow::key]
 	/// based on the existing one (or the tag name if it is empty) by appending
 	/// a counter to it.
-	pub fn add_tag(&mut self, mut tag: TagRow) -> TagId {
-		// Setup a unique key for the tag:
-
-		if tag.key.len() == 0 {
-			tag.key = tag.name.clone();
-		}
-		if tag.key.len() > 0 {
-			tag.key.push('-');
-		}
-
-		let mut counter = 1;
-		loop {
-			let new_key = format!("{}{}", tag.key, counter);
-			if !self.tag_keys.contains(&new_key) {
-				tag.key = new_key.clone();
-				self.tag_keys.insert(new_key);
-				break;
-			} else {
-				counter += 1;
-			}
-		}
-
+	pub fn add_tag(&mut self, tag: TagRow) -> TagId {
 		self.tags.push(tag);
 		TagId(self.tags.len() - 1)
+	}
+
+	pub fn get_tag(&self, id: TagId) -> TagRow {
+		let TagId(index) = id;
+		self.tags[index].clone()
 	}
 
 	/// Add a [SourceRow] to the database, returning the new [SourceId].
@@ -176,7 +172,11 @@ impl Root {
 			if self.tags.len() > 0 {
 				let mut tags = self.tags.iter().collect::<Vec<_>>();
 				write!(f, "\n\n## Tags\n")?;
-				tags.sort_by(|a, b| a.key.to_lowercase().cmp(&b.key.to_lowercase()));
+				tags.sort_by(|a, b| {
+					let key_a = (a.name.to_lowercase(), a.source);
+					let key_b = (b.name.to_lowercase(), b.source);
+					key_a.cmp(&key_b)
+				});
 				for it in tags {
 					write!(f, "\n   | {}", it)?;
 				}
@@ -259,7 +259,7 @@ impl Root {
 }
 
 /// Entry for a kanji in the dictionary.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct KanjiRow {
 	/// Kanji character.
 	pub character: char,
@@ -284,7 +284,7 @@ pub struct KanjiRow {
 }
 
 /// Main entry for a word in the dictionary.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TermRow {
 	/// Main expression.
 	pub expression: String,
@@ -315,7 +315,7 @@ pub struct TermRow {
 }
 
 /// English definition for a [TermRow].
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DefinitionRow {
 	/// Definition text entries.
 	pub text: Vec<String>,
@@ -331,7 +331,7 @@ pub struct DefinitionRow {
 }
 
 /// Additional forms for a [TermRow].
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FormRow {
 	/// Term expression.
 	pub expression: String,
@@ -341,14 +341,14 @@ pub struct FormRow {
 }
 
 /// Linked resource in the form.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LinkRow {
 	pub uri:   String,
 	pub title: String,
 }
 
 /// Index for a [SourceRow] in a [Root].
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct SourceId(usize);
 
 impl SourceId {
@@ -359,7 +359,7 @@ impl SourceId {
 }
 
 /// Available sources for [KanjiRow] and [TermRow].
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SourceRow {
 	/// Source name.
 	pub name: String,
@@ -392,11 +392,8 @@ impl TagId {
 /// Tag for an [KanjiRow] or [TermRow].
 ///
 /// For kanji, this is also used to describe the `stats` keys.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TagRow {
-	/// Unique string key for this tag.
-	pub key: String,
-
 	/// Short display name for this tag.
 	pub name: String,
 
@@ -528,7 +525,7 @@ impl fmt::Display for TagRow {
 		let SourceId(source) = self.source;
 		write!(
 			f,
-			"{name:16} | {desc:75} | {cat:14} | {order:3} | {key:18} ({src})",
+			"{name:16} | {desc:75} | {cat:14} | {order:3} | {src}",
 			cat = self.category,
 			name = self.name,
 			desc = if self.description.len() > 0 {
@@ -536,7 +533,6 @@ impl fmt::Display for TagRow {
 			} else {
 				"--"
 			},
-			key = self.key,
 			order = self.order,
 			src = source + 1
 		)

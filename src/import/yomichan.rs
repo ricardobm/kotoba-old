@@ -70,7 +70,6 @@ impl Dict {
 		let mut tag_map = HashMap::new();
 		for it in &self.tags {
 			let tag_id = db.add_tag(db::TagRow {
-				key:         String::new(),
 				name:        it.name.clone(),
 				category:    it.category.clone(),
 				description: it.notes.clone(),
@@ -161,7 +160,6 @@ where
 			}
 			None => {
 				let tag_id = db.add_tag(db::TagRow {
-					key:         String::new(),
 					name:        String::from(key.as_ref()),
 					category:    String::new(),
 					description: String::new(),

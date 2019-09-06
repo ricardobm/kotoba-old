@@ -1,32 +1,13 @@
 //! Entry point for japanese word and kanji queries.
 
-use std::borrow::Cow;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-pub trait InputString<'a>: Into<Cow<'a, str>> {}
+use itertools::*;
+use wana_kana::is_kanji::is_kanji;
 
-impl<'a, T> InputString<'a> for T where T: Into<Cow<'a, str>> {}
-
-/// Available search modes for terms.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub enum SearchMode {
-	/// Search for exact word.
-	Is,
-	/// Search words starting with the query.
-	Prefix,
-	/// Search words ending with the query.
-	Suffix,
-	/// Search words containing the query.
-	Contains,
-}
-
-impl Default for SearchMode {
-	fn default() -> SearchMode {
-		SearchMode::Contains
-	}
-}
+use super::db;
+pub use db::{InputString, Search, SearchMode};
 
 /// Search options.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
@@ -64,77 +45,67 @@ impl Default for SearchOptions {
 	}
 }
 
-use super::dict;
-
 /// Japanese dictionary implementation.
 pub struct Dictionary {
-	dict: dict::Dict,
+	db: db::Root,
 }
 
 impl Dictionary {
-	pub fn new(dict: dict::Dict) -> Dictionary {
-		Dictionary { dict }
+	pub fn new(db: db::Root) -> Dictionary {
+		Dictionary { db }
 	}
 
 	/// Query the dictionary.
 	pub fn query_with_options<'a, S: InputString<'a>>(&self, input: S, options: SearchOptions) -> QueryResult {
 		let start = std::time::Instant::now();
+
 		let query = String::from(input.into());
-		let results = self.dict.search(
-			&query,
-			match options.mode {
-				SearchMode::Is => dict::SearchMode::Exact,
-				SearchMode::Prefix => dict::SearchMode::Prefix,
-				SearchMode::Suffix => dict::SearchMode::Suffix,
-				SearchMode::Contains => dict::SearchMode::Contains,
-			},
-		);
+		let romaji = to_romaji(&query);
 
-		let mut tag_map = TagMap::new();
-		let mut terms = Vec::new();
-		for it in results {
-			let expressions = it.expressions();
-			let readings = it.readings();
-			let mut result = Term {
-				expression: String::from(expressions[0]),
-				reading:    String::from(readings[0]),
-				origin:     String::from(it.origin()),
-				forms:      Vec::new(),
-				definition: Vec::new(),
-				tags:       HashSet::new(),
-				frequency:  None,
-			};
+		let terms = self.db.search_terms(&query, &romaji, options.mode, options.fuzzy);
 
-			for tag in it.tags() {
-				let id = tag_map.to_tag_id(tag);
-				result.tags.insert(id);
-			}
-
-			for (i, expr) in expressions.into_iter().enumerate().skip(1) {
-				let expr = String::from(expr);
-				let reading = String::from(readings[i]);
-				result.forms.push(Form(expr, reading));
-			}
-			for it in it.definition() {
-				let def = Definition {
-					text: it.glossary().into_iter().map(String::from).collect(),
-					info: it.info().into_iter().map(String::from).collect(),
-					tags: HashSet::new(),
-					link: Vec::new(),
-				};
-
-				for tag in it.tags() {
-					let id = tag_map.to_tag_id(tag);
-					result.tags.insert(id);
-				}
-
-				result.definition.push(def);
-			}
-			terms.push(result);
-		}
+		let kanji = if options.with_kanji {
+			let kanji = query.chars().filter(|x| is_kanji(x.to_string().as_str())).unique();
+			let kanji = self.db.search_kanji(kanji);
+			Some(kanji)
+		} else {
+			None
+		};
 
 		let total = terms.len();
 		let elapsed = start.elapsed().as_secs_f64();
+
+		let mut tag_map = HashMap::new();
+
+		let mut push_tag = |id: db::TagId| {
+			if !tag_map.contains_key(&id) {
+				let tag = self.db.get_tag(id);
+				tag_map.insert(id, tag);
+			}
+		};
+
+		for it in &terms {
+			for &id in &it.tags {
+				push_tag(id);
+			}
+
+			for definition in &it.definition {
+				for &id in &definition.tags {
+					push_tag(id);
+				}
+			}
+		}
+
+		if let Some(kanji) = &kanji {
+			for it in kanji {
+				for &id in &it.tags {
+					push_tag(id);
+				}
+				for &id in it.stats.keys() {
+					push_tag(id);
+				}
+			}
+		}
 
 		let terms = if options.offset > 0 {
 			terms.into_iter().skip(options.offset).collect()
@@ -154,8 +125,9 @@ impl Dictionary {
 			query:   String::from(&query),
 			reading: to_romaji(query),
 			terms:   terms,
-			kanjis:  None,
-			tags:    tag_map.tags(),
+			kanji:   kanji,
+			tags:    tag_map,
+			sources: self.db.sources.clone(),
 			options: options,
 		}
 	}
@@ -177,14 +149,17 @@ pub struct QueryResult {
 	pub reading: String,
 
 	/// List of terms returned by the query.
-	pub terms: Vec<Term>,
+	pub terms: Vec<db::TermRow>,
 
 	/// List of kanjis, if [SearchOptions::with_kanji] is true.
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub kanjis: Option<Vec<Kanji>>,
+	pub kanji: Option<Vec<db::KanjiRow>>,
 
 	/// List of tags.
-	pub tags: HashMap<TagId, Tag>,
+	pub tags: HashMap<db::TagId, db::TagRow>,
+
+	/// List of sources for the dictionary data.
+	pub sources: Vec<db::SourceRow>,
 
 	/// Options used in the search.
 	pub options: SearchOptions,
@@ -305,61 +280,5 @@ where
 	match result {
 		Ok(value) => value,
 		Err(_) => panic!(format!("\n!\n! FAILED: to_romaji({})\n!\n", text)),
-	}
-}
-
-struct TagMap {
-	tags:     HashMap<TagId, Tag>,
-	by_index: HashMap<usize, TagId>,
-	by_id:    HashMap<TagId, usize>,
-}
-
-impl TagMap {
-	fn new() -> TagMap {
-		TagMap {
-			tags:     HashMap::new(),
-			by_index: HashMap::new(),
-			by_id:    HashMap::new(),
-		}
-	}
-
-	fn tags(self) -> HashMap<TagId, Tag> {
-		self.tags
-	}
-
-	fn to_tag_id<'a>(&mut self, tag: dict::Tag<'a>) -> TagId {
-		let index = tag.index();
-		if let Some(id) = self.by_index.get(&index) {
-			id.clone()
-		} else {
-			let name = tag.name();
-			let mut counter = 1;
-			let new_id = loop {
-				let id = TagId(format!("{}-{}", name, counter));
-				match self.by_id.entry(id.clone()) {
-					Entry::Occupied(_) => {
-						counter += 1;
-						continue;
-					}
-					Entry::Vacant(entry) => {
-						entry.insert(index);
-						break id;
-					}
-				}
-			};
-			self.by_index.insert(index, new_id.clone());
-			self.tags.insert(
-				new_id.clone(),
-				Tag {
-					id:          new_id.clone(),
-					name:        String::from(tag.name()),
-					description: String::from(tag.description()),
-					category:    String::from(tag.category()),
-					order:       tag.order(),
-				},
-			);
-
-			new_id
-		}
 	}
 }
