@@ -2,6 +2,7 @@
 // https://github.com/PSeitz/wana_kana_rust/blob/master/src/constants.rs
 
 use fnv::FnvHashMap;
+use fnv::FnvHashSet;
 
 // CharCode References
 // http://www.rikai.com/library/kanjitables/kanji_codes.unicode.shtml
@@ -32,7 +33,6 @@ pub const TO_LOWERCASE_OFFSET_ADD: u8 = LOWERCASE_START - UPPERCASE_START;
 pub const HIRAGANA_START: u32 = 0x3041;
 pub const HIRAGANA_END: u32 = 0x3096;
 pub const KATAKANA_START: u32 = 0x30A1;
-pub const KATAKANA_END: u32 = 0x30FC; // Long dash
 
 /// Last katakana that can be converted directly to hiragana by offseting.
 pub const KATAKANA_TO_HIRAGANA_END: u32 = 0x30F6;
@@ -406,7 +406,7 @@ lazy_static! {
 		"？" => "?",
 		"。" => ".",
 		"：" => ": ", // Changed from wana-kana
-		"・" => "/",
+		"・" => "・", // Changed from wana-kana
 		"、" => ",",
 		"〜" => "~",
 		"ー" => "-",
@@ -631,7 +631,7 @@ lazy_static! {
 		"ゃ" => "ya",
 		"ゅ" => "yu",
 		"ょ" => "yo",
-		"っ" => "",
+		"っ" => "~tsu",  //to detect when we fail to handle this case
 		"ゕ" => "ka",
 		"ゖ" => "ka",
 		"ゎ" => "wa",
@@ -645,5 +645,24 @@ lazy_static! {
 		"んや" => "n'ya",
 		"んゆ" => "n'yu",
 		"んよ" => "n'yo",
+	};
+
+	/// First characters of all keys in the [TO_ROMAJI] table.
+	pub static ref TO_ROMAJI_CHARS: FnvHashSet<char> = {
+		let mut set = FnvHashSet::<char>::default();
+		for key in TO_ROMAJI.keys() {
+			let first = key.chars().next().unwrap();
+			set.insert(first);
+		}
+		set
+	};
+
+	/// Maximum length of any key in the [TO_ROMAJI] table.
+	pub static ref TO_ROMAJI_MAX_CHUNK: usize = {
+		let mut size = 0;
+		for key in TO_ROMAJI.keys() {
+			size = std::cmp::max(size, key.chars().count());
+		}
+		size
 	};
 }
