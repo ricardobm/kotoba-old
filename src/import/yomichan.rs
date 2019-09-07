@@ -85,6 +85,7 @@ impl Dict {
 			let term = db::TermRow {
 				expression: it.expression.clone(),
 				reading:    it.reading.clone(),
+				romaji:     String::new(),
 				definition: vec![db::DefinitionRow {
 					text: it.glossary.clone(),
 					info: Vec::new(),
@@ -97,7 +98,7 @@ impl Dict {
 				frequency:  None,
 				score:      it.score,
 			};
-			db.terms.push(term);
+			db.add_term(term);
 		}
 
 		// Add kanji
@@ -116,7 +117,7 @@ impl Dict {
 				let tag_id = tag_map.get(&Cow::from(key)).unwrap();
 				kanji.stats.insert(*tag_id, value.clone());
 			}
-			db.kanji.push(kanji);
+			db.add_kanji(kanji);
 		}
 
 		// Add meta rows for kanji
@@ -125,7 +126,7 @@ impl Dict {
 				expression: it.expression.clone(),
 				value:      it.data,
 			};
-			db.meta_kanji.push(meta);
+			db.add_meta_kanji(meta);
 		}
 
 		// Add meta rows for terms
@@ -134,7 +135,7 @@ impl Dict {
 				expression: it.expression.clone(),
 				value:      it.data,
 			};
-			db.meta_terms.push(meta);
+			db.add_meta_terms(meta);
 		}
 	}
 }

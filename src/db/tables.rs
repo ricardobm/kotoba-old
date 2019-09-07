@@ -9,6 +9,8 @@ use itertools::*;
 
 use super::search::{update_mem_index, MemoryIndex};
 
+use crate::japanese::{to_hiragana, to_romaji};
+
 /// Main serialization structure for the dictionary database.
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize)]
@@ -101,9 +103,44 @@ impl Root {
 		TagId(self.tags.len() - 1)
 	}
 
+	/// Get a copy of the tag with the given ID.
 	pub fn get_tag(&self, id: TagId) -> TagRow {
 		let TagId(index) = id;
 		self.tags[index].clone()
+	}
+
+	/// Add a [KanjiRow] to the database.
+	pub fn add_kanji(&mut self, kanji: KanjiRow) {
+		self.kanji.push(kanji);
+	}
+
+	/// Add a [TermRow] to the database.
+	pub fn add_term(&mut self, mut term: TermRow) {
+		// Complete the reading for all forms. In general, any term with no
+		// reading is just kana, so we can translate it to hiragana.
+		if term.reading.len() == 0 {
+			term.reading = to_hiragana(&term.expression);
+		}
+		term.romaji = to_romaji(&term.reading);
+
+		for it in term.forms.iter_mut() {
+			if it.reading.len() == 0 {
+				it.reading = to_hiragana(&it.expression);
+			}
+			it.romaji = to_romaji(&it.reading);
+		}
+
+		self.terms.push(term);
+	}
+
+	/// Add a [MetaRow] for kanji to the database.
+	pub fn add_meta_kanji(&mut self, meta: MetaRow) {
+		self.meta_kanji.push(meta);
+	}
+
+	/// Add a [MetaRow] for terms to the database.
+	pub fn add_meta_terms(&mut self, meta: MetaRow) {
+		self.meta_terms.push(meta);
 	}
 
 	/// Add a [SourceRow] to the database, returning the new [SourceId].
@@ -292,6 +329,9 @@ pub struct TermRow {
 	/// Kana reading for the main expression.
 	pub reading: String,
 
+	/// Kana reading as romaji.
+	pub romaji: String,
+
 	/// Definitions for this term.
 	pub definition: Vec<DefinitionRow>,
 
@@ -338,6 +378,9 @@ pub struct FormRow {
 
 	/// Kana reading for this term.
 	pub reading: String,
+
+	/// Kana reading as romaji.
+	pub romaji: String,
 }
 
 /// Linked resource in the form.

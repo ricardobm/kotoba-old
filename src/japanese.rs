@@ -164,6 +164,14 @@ pub struct QueryResult {
 	pub options: SearchOptions,
 }
 
+pub fn to_hiragana<'a, S>(input: S) -> String
+where
+	S: InputString<'a> + std::fmt::Display,
+{
+	let text = input.into();
+	wana_kana::to_hiragana::to_hiragana(text.as_ref())
+}
+
 pub fn to_romaji<'a, S>(input: S) -> String
 where
 	S: InputString<'a> + std::fmt::Display,
