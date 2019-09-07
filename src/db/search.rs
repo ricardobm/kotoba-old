@@ -49,6 +49,7 @@ impl Search for Root {
 		let mut indexes: HashSet<usize> = HashSet::new();
 		let query = query.into();
 		for (key, val) in &self.mem_index.terms {
+			let key = key.as_str();
 			let is_match = match mode {
 				SearchMode::Is => key == query.as_ref(),
 				SearchMode::Contains => key.contains(query.as_ref()),
@@ -91,7 +92,7 @@ pub struct MemoryIndex {
 	/// Index of kanji in the database, by their character.
 	pub kanji: HashMap<char, usize>,
 	/// Index of terms in the database, by the expression and reading.
-	pub terms: HashMap<String, HashSet<usize>>,
+	pub terms: HashMap<InternalString, HashSet<usize>>,
 }
 
 impl Default for MemoryIndex {
@@ -111,7 +112,7 @@ impl MemoryIndex {
 	#[inline]
 	fn index_term(&mut self, term: &String, index: usize) {
 		self.terms
-			.entry(term.to_owned())
+			.entry(InternalString::from(term))
 			.and_modify(|e| {
 				e.insert(index);
 			})
@@ -138,5 +139,50 @@ pub fn update_mem_index(db: &mut Root) {
 			db.mem_index.index_term(&form.expression, i);
 			db.mem_index.index_term(&form.reading, i);
 		}
+	}
+}
+
+/// Used only internally as keys for the HashMap used by the index. This avoids
+/// the need for a key copy when building the index.
+#[derive(Copy, Clone)]
+pub struct InternalString {
+	// The lifetime of this pointer is the lifetime of the outer [Root] struct
+	// that contains the [MemoryIndex].
+	ptr: *const str,
+}
+
+unsafe impl Send for InternalString {}
+unsafe impl Sync for InternalString {}
+
+impl InternalString {
+	#[inline]
+	fn from<S>(value: S) -> InternalString
+	where
+		S: AsRef<str>,
+	{
+		let ptr = value.as_ref() as *const str;
+		InternalString { ptr }
+	}
+
+	fn as_str<'a>(&'a self) -> &'a str {
+		unsafe { &*self.ptr }
+	}
+}
+
+impl std::cmp::PartialEq for InternalString {
+	fn eq(&self, other: &Self) -> bool {
+		if self.ptr == other.ptr {
+			true
+		} else {
+			unsafe { (*self.ptr) == (*other.ptr) }
+		}
+	}
+}
+
+impl std::cmp::Eq for InternalString {}
+
+impl std::hash::Hash for InternalString {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		unsafe { (*self.ptr).hash(state) }
 	}
 }
