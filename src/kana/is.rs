@@ -34,8 +34,13 @@ pub fn is_kanji(chr: char) -> bool {
 	char_in_range(chr, KANJI_START, KANJI_END)
 }
 
+/// Returns true if the character is hiragana or katakana.
+pub fn is_kana(chr: char) -> bool {
+	is_hiragana(chr) || is_katakana(chr)
+}
+
 /// Returns true if the character is a japanese-style punctuation.
-pub fn is_punctuation(chr: char) -> bool {
+pub fn is_japanese_punctuation(chr: char) -> bool {
 	match chr as u32 {
 		// CJK Symbols and Punctuation
 		0x3000..=0x303F => true,
@@ -130,34 +135,39 @@ mod tests {
 	}
 
 	#[test]
-	fn test_is_punctuation() {
+	fn test_is_japanese_punctuation() {
 		// Japanese punctuation
 		let s = "　、。〃〄々〆〇〈〉《》「」『』【】〒〓〔〕〖〗〘〙〚〛〜〝〞〟〠〡〢〣〤〥〦〧〨〩〪〭〮〯〫〬〰〱〲〳〴〵〶〷〸〹〺〻〼〽〾〿・！＂＃＄％＆＇（）＊＋，－．／｡｢｣､･：；＜＝＞？［＼］＿｛｜｝～｟｠｡｢｣､･￠￡￢￣￤￥￦￨￩￪￫￬￭￮";
 		for chr in s.chars() {
-			assert!(is_punctuation(chr), "is_punctuation({}) -- 0x{:04X}", chr, chr as u32);
+			assert!(
+				is_japanese_punctuation(chr),
+				"is_japanese_punctuation({}) -- 0x{:04X}",
+				chr,
+				chr as u32
+			);
 		}
 
 		for code in 0x3000..=0x303F {
 			let chr = std::char::from_u32(code).unwrap();
-			assert!(is_punctuation(chr), "is_punctuation(U+{:04X})", code);
+			assert!(is_japanese_punctuation(chr), "is_japanese_punctuation(U+{:04X})", code);
 		}
 
-		assert!(!is_punctuation('\u{2FFF}'));
-		assert!(!is_punctuation('\u{3040}'));
-		assert!(!is_punctuation('\u{FF00}'));
-		assert!(!is_punctuation('\u{FFEF}'));
-		assert!(!is_punctuation('ヽ'));
-		assert!(!is_punctuation('ー'));
-		assert!(!is_punctuation('ｚ'));
-		assert!(!is_punctuation('ｦ'));
-		assert!(!is_punctuation('０'));
-		assert!(!is_punctuation('９'));
-		assert!(!is_punctuation('＠'));
-		assert!(!is_punctuation('Ｚ'));
-		assert!(!is_punctuation('＾'));
-		assert!(!is_punctuation('｀'));
-		assert!(!is_punctuation('ｚ'));
-		assert!(!is_punctuation('ヺ'));
-		assert!(!is_punctuation('ￜ'));
+		assert!(!is_japanese_punctuation('\u{2FFF}'));
+		assert!(!is_japanese_punctuation('\u{3040}'));
+		assert!(!is_japanese_punctuation('\u{FF00}'));
+		assert!(!is_japanese_punctuation('\u{FFEF}'));
+		assert!(!is_japanese_punctuation('ヽ'));
+		assert!(!is_japanese_punctuation('ー'));
+		assert!(!is_japanese_punctuation('ｚ'));
+		assert!(!is_japanese_punctuation('ｦ'));
+		assert!(!is_japanese_punctuation('０'));
+		assert!(!is_japanese_punctuation('９'));
+		assert!(!is_japanese_punctuation('＠'));
+		assert!(!is_japanese_punctuation('Ｚ'));
+		assert!(!is_japanese_punctuation('＾'));
+		assert!(!is_japanese_punctuation('｀'));
+		assert!(!is_japanese_punctuation('ｚ'));
+		assert!(!is_japanese_punctuation('ヺ'));
+		assert!(!is_japanese_punctuation('ￜ'));
 	}
 }

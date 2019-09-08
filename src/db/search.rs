@@ -1,13 +1,86 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::collections::HashSet;
 
 use super::tables::*;
+use crate::kana::*;
+
+use itertools::*;
 
 /// Wrapper trait for a generic input string.
-pub trait InputString<'a>: Into<Cow<'a, str>> {}
+pub trait InputString<'a>: Into<Cow<'a, str>> + std::fmt::Display {}
 
-impl<'a, T> InputString<'a> for T where T: Into<Cow<'a, str>> {}
+impl<'a, T> InputString<'a> for T where T: Into<Cow<'a, str>> + std::fmt::Display {}
+
+/// Normalize the input, split it and filter out unsearchable characters.
+///
+/// Normalization occurs as following:
+/// - The text is normalized to the Unicode NFC form and converted to lowercase.
+/// - Katakana and Romaji are converted to Hiragana.
+/// - Intraword punctuation chars and `ー` are removed.
+/// - The Katakana `ー` is also removed.
+/// - The result is split by punctuation and spaces.
+/// - Non-kanji and non-kana characters are removed.
+#[allow(dead_code)]
+fn search_strings<'a, S>(query: S) -> Vec<String>
+where
+	S: InputString<'a>,
+{
+	let text = normalize_search_string(query, true);
+	let groups = text
+		.chars()
+		.filter(|&c| !intra_word_removable(c))
+		.group_by(|&c| is_word_split(c));
+	groups
+		.into_iter()
+		// Filter out group of split characters
+		.filter(|it| !it.0)
+		.map(|(_, e)| {
+			// Filter out non-searchable characters
+			e.filter(|&c| is_searchable(c)).collect::<String>()
+		})
+		// Filter out empty groups
+		.filter(|it| it.len() > 0)
+		.collect::<Vec<_>>()
+}
+
+/// Performs the basic normalization for a search string.
+///
+/// This performs Unicode normalization (to NFC) and lowercases the input.
+///
+/// If `japanese` is true, will also convert the input to hiragana.
+pub fn normalize_search_string<'a, S>(query: S, japanese: bool) -> String
+where
+	S: InputString<'a>,
+{
+	use unicode_normalization::UnicodeNormalization;
+
+	// First step, normalize the string. We use NFC to make sure accented
+	// characters are a single codepoint.
+	let text = query.into().trim().to_lowercase().nfc().collect::<String>();
+	let text = if japanese { to_hiragana(text) } else { text };
+	text
+}
+
+fn intra_word_removable(c: char) -> bool {
+	match c {
+		'々' | '_' | '\'' => true,
+		'・' | '᐀' => false, // For our purposes `・` and `᐀` are word separators
+		_ if is_word_mark(c) => true,
+		_ => false,
+	}
+}
+
+fn is_searchable(c: char) -> bool {
+	is_kanji(c) || is_hiragana(c)
+}
+
+fn is_word_split(c: char) -> bool {
+	match c {
+		'・' | '᐀' | '~' | '～' => true,
+		_ if is_japanese_punctuation(c) => true,
+		_ => !char::is_alphanumeric(c),
+	}
+}
 
 /// Available search modes for terms.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
@@ -47,17 +120,32 @@ impl Search for Root {
 		S2: InputString<'b>,
 	{
 		let mut indexes: HashSet<usize> = HashSet::new();
-		let query = query.into();
-		for (key, val) in &self.mem_index.terms {
-			let key = key.as_str();
-			let is_match = match mode {
-				SearchMode::Is => key == query.as_ref(),
-				SearchMode::Contains => key.contains(query.as_ref()),
-				SearchMode::Prefix => key.starts_with(query.as_ref()),
-				SearchMode::Suffix => key.ends_with(query.as_ref()),
-			};
+		let query = normalize_search_string(query, true);
+		let possible_indexes = self.index.search_term_word_by_prefix(&query);
+		for index in possible_indexes.into_iter() {
+			let entry = &self.terms[index];
+			let keys = vec![&entry.expression, &entry.reading].into_iter().chain(
+				entry
+					.forms
+					.iter()
+					.map(|x| vec![&x.expression, &x.reading].into_iter())
+					.flatten(),
+			);
+			let mut is_match = false;
+			for key in keys {
+				is_match = match mode {
+					SearchMode::Is => key == &query,
+					SearchMode::Contains => key.contains(&query),
+					SearchMode::Prefix => key.starts_with(&query),
+					SearchMode::Suffix => key.ends_with(&query),
+				};
+				if is_match {
+					break;
+				}
+			}
+
 			if is_match {
-				indexes.extend(val.iter());
+				indexes.insert(index);
 			}
 		}
 
@@ -75,7 +163,7 @@ impl Search for Root {
 	{
 		let mut out = Vec::new();
 		for it in query.into_iter() {
-			if let Some(&index) = self.mem_index.kanji.get(&it) {
+			if let Some(index) = self.index.search_kanji(it) {
 				out.push(self.kanji[index].clone());
 			}
 		}
@@ -83,106 +171,47 @@ impl Search for Root {
 	}
 }
 
-//
-// Indexes implementation
-//
+// spell-checker: disable
 
-/// Memory (i.e. not persisted) index for a [Root] database.
-pub struct MemoryIndex {
-	/// Index of kanji in the database, by their character.
-	pub kanji: HashMap<char, usize>,
-	/// Index of terms in the database, by the expression and reading.
-	pub terms: HashMap<InternalString, HashSet<usize>>,
-}
+#[cfg(test)]
+mod tests {
+	use super::*;
 
-impl Default for MemoryIndex {
-	fn default() -> MemoryIndex {
-		MemoryIndex {
-			kanji: HashMap::new(),
-			terms: HashMap::new(),
-		}
-	}
-}
+	#[test]
+	fn test_search_strings() {
+		// Non-searchable strings
+		assert_eq!(search_strings("").len(), 0);
+		assert_eq!(search_strings("  ").len(), 0);
+		assert_eq!(search_strings("123 456").len(), 0);
 
-impl MemoryIndex {
-	pub fn new() -> MemoryIndex {
-		MemoryIndex::default()
-	}
+		// Simple words
+		assert_eq!(search_strings("tomodachi"), vec!["ともだち"]);
+		assert_eq!(search_strings("ともだち"), vec!["ともだち"]);
+		assert_eq!(search_strings("トモダチ"), vec!["ともだち"]);
+		assert_eq!(search_strings("友達"), vec!["友達"]);
+		assert_eq!(
+			search_strings("ともだち友達トモダチdesu"),
+			vec!["ともだち友達ともだちです"]
+		);
 
-	#[inline]
-	fn index_term(&mut self, term: &String, index: usize) {
-		self.terms
-			.entry(InternalString::from(term))
-			.and_modify(|e| {
-				e.insert(index);
-			})
-			.or_insert_with(|| {
-				let mut h = HashSet::new();
-				h.insert(index);
-				h
-			});
-	}
-}
+		// Intra-word separators
+		assert_eq!(search_strings("to_mo-da''123''chi"), vec!["ともだち"]);
+		assert_eq!(search_strings("とーもヽヾだゝゞち"), vec!["ともだち"]);
+		assert_eq!(search_strings("トモダチ"), vec!["ともだち"]);
+		assert_eq!(search_strings("友x123x々達"), vec!["友達"]);
 
-pub fn update_mem_index(db: &mut Root) {
-	db.mem_index.kanji.clear();
-	db.mem_index.terms.clear();
-
-	for (i, it) in db.kanji.iter().enumerate() {
-		db.mem_index.kanji.insert(it.character, i);
-	}
-
-	for (i, it) in db.terms.iter().enumerate() {
-		db.mem_index.index_term(&it.expression, i);
-		db.mem_index.index_term(&it.reading, i);
-		for form in &it.forms {
-			db.mem_index.index_term(&form.expression, i);
-			db.mem_index.index_term(&form.reading, i);
-		}
-	}
-}
-
-/// Used only internally as keys for the HashMap used by the index. This avoids
-/// the need for a key copy when building the index.
-#[derive(Copy, Clone)]
-pub struct InternalString {
-	// The lifetime of this pointer is the lifetime of the outer [Root] struct
-	// that contains the [MemoryIndex].
-	ptr: *const str,
-}
-
-unsafe impl Send for InternalString {}
-unsafe impl Sync for InternalString {}
-
-impl InternalString {
-	#[inline]
-	fn from<S>(value: S) -> InternalString
-	where
-		S: AsRef<str>,
-	{
-		let ptr = value.as_ref() as *const str;
-		InternalString { ptr }
-	}
-
-	fn as_str<'a>(&'a self) -> &'a str {
-		unsafe { &*self.ptr }
-	}
-}
-
-impl std::cmp::PartialEq for InternalString {
-	fn eq(&self, other: &Self) -> bool {
-		if self.ptr == other.ptr {
-			true
-		} else {
-			unsafe { (*self.ptr) == (*other.ptr) }
-		}
-	}
-}
-
-impl std::cmp::Eq for InternalString {}
-
-impl std::hash::Hash for InternalString {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		unsafe { (*self.ptr).hash(state) }
+		// Word separators
+		assert_eq!(
+			search_strings("to mo,da/chi~ta・chi"),
+			vec!["と", "も", "だ", "ち", "た", "ち"]
+		);
+		assert_eq!(
+			search_strings("と・も᐀だ～ち　た『ち』"),
+			vec!["と", "も", "だ", "ち", "た", "ち"]
+		);
+		assert_eq!(
+			search_strings("と も,だ’ち~た(ち)"),
+			vec!["と", "も", "だ", "ち", "た", "ち"]
+		);
 	}
 }

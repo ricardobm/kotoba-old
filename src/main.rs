@@ -99,8 +99,9 @@ fn run() -> i32 {
 	}
 
 	let start = time::Instant::now();
+	println!("Indexing...");
 	db.update_index();
-	println!("Updated indexes in {:.3}s", start.elapsed().as_secs_f64());
+	println!("...updated indexes in {:.3}s", start.elapsed().as_secs_f64());
 
 	server::launch(japanese::Dictionary::new(db));
 

@@ -7,12 +7,11 @@ use std::path::Path;
 
 use itertools::*;
 
-use super::search::{update_mem_index, MemoryIndex};
+use super::index::Index;
 
 use crate::kana::{to_hiragana, to_romaji};
 
 /// Main serialization structure for the dictionary database.
-#[allow(dead_code)]
 #[derive(Serialize, Deserialize)]
 pub struct Root {
 	pub kanji:      Vec<KanjiRow>,
@@ -23,13 +22,10 @@ pub struct Root {
 	pub meta_terms: Vec<MetaRow>,
 
 	#[serde(skip)]
-	tag_keys: HashSet<String>,
-
-	#[serde(skip)]
 	from: String,
 
 	#[serde(skip)]
-	pub(super) mem_index: MemoryIndex,
+	pub(super) index: Index,
 }
 
 trait DbDisplay {
@@ -45,11 +41,8 @@ impl Root {
 			sources:    Vec::new(),
 			meta_kanji: Vec::new(),
 			meta_terms: Vec::new(),
-
-			tag_keys: HashSet::new(),
-			from:     String::from("new"),
-
-			mem_index: MemoryIndex::new(),
+			from:       String::from("new"),
+			index:      Index::default(),
 		}
 	}
 
@@ -90,7 +83,24 @@ impl Root {
 
 	/// Updates the internal indexes of the database.
 	pub fn update_index(&mut self) {
-		update_mem_index(self);
+		self.index.clear();
+
+		// Map all kanji in the database
+		for (index, kanji) in self.kanji.iter().enumerate() {
+			self.index.map_kanji(kanji.character, index);
+		}
+
+		let all_terms = self.terms.iter().enumerate().map(|(index, term)| {
+			let keys = vec![&term.expression, &term.reading].into_iter().chain(
+				term.forms
+					.iter()
+					.map(|x| vec![&x.expression, &x.reading].into_iter())
+					.flatten(),
+			);
+			(index, keys)
+		});
+		self.index.map_term_keywords(all_terms);
+		self.index.dump_info();
 	}
 
 	/// Add a [TagRow] to the database, returning the new [TagId].
