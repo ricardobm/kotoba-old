@@ -33,6 +33,10 @@ pub const TO_LOWERCASE_OFFSET_ADD: u8 = LOWERCASE_START - UPPERCASE_START;
 pub const HIRAGANA_START: u32 = 0x3041;
 pub const HIRAGANA_END: u32 = 0x3096;
 pub const KATAKANA_START: u32 = 0x30A1;
+pub const KATAKANA_END: u32 = 0x30FA;
+
+pub const KANJI_START: u32 = 0x4E00;
+pub const KANJI_END: u32 = 0x9FAF;
 
 /// Last katakana that can be converted directly to hiragana by offseting.
 pub const KATAKANA_TO_HIRAGANA_END: u32 = 0x30F6;
@@ -354,11 +358,13 @@ lazy_static! {
 		// Cases below have been modified from the original
 		//
 
-		// Those are the weird katakana characters
+		// Weird katakana and hiragana characters
 		"ヷ" => "ゔぁ",
 		"ヸ" => "ゔぃ",
 		"ヹ" => "ゔぇ",
 		"ヺ" => "ゔぉ",
+		"ヿ" => "こと", // U+30FF - Katakana Digraph Koto
+		"ゟ" => "より", // U+309F - Hiragana Digraph Yori
 
 		// Those `n` cases differ from waka_kana because we don't need IME mode
 		"n" => "ん",
