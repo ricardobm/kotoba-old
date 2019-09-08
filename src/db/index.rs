@@ -149,7 +149,9 @@ impl Index {
 				}
 
 				for i in sta..=end {
-					indexes = indexes.union(&self.word_index[i].1).cloned().collect();
+					for &key in self.word_index[i].1.iter() {
+						indexes.insert(key);
+					}
 				}
 			}
 
