@@ -179,6 +179,7 @@ mod tests {
 		}
 
 		check("", "");
+		check("そうしんうぃんどう", "そうしんウィンドウ");
 
 		// Katakana
 		const H: &str = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろゎわゐゑをんゔゕゖ";
@@ -245,6 +246,8 @@ mod tests {
 		}
 
 		check("", "");
+		check("そうしんウィンドウ", "soushinwindou");
+		check("ああんいぇああ", "aan'yeaa");
 
 		//
 		// Reversed tests from to_hiragana
@@ -329,7 +332,7 @@ mod tests {
 		// Convert mixed kana to romaji"
 		check("ワニカニ　が　すごい　だ", "wanikani ga sugoi da");
 		// Doesn't mangle the long dash 'ー' or slashdot '・'"
-		check("罰ゲーム・ばつげーむ", "罰ge-mu・batsuge-mu");
+		check("罰ゲーム・ばつげーむ", "罰ge-mu/batsuge-mu");
 		// Spaces must be manually entered"
 
 		// Double ns and double consonants:

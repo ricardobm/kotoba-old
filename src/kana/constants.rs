@@ -412,7 +412,7 @@ lazy_static! {
 		"？" => "?",
 		"。" => ".",
 		"：" => ": ", // Changed from wana-kana
-		"・" => "・", // Changed from wana-kana
+		"・" => "/",
 		"、" => ",",
 		"〜" => "~",
 		"ー" => "-",
@@ -651,6 +651,13 @@ lazy_static! {
 		"んや" => "n'ya",
 		"んゆ" => "n'yu",
 		"んよ" => "n'yo",
+
+		// Ambiguous consonant vowel pairs with digraphs
+		"んうぁ" => "nwha",
+		"んうぉ" => "nwho",
+		"んうぃ" => "nwi",
+		"んうぇ" => "nwe",
+		"んいぇ" => "n'ye",
 	};
 
 	/// First characters of all keys in the [TO_ROMAJI] table.
