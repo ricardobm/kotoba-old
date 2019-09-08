@@ -1,8 +1,6 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 #![feature(duration_float)]
 
-extern crate itertools;
-
 #[macro_use]
 extern crate serde;
 extern crate serde_json;
@@ -10,8 +8,11 @@ extern crate serde_tuple;
 
 extern crate bincode;
 
+extern crate fnv;
+extern crate itertools;
 extern crate rand;
 extern crate regex;
+extern crate unicode_normalization;
 
 extern crate zip;
 
@@ -21,8 +22,6 @@ extern crate lazy_static;
 #[macro_use]
 extern crate rocket;
 extern crate rocket_contrib;
-
-extern crate wana_kana;
 
 use std::path::PathBuf;
 use std::time;
@@ -34,6 +33,7 @@ mod config;
 mod db;
 mod import;
 mod japanese;
+mod kana;
 mod server;
 
 fn main() {

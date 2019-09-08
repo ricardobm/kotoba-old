@@ -9,7 +9,7 @@ use itertools::*;
 
 use super::search::{update_mem_index, MemoryIndex};
 
-use crate::japanese::{to_hiragana, to_romaji};
+use crate::kana::{to_hiragana, to_romaji};
 
 /// Main serialization structure for the dictionary database.
 #[allow(dead_code)]

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use itertools::*;
-use wana_kana::is_kanji::is_kanji;
+use kana::{is_kanji, to_romaji};
 
 use super::db;
 pub use db::{InputString, Search, SearchMode};
@@ -64,7 +64,7 @@ impl Dictionary {
 		let terms = self.db.search_terms(&query, &romaji, options.mode, options.fuzzy);
 
 		let kanji = if options.with_kanji {
-			let kanji = query.chars().filter(|x| is_kanji(x.to_string().as_str())).unique();
+			let kanji = query.chars().filter(|&x| is_kanji(x)).unique();
 			let kanji = self.db.search_kanji(kanji);
 			Some(kanji)
 		} else {
@@ -162,33 +162,4 @@ pub struct QueryResult {
 
 	/// Options used in the search.
 	pub options: SearchOptions,
-}
-
-pub fn to_hiragana<'a, S>(input: S) -> String
-where
-	S: InputString<'a> + std::fmt::Display,
-{
-	let text = input.into();
-	wana_kana::to_hiragana::to_hiragana(text.as_ref())
-}
-
-pub fn to_romaji<'a, S>(input: S) -> String
-where
-	S: InputString<'a> + std::fmt::Display,
-{
-	let mut text = String::from(input.into());
-
-	// The kana library completely barfs on "っっ", so replace it by "っ".
-	while text.contains("っっ") {
-		text = text.replace("っっ", "っ");
-	}
-	while text.contains("ッッ") {
-		text = text.replace("ッッ", "ッ");
-	}
-
-	let result = std::panic::catch_unwind(|| wana_kana::to_romaji::to_romaji(text.as_str()));
-	match result {
-		Ok(value) => value,
-		Err(_) => panic!(format!("\n!\n! FAILED: to_romaji({})\n!\n", text)),
-	}
 }
