@@ -9,26 +9,75 @@ use fnv::FnvHashSet;
 // http://unicode-table.com
 
 macro_rules! hashmap {
-    (@single $($x:tt)*) => (());
-    (@count $($rest:expr),*) => (<[()]>::len(&[$(hashmap!(@single $rest)),*]));
+	(@single $($x:tt)*) => (());
+	(@count $($rest:expr),*) => (<[()]>::len(&[$(hashmap!(@single $rest)),*]));
 
-    ($($key:expr => $value:expr,)+) => { hashmap!($($key => $value),+) };
-    ($($key:expr => $value:expr),*) => {
-        {
-            let _cap = hashmap!(@count $($key),*);
-            let mut _map = ::fnv::FnvHashMap::with_capacity_and_hasher(_cap, Default::default());
-            $(
-                let _ = _map.insert($key, $value);
-            )*
-            _map
-        }
-    };
+	($($key:expr => $value:expr,)+) => { hashmap!($($key => $value),+) };
+	($($key:expr => $value:expr),*) => {
+		{
+			let _cap = hashmap!(@count $($key),*);
+			let mut _map = ::fnv::FnvHashMap::with_capacity_and_hasher(_cap, Default::default());
+			$(
+				let _ = insert_all(&mut _map, $key, $value);
+			)*
+			_map
+		}
+	};
 }
 
-pub const UPPERCASE_START: u8 = 'A' as u8;
-pub const UPPERCASE_END: u8 = 'Z' as u8;
-pub const LOWERCASE_START: u8 = 'a' as u8;
-pub const TO_LOWERCASE_OFFSET_ADD: u8 = LOWERCASE_START - UPPERCASE_START;
+fn insert_all(map: &mut fnv::FnvHashMap<&'static str, &'static str>, key: &'static str, val: &'static str) {
+	use std::sync::Mutex;
+
+	lazy_static! {
+		static ref STRINGS: Mutex<Vec<String>> = Mutex::new(vec![]);
+	}
+
+	map.insert(key, val);
+
+	fn push_str(s: String) -> &'static str {
+		let mut strings = STRINGS.lock().unwrap();
+		strings.push(s);
+
+		let last_str = strings[strings.len() - 1].as_str() as *const str;
+		unsafe { &*last_str }
+	}
+
+	fn gen_keys(
+		map: &mut fnv::FnvHashMap<&'static str, &'static str>,
+		lc: &Vec<char>,
+		uc: &Vec<char>,
+		val: &'static str,
+		base: String,
+		index: usize,
+	) {
+		if index >= lc.len() {
+			map.insert(push_str(base), val);
+			return;
+		}
+
+		let mut key_lc = base.clone();
+		key_lc.push(lc[index]);
+		gen_keys(map, lc, uc, val, key_lc, index + 1);
+
+		if lc[index] != uc[index] {
+			let mut key_uc = base;
+			key_uc.push(uc[index]);
+			gen_keys(map, lc, uc, val, key_uc, index + 1);
+		}
+	}
+
+	let upper = key.to_uppercase();
+	if upper != key {
+		if upper.chars().count() == 1 {
+			map.insert(push_str(upper), val);
+		} else {
+			let lc = key.chars().collect::<Vec<_>>();
+			let uc = upper.chars().collect::<Vec<_>>();
+			assert!(lc.len() == uc.len() && lc.len() > 0);
+			gen_keys(map, &lc, &uc, val, String::new(), 0);
+		}
+	}
+}
 
 pub const HIRAGANA_START: u32 = 0x3041;
 pub const HIRAGANA_END: u32 = 0x3096;
@@ -42,11 +91,21 @@ pub const KANJI_END: u32 = 0x9FAF;
 pub const KATAKANA_TO_HIRAGANA_END: u32 = 0x30F6;
 pub const KATAKANA_TO_HIRAGANA_OFFSET_SUB: u32 = KATAKANA_START - HIRAGANA_START;
 
-pub const TO_HIRAGANA_MAX_CHUNK: usize = 4;
-
 // spell-checker: disable
 
 lazy_static! {
+
+	// NOTE ON MULTI-CHAR LOOKUP
+	// =========================
+	//
+	// The hiragana conversion is optimized to lookup only one character ahead
+	// when converting, unless there is a possibility for a multi-character
+	// lookup key.
+	//
+	// For now, multi-character lookups either start with A-Z or the `: `.
+	//
+	// Whatever is the case above, it needs to be handled in `to_hiragana`.
+	//
 	pub static ref TO_HIRAGANA: FnvHashMap<&'static str, &'static str> = hashmap! {
 		"." => "。",
 		"," => "、",
@@ -390,20 +449,15 @@ lazy_static! {
 		"û" => "うー",
 		"ê" => "えー",
 		"ô" => "おー",
+	};
 
-		// Our lowercase implementation for this is limited to ASCII for
-		// performance reasons, so repeat for uppercase mappings.
-		"Ā" => "あー",
-		"Ī" => "いー",
-		"Ū" => "うー",
-		"Ē" => "えー",
-		"Ō" => "おー",
-
-		"Â" => "あー",
-		"Î" => "いー",
-		"Û" => "うー",
-		"Ê" => "えー",
-		"Ô" => "おー",
+	/// Maximum length of any key in the [TO_HIRAGANA] table.
+	pub static ref TO_HIRAGANA_MAX_CHUNK: usize = {
+		let mut size = 0;
+		for key in TO_HIRAGANA.keys() {
+			size = std::cmp::max(size, key.chars().count());
+		}
+		size
 	};
 
 	pub static ref TO_ROMAJI: FnvHashMap<&'static str, &'static str> = hashmap! {

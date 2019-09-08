@@ -8,8 +8,8 @@ use std::borrow::Cow;
 use super::constants::*;
 use super::util::*;
 
-/// Converts the input string into hiragana. Unknown characters pass-through
-/// lowercased.
+/// Converts the input string into hiragana. Unknown characters just pass
+/// through unchanged.
 ///
 /// Supports mapping romaji and katakana.
 pub fn to_hiragana<'a, S>(input: S) -> String
@@ -19,8 +19,6 @@ where
 	let input = input.into();
 	let mut src = input.as_ref();
 	let mut out = String::with_capacity(src.len());
-
-	let mut chunk = String::with_capacity(TO_HIRAGANA_MAX_CHUNK * 4);
 
 	while src.len() > 0 {
 		let mut chars = src.char_indices();
@@ -37,33 +35,26 @@ where
 			out.push(hiragana);
 			done = true;
 		} else if !char_in_range(next, HIRAGANA_START, HIRAGANA_END) {
-			// Copy the next chunk as lowercase
-			chunk.truncate(0);
-			chunk.push_str(get_prefix(src, TO_HIRAGANA_MAX_CHUNK));
-			unsafe {
-				// Fast ASCII-only lowercase conversion just for the sake of
-				// comparing to keys in the table.
-				let b = chunk.as_bytes_mut();
-				for i in 0..b.len() {
-					if b[i] >= UPPERCASE_START && b[i] <= UPPERCASE_END {
-						b[i] += TO_LOWERCASE_OFFSET_ADD;
-					}
-				}
-
-				// Double consonant case
-				if b.len() >= 2 {
-					let c = b[0] as char;
-					if c != 'n' && is_consonant(c, true) && b[0] == b[1] {
-						out.push('っ');
-						done = true;
-					}
+			// Handle the double consonant case
+			let b = src.as_bytes();
+			if b.len() >= 2 {
+				let c = b[0] as char;
+				if c != 'n' && c != 'N' && is_consonant(c, true) && b[0] == b[1] {
+					out.push('っ');
+					done = true;
 				}
 			}
 
 			if !done {
-				// Try to convert all chunk sizes down to 1
-				for len in (1..=TO_HIRAGANA_MAX_CHUNK).rev() {
-					let chunk = get_prefix(chunk.as_str(), len);
+				// Try to convert all chunk sizes, starting from largest down to 1.
+				let max_chunk = if next == ':' || (next >= 'a' && next <= 'z') || (next >= 'A' && next <= 'Z') {
+					// Multi-char lookup keys either start with A-Z or `:`
+					*TO_HIRAGANA_MAX_CHUNK
+				} else {
+					1
+				};
+				for len in (1..=max_chunk).rev() {
+					let chunk = get_prefix(src, len);
 					if let Some(kana) = TO_HIRAGANA.get(chunk) {
 						out.push_str(kana);
 						skip = chunk.len();
@@ -76,10 +67,7 @@ where
 
 		// If could not find a conversion, just pass through the character.
 		if !done {
-			// We want the output lowercased.
-			for c in next.to_lowercase() {
-				out.push(c);
-			}
+			out.push(next);
 		}
 
 		src = &src[skip..];
@@ -174,8 +162,8 @@ mod tests {
 	fn test_to_hiragana() {
 		fn check(kana: &str, input: &str) {
 			assert_eq!(kana, to_hiragana(input));
-			assert_eq!(kana, to_hiragana(input.to_uppercase()));
-			assert_eq!(kana, to_hiragana(input.to_lowercase()));
+			assert_eq!(kana.to_uppercase(), to_hiragana(input.to_uppercase()));
+			assert_eq!(kana.to_lowercase(), to_hiragana(input.to_lowercase()));
 		}
 
 		check("", "");
@@ -194,6 +182,7 @@ mod tests {
 
 		// Pass through punctuation
 		check("・ー～", "・ー～");
+		check("あ：ば", "A: BA"); // `: ` to `：`
 
 		// Weird katakana
 		check("ゔぁ ゔぃ ゔ ゔぇ ゔぉ", "ヷ ヸ ヴ ヹ ヺ");
