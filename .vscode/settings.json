@@ -2,11 +2,13 @@
     "cSpell.words": [
         "Anki",
         "JLPT",
+        "zenkaku",
         "deserializer",
         "forvo",
         "godan",
         "hongo",
         "ichidan",
+        "interpunct",
         "itertools",
         "jisho",
         "keiyoushi",
@@ -16,6 +18,7 @@
         "romaji",
         "suru",
         "wana",
-        "yomichan"
+        "yomichan",
+        "āēīōū"
     ]
 }
