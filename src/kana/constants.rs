@@ -32,8 +32,6 @@ fn insert_all(map: &mut fnv::FnvHashMap<&'static str, &'static str>, key: &'stat
 		static ref STRINGS: Mutex<Vec<String>> = Mutex::new(vec![]);
 	}
 
-	map.insert(key, val);
-
 	fn push_str(s: String) -> &'static str {
 		let mut strings = STRINGS.lock().unwrap();
 		strings.push(s);
@@ -64,6 +62,14 @@ fn insert_all(map: &mut fnv::FnvHashMap<&'static str, &'static str>, key: &'stat
 			key_uc.push(uc[index]);
 			gen_keys(map, lc, uc, val, key_uc, index + 1);
 		}
+	}
+
+	map.insert(key, val);
+
+	use super::util::hiragana_to_katakana;
+	let katakana = key.chars().map(hiragana_to_katakana).collect::<String>();
+	if katakana != key {
+		map.insert(push_str(katakana), val);
 	}
 
 	let upper = key.to_uppercase();
@@ -597,9 +603,17 @@ lazy_static! {
 		"を" => "wo",
 		"ん" => "n",
 
-		// Archaic characters
+		// Archaic and weird characters
 		"ゐ" => "wi",
 		"ゑ" => "we",
+
+		"ヷ" => "va",
+		"ヸ" => "vi",
+		"ヹ" => "ve",
+		"ヺ" => "vo",
+
+		"ヿ" => "koto", // U+30FF - Katakana Digraph Koto
+		"ゟ" => "yori", // U+309F - Hiragana Digraph Yori
 
 		// Uncommon character combos
 		"きぇ" => "kye",

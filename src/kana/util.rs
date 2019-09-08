@@ -11,6 +11,22 @@ pub fn char_in_range(c: char, start: u32, end: u32) -> bool {
 }
 
 #[inline]
+pub fn hiragana_to_katakana(c: char) -> char {
+	use super::constants::*;
+
+	const OFFSET: u32 = KATAKANA_TO_HIRAGANA_OFFSET_SUB;
+	const RANGE_START: u32 = KATAKANA_START - OFFSET;
+	const RANGE_END: u32 = KATAKANA_TO_HIRAGANA_END - OFFSET;
+
+	if char_in_range(c, RANGE_START, RANGE_END) {
+		let code = (c as u32) + OFFSET;
+		unsafe { std::char::from_u32_unchecked(code) }
+	} else {
+		c
+	}
+}
+
+#[inline]
 pub fn is_consonant(c: char, include_y: bool) -> bool {
 	match c {
 		'b' | 'c' | 'd' | 'f' | 'g' | 'h' | 'j' | 'k' | 'l' | 'm' => true,

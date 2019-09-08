@@ -87,12 +87,10 @@ where
 	// Representation for `っ` when it is not a valid double consonant.
 	const SMALL_TSU_REPR: char = '\'';
 
-	// For simplicity sake, convert the input to hiragana
-	let src = to_hiragana(input);
-
 	let mut was_small_tsu = false;
 
-	let mut src = src.as_str();
+	let src = input.into();
+	let mut src = src.as_ref();
 	let mut out = String::with_capacity(src.len());
 	while src.len() > 0 {
 		let mut chars = src.char_indices();
@@ -102,7 +100,7 @@ where
 		let mut skip = size;
 		let mut done = false;
 
-		if next == 'っ' {
+		if next == 'っ' || next == 'ッ' {
 			if was_small_tsu {
 				out.push(SMALL_TSU_REPR); // Case of repeated `っ`
 			}
@@ -161,9 +159,19 @@ mod tests {
 	#[test]
 	fn test_to_hiragana() {
 		fn check(kana: &str, input: &str) {
-			assert_eq!(kana, to_hiragana(input));
-			assert_eq!(kana.to_uppercase(), to_hiragana(input.to_uppercase()));
-			assert_eq!(kana.to_lowercase(), to_hiragana(input.to_lowercase()));
+			assert_eq!(kana, to_hiragana(input), "input `{}`", input);
+			assert_eq!(
+				kana.to_uppercase(),
+				to_hiragana(input.to_uppercase()),
+				"input `{}`",
+				input
+			);
+			assert_eq!(
+				kana.to_lowercase(),
+				to_hiragana(input.to_lowercase()),
+				"input `{}`",
+				input
+			);
 		}
 
 		check("", "");
@@ -226,17 +234,131 @@ mod tests {
 		);
 		check("座禅「ざぜん」すたいる", "座禅‘zazen’スタイル");
 		check("ばつげーむ", "batsuge-mu");
+
+		let all_kana = vec![
+			("ァ", "ぁ", ""),
+			("ア", "あ", "a"),
+			("ィ", "ぃ", ""),
+			("イ", "い", "i"),
+			("ゥ", "ぅ", ""),
+			("ウ", "う", "u"),
+			("ェ", "ぇ", ""),
+			("エ", "え", "e"),
+			("ォ", "ぉ", ""),
+			("オ", "お", "o"),
+			("カ", "か", "ka"),
+			("ガ", "が", "ga"),
+			("キ", "き", "ki"),
+			("ギ", "ぎ", "gi"),
+			("ク", "く", "ku"),
+			("グ", "ぐ", "gu"),
+			("ケ", "け", "ke"),
+			("ゲ", "げ", "ge"),
+			("コ", "こ", "ko"),
+			("ゴ", "ご", "go"),
+			("サ", "さ", "sa"),
+			("ザ", "ざ", "za"),
+			("シ", "し", "shi"),
+			("ジ", "じ", "ji"),
+			("ス", "す", "su"),
+			("ズ", "ず", "zu"),
+			("セ", "せ", "se"),
+			("ゼ", "ぜ", "ze"),
+			("ソ", "そ", "so"),
+			("ゾ", "ぞ", "zo"),
+			("タ", "た", "ta"),
+			("ダ", "だ", "da"),
+			("チ", "ち", "chi"),
+			("ヂ", "ぢ", "di"),
+			("ッ", "っ", ""),
+			("ツ", "つ", "tsu"),
+			("ヅ", "づ", "du"),
+			("テ", "て", "te"),
+			("デ", "で", "de"),
+			("ト", "と", "to"),
+			("ド", "ど", "do"),
+			("ナ", "な", "na"),
+			("ニ", "に", "ni"),
+			("ヌ", "ぬ", "nu"),
+			("ネ", "ね", "ne"),
+			("ノ", "の", "no"),
+			("ハ", "は", "ha"),
+			("バ", "ば", "ba"),
+			("パ", "ぱ", "pa"),
+			("ヒ", "ひ", "hi"),
+			("ビ", "び", "bi"),
+			("ピ", "ぴ", "pi"),
+			("フ", "ふ", "fu"),
+			("ブ", "ぶ", "bu"),
+			("プ", "ぷ", "pu"),
+			("ヘ", "へ", "he"),
+			("ベ", "べ", "be"),
+			("ペ", "ぺ", "pe"),
+			("ホ", "ほ", "ho"),
+			("ボ", "ぼ", "bo"),
+			("ポ", "ぽ", "po"),
+			("マ", "ま", "ma"),
+			("ミ", "み", "mi"),
+			("ム", "む", "mu"),
+			("メ", "め", "me"),
+			("モ", "も", "mo"),
+			("ャ", "ゃ", ""),
+			("ヤ", "や", "ya"),
+			("ュ", "ゅ", ""),
+			("ユ", "ゆ", "yu"),
+			("ョ", "ょ", ""),
+			("ヨ", "よ", "yo"),
+			("ラ", "ら", "ra"),
+			("リ", "り", "ri"),
+			("ル", "る", "ru"),
+			("レ", "れ", "re"),
+			("ロ", "ろ", "ro"),
+			("ヮ", "ゎ", ""),
+			("ワ", "わ", "wa"),
+			("ヰ", "ゐ", ""),
+			("", "うぃ", "wi"),
+			("ヱ", "ゑ", ""),
+			("", "うぇ", "we"),
+			("ヲ", "を", "wo"),
+			("ン", "ん", "n"),
+			("ヴ", "ゔ", "vu"),
+			("ヵ", "ゕ", ""),
+			("ヶ", "ゖ", ""),
+			("ヷ", "ゔぁ", "va"),
+			("ヸ", "ゔぃ", "vi"),
+			("ヹ", "ゔぇ", "ve"),
+			("ヺ", "ゔぉ", "vo"),
+			("・", "・", "/"),
+			("ー", "ー", "-"),
+			("ヽ", "ヽ", ""),
+			("ヾ", "ヾ", ""),
+			("ヿ", "こと", "koto"),
+			("゛", "゛", ""),
+			("゜", "゜", ""),
+			("ゝ", "ゝ", ""),
+			("ゞ", "ゞ", ""),
+			("ゟ", "より", "yori"),
+		];
+		for (katakana, hiragana, romaji) in all_kana {
+			if romaji.len() > 0 {
+				check(hiragana, romaji);
+			}
+			if katakana.len() > 0 {
+				check(hiragana, katakana);
+			}
+		}
 	}
 
 	#[test]
 	fn test_to_romaji() {
 		fn check(kana: &str, romaji: &str) {
-			assert_eq!(romaji, to_romaji(kana));
+			assert_eq!(romaji, to_romaji(kana), "kana: `{}`", kana);
 		}
 
 		check("", "");
 		check("そうしんウィンドウ", "soushinwindou");
 		check("ああんいぇああ", "aan'yeaa");
+		check("ヷヸヴヹヺ ゔぁゔぃゔゔぇゔぉ", "vavivuvevo vavivuvevo");
 
 		//
 		// Reversed tests from to_hiragana
@@ -356,7 +478,7 @@ mod tests {
 		check("ぇ", "e");
 		// Small o"
 		check("ぉ", "o");
-		// Small ke (ka)"
+		// Small ke (ka)" - https://en.wikipedia.org/wiki/Small_ke
 		check("ヶ", "ka");
 		// Small ka"
 		check("ヵ", "ka");
@@ -367,5 +489,116 @@ mod tests {
 
 		check("おんよみ", "on'yomi");
 		check("んよ んあ んゆ", "n'yo n'a n'yu");
+
+		let all_kana = vec![
+			("ァ", "ぁ", "a"),
+			("ア", "あ", "a"),
+			("ィ", "ぃ", "i"),
+			("イ", "い", "i"),
+			("ゥ", "ぅ", "u"),
+			("ウ", "う", "u"),
+			("ェ", "ぇ", "e"),
+			("エ", "え", "e"),
+			("ォ", "ぉ", "o"),
+			("オ", "お", "o"),
+			("カ", "か", "ka"),
+			("ガ", "が", "ga"),
+			("キ", "き", "ki"),
+			("ギ", "ぎ", "gi"),
+			("ク", "く", "ku"),
+			("グ", "ぐ", "gu"),
+			("ケ", "け", "ke"),
+			("ゲ", "げ", "ge"),
+			("コ", "こ", "ko"),
+			("ゴ", "ご", "go"),
+			("サ", "さ", "sa"),
+			("ザ", "ざ", "za"),
+			("シ", "し", "shi"),
+			("ジ", "じ", "ji"),
+			("ス", "す", "su"),
+			("ズ", "ず", "zu"),
+			("セ", "せ", "se"),
+			("ゼ", "ぜ", "ze"),
+			("ソ", "そ", "so"),
+			("ゾ", "ぞ", "zo"),
+			("タ", "た", "ta"),
+			("ダ", "だ", "da"),
+			("チ", "ち", "chi"),
+			("ヂ", "ぢ", "di"),
+			("ッ", "っ", "'"),
+			("ツ", "つ", "tsu"),
+			("ヅ", "づ", "du"),
+			("テ", "て", "te"),
+			("デ", "で", "de"),
+			("ト", "と", "to"),
+			("ド", "ど", "do"),
+			("ナ", "な", "na"),
+			("ニ", "に", "ni"),
+			("ヌ", "ぬ", "nu"),
+			("ネ", "ね", "ne"),
+			("ノ", "の", "no"),
+			("ハ", "は", "ha"),
+			("バ", "ば", "ba"),
+			("パ", "ぱ", "pa"),
+			("ヒ", "ひ", "hi"),
+			("ビ", "び", "bi"),
+			("ピ", "ぴ", "pi"),
+			("フ", "ふ", "fu"),
+			("ブ", "ぶ", "bu"),
+			("プ", "ぷ", "pu"),
+			("ヘ", "へ", "he"),
+			("ベ", "べ", "be"),
+			("ペ", "ぺ", "pe"),
+			("ホ", "ほ", "ho"),
+			("ボ", "ぼ", "bo"),
+			("ポ", "ぽ", "po"),
+			("マ", "ま", "ma"),
+			("ミ", "み", "mi"),
+			("ム", "む", "mu"),
+			("メ", "め", "me"),
+			("モ", "も", "mo"),
+			("ャ", "ゃ", "ya"),
+			("ヤ", "や", "ya"),
+			("ュ", "ゅ", "yu"),
+			("ユ", "ゆ", "yu"),
+			("ョ", "ょ", "yo"),
+			("ヨ", "よ", "yo"),
+			("ラ", "ら", "ra"),
+			("リ", "り", "ri"),
+			("ル", "る", "ru"),
+			("レ", "れ", "re"),
+			("ロ", "ろ", "ro"),
+			("ヮ", "ゎ", "wa"),
+			("ワ", "わ", "wa"),
+			("ヰ", "ゐ", "wi"),
+			("ヱ", "ゑ", "we"),
+			("ヲ", "を", "wo"),
+			("ン", "ん", "n"),
+			("ヴ", "ゔ", "vu"),
+			("ヵ", "ゕ", "ka"),
+			("ヶ", "ゖ", "ka"), // Note that small ke is pronounced as ka (https://en.wikipedia.org/wiki/Small_ke)
+			("ヷ", "", "va"),
+			("ヸ", "", "vi"),
+			("ヹ", "", "ve"),
+			("ヺ", "", "vo"),
+			("・", "", "/"),
+			("ー", "", "-"),
+			("ヽ", "", "ヽ"),
+			("ヾ", "", "ヾ"),
+			("ヿ", "", "koto"),
+			("", "゛", "゛"),
+			("", "゜", "゜"),
+			("", "ゝ", "ゝ"),
+			("", "ゞ", "ゞ"),
+			("", "ゟ", "yori"),
+		];
+		for (katakana, hiragana, val) in all_kana {
+			if katakana.len() > 0 {
+				check(katakana, val);
+			}
+			if hiragana.len() > 0 {
+				check(hiragana, val);
+			}
+		}
 	}
 }
