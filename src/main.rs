@@ -86,9 +86,8 @@ fn run() -> i32 {
 			start.elapsed().as_secs_f64()
 		);
 
-		let start = time::Instant::now();
-		db.save(dict_path).unwrap();
-		println!("Saved database in {:.3}s", start.elapsed().as_secs_f64());
+		db.update_index(true);
+		db.save(&dict_path).unwrap();
 		db
 	};
 
@@ -98,10 +97,9 @@ fn run() -> i32 {
 		println!();
 	}
 
-	let start = time::Instant::now();
-	println!("Indexing...");
-	db.update_index();
-	println!("...updated indexes in {:.3}s", start.elapsed().as_secs_f64());
+	if db.update_index(false) {
+		db.save(&dict_path).unwrap();
+	}
 
 	server::launch(japanese::Dictionary::new(db));
 

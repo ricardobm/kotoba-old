@@ -66,24 +66,69 @@ impl Root {
 				}
 			};
 			db.from = String::from(from);
+
+			// Try to load the index
+			let mut index_loaded = false;
+			let index_path = path.with_extension("index");
+			if let Ok(index_file) = File::open(&index_path) {
+				let index_file = io::BufReader::new(index_file);
+				if let Ok(index) = bincode::deserialize_from::<_, Index>(index_file) {
+					db.index = index;
+					index_loaded = true;
+				}
+			}
+
+			if !index_loaded {
+				eprintln!(
+					"WARNING: Failed to load index file from {}",
+					index_path.to_string_lossy()
+				);
+			}
+
 			Ok(Some(db))
 		}
 	}
 
 	/// Save the database to the given path.
 	pub fn save<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
+		let start = std::time::Instant::now();
+		let path = path.as_ref();
 		let fs = File::create(path)?;
 		let fs = io::BufWriter::new(fs);
 		if let Err(err) = bincode::serialize_into(fs, self) {
 			return io::Result::Err(io::Error::new(io::ErrorKind::Other, err));
 		}
 
+		let path_index = path.with_extension("index");
+		let fs_index = File::create(path_index)?;
+		let fs_index = io::BufWriter::new(fs_index);
+		if let Err(err) = bincode::serialize_into(fs_index, &self.index) {
+			return io::Result::Err(io::Error::new(io::ErrorKind::Other, err));
+		}
+
+		println!(
+			"Saved database to {} in {:.3}s",
+			path.to_string_lossy(),
+			start.elapsed().as_secs_f64()
+		);
+
 		Ok(())
 	}
 
 	/// Updates the internal indexes of the database.
-	pub fn update_index(&mut self) {
-		self.index.clear();
+	///
+	/// Returns true if the index was updated.
+	pub fn update_index(&mut self, force: bool) -> bool {
+		if force {
+			self.index.clear();
+		}
+
+		if !self.index.empty() {
+			return false;
+		}
+
+		println!("Updating database index...");
+		let start = std::time::Instant::now();
 
 		// Map all kanji in the database
 		for (index, kanji) in self.kanji.iter().enumerate() {
@@ -100,7 +145,11 @@ impl Root {
 			(index, keys)
 		});
 		self.index.map_term_keywords(all_terms);
+
+		println!("...updated indexes in {:.3}s", start.elapsed().as_secs_f64());
 		self.index.dump_info();
+
+		true
 	}
 
 	/// Add a [TagRow] to the database, returning the new [TagId].

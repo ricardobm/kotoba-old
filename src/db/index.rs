@@ -39,6 +39,11 @@ impl Index {
 		self.key_index.clear();
 	}
 
+	/// Returns if the index is empty.
+	pub fn empty(&self) -> bool {
+		self.key_index.len() == 0
+	}
+
 	// Dump index information to stdout.
 	pub fn dump_info(&self) {
 		let total = self.key_index.values().fold(0, |acc, x| acc + x.len());
@@ -118,7 +123,7 @@ impl Index {
 			let index = index as u32;
 
 			if index > 0 && index % 100000 == 0 {
-				println!("{}...", index);
+				println!("...{}", index);
 			}
 
 			for word in words.into_iter() {
