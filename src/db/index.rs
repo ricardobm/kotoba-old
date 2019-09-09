@@ -4,7 +4,6 @@ use std::iter;
 use std::iter::FromIterator;
 
 use super::search::{normalize_search_string, InputString};
-use crate::kana::is_kanji;
 
 /// Serializable database index structure.
 #[derive(Serialize, Deserialize)]
@@ -59,10 +58,32 @@ impl Index {
 	/// Search for mapped term index by the japanese keyword. This search
 	/// will match by the prefix.
 	///
+	/// Assumes the search keyword is already normalized.
+	///
 	/// If the search keyword is small and could possibly return too many
 	/// results, this might revert to an exact match search.
 	pub fn search_term_word_by_prefix<'a, S: InputString<'a>>(&self, word: S) -> HashSet<usize> {
-		let out = self.search_term_word_by_prefix_opts(word, None);
+		// If there are this many results or more, try to perform a more
+		// focused search.
+		const TOO_MANY_CUTOFF: usize = 10000;
+
+		let word = word.into();
+
+		// First try to do a broader search by prefix...
+		let out = self.search_term_word_by_prefix_opts(word.as_ref(), false);
+
+		// ...if there are too many results
+		let out = if out.len() > TOO_MANY_CUTOFF {
+			// then try to narrow the search by matching exactly.
+			let redo = self.search_term_word_by_prefix_opts(word, true);
+			if redo.len() > 0 {
+				redo
+			} else {
+				out // exact match found nothing, the broader search is better than nothing
+			}
+		} else {
+			out
+		};
 		out.into_iter().map(|x| x as usize).collect()
 	}
 
@@ -95,44 +116,23 @@ impl Index {
 		self.word_index.sort_by(|x, y| x.0.cmp(&y.0));
 	}
 
-	fn search_term_word_by_prefix_opts<'a, S: InputString<'a>>(
-		&self,
-		word: S,
-		single_mode: Option<bool>,
-	) -> HashSet<u32> {
+	fn search_term_word_by_prefix_opts<'a, S: InputString<'a>>(&self, word: S, single_mode: bool) -> HashSet<u32> {
 		use std::cmp::Ordering;
 
-		// If there are this many results or more, try to perform a more
-		// focused search.
-		const TOO_MANY_CUTOFF: usize = 100;
-
 		let mut indexes = HashSet::new();
-		let word = normalize_search_string(word, true);
+		let word = word.into();
+		let word = word.as_ref();
 		if word.len() > 0 {
-			let is_single_char = word.chars().take(2).count() == 1;
-			let is_single_kanji = is_single_char && is_kanji(word.chars().next().unwrap());
-
-			// Single mode reverts the search to a exact match instead of prefix
-			// match. This can be either forced by the `single_mode` parameter
-			// (in case of recursive calls, see below) or by the heuristic:
-			//
-			// - The search string consists of a single character.
-			// - The character is not kanji (a given kanji is most likely a lot
-			//   less common in the prefix of words than a hiragana).
-			//
-			// In any case, we may try a different decision if the results of
-			// the single/not single mode end up being bad (e.g. no results or
-			// too many results, as per `TOO_MANY_CUTOFF`).
-			let is_single = single_mode.unwrap_or(is_single_char && !is_single_kanji);
-
-			let cmp: Box<dyn (FnMut(&(String, HashSet<u32>)) -> Ordering)> = if is_single {
-				Box::from(|it: &(String, HashSet<u32>)| it.0.cmp(&word))
+			let cmp: Box<dyn (FnMut(&(String, HashSet<u32>)) -> Ordering)> = if single_mode {
+				// For `single_mode` use a straightforward comparison
+				Box::from(|it: &(String, HashSet<u32>)| it.0.as_str().cmp(word))
 			} else {
+				// In prefix mode, first compare the prefix
 				Box::from(|it: &(String, HashSet<u32>)| {
-					if it.0.starts_with(&word) {
+					if it.0.starts_with(word) {
 						std::cmp::Ordering::Equal
 					} else {
-						it.0.cmp(&word)
+						it.0.as_str().cmp(word)
 					}
 				})
 			};
@@ -141,10 +141,13 @@ impl Index {
 				let last = self.word_index.len() - 1;
 				let mut sta = pos;
 				let mut end = pos;
-				while !is_single && sta > 0 && self.word_index[sta - 1].0.starts_with(&word) {
+
+				// In prefix mode, expand the result range to include all
+				// prefixed results
+				while !single_mode && sta > 0 && self.word_index[sta - 1].0.starts_with(word) {
 					sta -= 1;
 				}
-				while !is_single && end < last && self.word_index[end + 1].0.starts_with(&word) {
+				while !single_mode && end < last && self.word_index[end + 1].0.starts_with(word) {
 					end += 1;
 				}
 
@@ -155,43 +158,7 @@ impl Index {
 				}
 			}
 
-			// We want to repeat the search using a different decision for
-			// the `is_single` behavior above in case we god bad results, but
-			// only if `single_mode` is None, meaning we are not a recursive
-			// call.
-			//
-			// A bad result is either zero or too many, as per `TOO_MANY_CUTOFF`.
-			//
-			//     +=========++================= Results =================+
-			//     | Single? ||   too many results  |  too few results    |
-			//     +---------++---------------------+---------------------+
-			//     |  true   ||         ---         |      repeat(F)      |
-			//     +---------++---------------------+---------------------+
-			//     |  false  ||      repeat(T)      |         ---         |
-			//     +---------++---------------------+---------------------+
-			//
-			if single_mode.is_none() {
-				if indexes.len() == 0 && is_single {
-					// We got zero results, try to broaden the search and use
-					// whatever is returned.
-					self.search_term_word_by_prefix_opts(word, Some(false))
-				} else if indexes.len() > TOO_MANY_CUTOFF && !is_single {
-					// We got too many results, try to tighten the search...
-					let fewer = self.search_term_word_by_prefix_opts(word, Some(true));
-					if fewer.len() > 0 {
-						// ...we got a match, use it!
-						fewer
-					} else {
-						// ...the exact match got nothing, this result may
-						// be useless but at least is better than nothing.
-						indexes
-					}
-				} else {
-					indexes // our result is either good enough or all we have
-				}
-			} else {
-				indexes // we are a recursive call, just return what we have
-			}
+			indexes
 		} else {
 			Default::default() // empty search term returns empty
 		}
