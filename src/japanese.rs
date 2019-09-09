@@ -6,7 +6,7 @@ use itertools::*;
 use kana::{is_kanji, to_romaji};
 
 use super::db;
-pub use db::{InputString, Search, SearchMode};
+pub use db::{Search, SearchMode};
 
 /// Search options.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
@@ -55,16 +55,16 @@ impl Dictionary {
 	}
 
 	/// Query the dictionary.
-	pub fn query_with_options<'a, S: InputString<'a>>(&self, input: S, options: SearchOptions) -> QueryResult {
+	pub fn query_with_options<S: AsRef<str>>(&self, input: S, options: SearchOptions) -> QueryResult {
 		let start = std::time::Instant::now();
 
-		let query = String::from(input.into());
-		let romaji = to_romaji(&query);
+		let input = input.as_ref();
+		let romaji = to_romaji(input);
 
-		let terms = self.db.search_terms(&query, &romaji, options.mode, options.fuzzy);
+		let terms = self.db.search_terms(input, &romaji, options.mode, options.fuzzy);
 
 		let kanji = if options.with_kanji {
-			let kanji = query.chars().filter(|&x| is_kanji(x)).unique();
+			let kanji = input.chars().filter(|&x| is_kanji(x)).unique();
 			let kanji = self.db.search_kanji(kanji);
 			Some(kanji)
 		} else {
@@ -121,8 +121,8 @@ impl Dictionary {
 		QueryResult {
 			total:   total,
 			elapsed: elapsed,
-			query:   String::from(&query),
-			reading: to_romaji(query),
+			query:   String::from(input),
+			reading: romaji,
 			terms:   terms,
 			kanji:   kanji,
 			tags:    tag_map,

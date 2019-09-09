@@ -3,8 +3,6 @@
 //! This is largely based on https://github.com/PSeitz/wana_kana_rust but
 //! provides an API specifically design for this application.
 
-use std::borrow::Cow;
-
 use super::constants::*;
 use super::util::*;
 
@@ -12,12 +10,9 @@ use super::util::*;
 /// through unchanged.
 ///
 /// Supports mapping romaji and katakana.
-pub fn to_hiragana<'a, S>(input: S) -> String
-where
-	S: Into<Cow<'a, str>>,
-{
-	let input = input.into();
-	let mut src = input.as_ref();
+pub fn to_hiragana<S: AsRef<str>>(input: S) -> String {
+	let input = input.as_ref();
+	let mut src = input;
 	let mut out = String::with_capacity(src.len());
 
 	while src.len() > 0 {
@@ -80,17 +75,13 @@ where
 ///
 /// Note that this will pass through interpunct (`・`) marks. Other Japanese
 /// punctuation are converted to ASCII variants.
-pub fn to_romaji<'a, S>(input: S) -> String
-where
-	S: Into<Cow<'a, str>>,
-{
+pub fn to_romaji<S: AsRef<str>>(input: S) -> String {
 	// Representation for `っ` when it is not a valid double consonant.
 	const SMALL_TSU_REPR: char = '\'';
 
 	let mut was_small_tsu = false;
 
-	let src = input.into();
-	let mut src = src.as_ref();
+	let mut src = input.as_ref();
 	let mut out = String::with_capacity(src.len());
 	while src.len() > 0 {
 		let mut chars = src.char_indices();

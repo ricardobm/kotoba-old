@@ -1,15 +1,9 @@
-use std::borrow::Cow;
 use std::collections::HashSet;
 
 use super::tables::*;
 use crate::kana::*;
 
 use itertools::*;
-
-/// Wrapper trait for a generic input string.
-pub trait InputString<'a>: Into<Cow<'a, str>> + std::fmt::Display {}
-
-impl<'a, T> InputString<'a> for T where T: Into<Cow<'a, str>> + std::fmt::Display {}
 
 /// Normalize the input, split it and filter out unsearchable characters.
 ///
@@ -21,10 +15,7 @@ impl<'a, T> InputString<'a> for T where T: Into<Cow<'a, str>> + std::fmt::Displa
 /// - The result is split by punctuation and spaces.
 /// - Non-kanji and non-kana characters are removed.
 #[allow(dead_code)]
-fn search_strings<'a, S>(query: S) -> Vec<String>
-where
-	S: InputString<'a>,
-{
+fn search_strings<S: AsRef<str>>(query: S) -> Vec<String> {
 	let text = normalize_search_string(query, true);
 	let groups = text
 		.chars()
@@ -48,15 +39,12 @@ where
 /// This performs Unicode normalization (to NFC) and lowercases the input.
 ///
 /// If `japanese` is true, will also convert the input to hiragana.
-pub fn normalize_search_string<'a, S>(query: S, japanese: bool) -> String
-where
-	S: InputString<'a>,
-{
+pub fn normalize_search_string<S: AsRef<str>>(query: S, japanese: bool) -> String {
 	use unicode_normalization::UnicodeNormalization;
 
 	// First step, normalize the string. We use NFC to make sure accented
 	// characters are a single codepoint.
-	let text = query.into().trim().to_lowercase().nfc().collect::<String>();
+	let text = query.as_ref().trim().to_lowercase().nfc().collect::<String>();
 	let text = if japanese { to_hiragana(text) } else { text };
 	text
 }
@@ -103,10 +91,10 @@ impl Default for SearchMode {
 
 /// Trait for doing database searches.
 pub trait Search {
-	fn search_terms<'a, 'b, S1, S2>(&self, query: S1, romaji: S2, mode: SearchMode, fuzzy: bool) -> Vec<TermRow>
+	fn search_terms<S1, S2>(&self, query: S1, romaji: S2, mode: SearchMode, fuzzy: bool) -> Vec<TermRow>
 	where
-		S1: InputString<'a>,
-		S2: InputString<'b>;
+		S1: AsRef<str>,
+		S2: AsRef<str>;
 
 	fn search_kanji<T>(&self, query: T) -> Vec<KanjiRow>
 	where
@@ -114,10 +102,10 @@ pub trait Search {
 }
 
 impl Search for Root {
-	fn search_terms<'a, 'b, S1, S2>(&self, query: S1, _romaji: S2, mode: SearchMode, _fuzzy: bool) -> Vec<TermRow>
+	fn search_terms<S1, S2>(&self, query: S1, _romaji: S2, mode: SearchMode, _fuzzy: bool) -> Vec<TermRow>
 	where
-		S1: InputString<'a>,
-		S2: InputString<'b>,
+		S1: AsRef<str>,
+		S2: AsRef<str>,
 	{
 		let mut indexes: HashSet<usize> = HashSet::new();
 		let query = normalize_search_string(query, true);

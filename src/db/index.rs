@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::iter;
 use std::iter::FromIterator;
 
-use super::search::{normalize_search_string, InputString};
+use super::search::normalize_search_string;
 
 /// Serializable database index structure.
 #[derive(Serialize, Deserialize)]
@@ -62,15 +62,15 @@ impl Index {
 	///
 	/// If the search keyword is small and could possibly return too many
 	/// results, this might revert to an exact match search.
-	pub fn search_term_word_by_prefix<'a, S: InputString<'a>>(&self, word: S) -> HashSet<usize> {
+	pub fn search_term_word_by_prefix<S: AsRef<str>>(&self, word: S) -> HashSet<usize> {
 		// If there are this many results or more, try to perform a more
 		// focused search.
 		const TOO_MANY_CUTOFF: usize = 10000;
 
-		let word = word.into();
+		let word = word.as_ref();
 
 		// First try to do a broader search by prefix...
-		let out = self.search_term_word_by_prefix_opts(word.as_ref(), false);
+		let out = self.search_term_word_by_prefix_opts(word, false);
 
 		// ...if there are too many results
 		let out = if out.len() > TOO_MANY_CUTOFF {
@@ -97,13 +97,13 @@ impl Index {
 	where
 		T: IntoIterator<Item = (usize, H)>,
 		H: IntoIterator<Item = S>,
-		S: InputString<'a>,
+		S: AsRef<str>,
 	{
 		let mut table = HashMap::<String, HashSet<u32>>::new();
 		for (index, words) in mappings.into_iter() {
 			let index = index as u32;
 			for word in words.into_iter() {
-				let word = normalize_search_string(word, true);
+				let word = normalize_search_string(word.as_ref(), true);
 				table
 					.entry(word)
 					.and_modify(|s| {
@@ -116,11 +116,10 @@ impl Index {
 		self.word_index.sort_by(|x, y| x.0.cmp(&y.0));
 	}
 
-	fn search_term_word_by_prefix_opts<'a, S: InputString<'a>>(&self, word: S, single_mode: bool) -> HashSet<u32> {
+	fn search_term_word_by_prefix_opts<S: AsRef<str>>(&self, word: S, single_mode: bool) -> HashSet<u32> {
 		use std::cmp::Ordering;
 
 		let mut indexes = HashSet::new();
-		let word = word.into();
 		let word = word.as_ref();
 		if word.len() > 0 {
 			let cmp: Box<dyn (FnMut(&(String, HashSet<u32>)) -> Ordering)> = if single_mode {
