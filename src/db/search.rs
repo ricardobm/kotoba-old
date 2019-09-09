@@ -5,6 +5,104 @@ use crate::kana::*;
 
 use itertools::*;
 
+/// Provides a first-pass broad key to index words for a `contains` type
+/// search.
+///
+/// A key `(c0, c2)` will index all words that contain `c0` and `c2` anywhere in
+/// the word, provided `c2` appears anywhere after `c1`.
+///
+/// For a single char index, `c2` will be `\0`.
+#[derive(Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+pub struct SearchKey(char, char);
+
+/// Iterate over all possible search keys for the key. Note that this will
+/// not de-duplicate the output.
+///
+/// This assumes the key is already normalized.
+#[allow(dead_code)]
+pub fn search_keys<S: AsRef<str>>(key: S) -> SearchKeyIterator<S> {
+	SearchKeyIterator {
+		key: key,
+		pos: 0,
+
+		pair_char: None,
+		pair_next: 0,
+	}
+}
+
+pub struct SearchKeyIterator<S: AsRef<str>> {
+	key: S,
+	pos: usize,
+
+	pair_char: Option<char>,
+	pair_next: usize,
+}
+
+impl<S: AsRef<str>> std::iter::Iterator for SearchKeyIterator<S> {
+	type Item = SearchKey;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let key = self.key.as_ref();
+
+		// Continue a previous character key pair iteration
+		if let Some(c1) = self.pair_char {
+			let mut chars = Self::chars(key, self.pair_next);
+			if let Some((_, c2)) = chars.next() {
+				self.pair_next = Self::next_index(key, chars);
+				return Some(SearchKey(c1, c2));
+			} else {
+				self.pair_char = None;
+			}
+		}
+
+		if self.pos >= key.len() {
+			return None;
+		}
+
+		// Find the next indexable char in the key string...
+		let mut chars = Self::chars(key, self.pos);
+		if let Some((_, chr)) = chars.next() {
+			self.pos = Self::next_index(key, chars);
+			if is_kanji(chr) {
+				// if it is a kanji, use it by itself as a key. Most kanji
+				// are uncommon enough to provide good enough filtering.
+				Some(SearchKey(chr, '\0'))
+			} else {
+				// for kana characters we want to provide better filtering
+				// than a single character would allow (since they are so
+				// common), so we group characters two by two
+
+				self.pair_char = Some(chr);
+				self.pair_next = self.pos;
+
+				// Still provide a single character key anyway. We use that
+				// for search strings that have a single character.
+				Some(SearchKey(chr, '\0'))
+			}
+		} else {
+			None
+		}
+	}
+}
+
+impl<S: AsRef<str>> SearchKeyIterator<S> {
+	#[inline]
+	fn chars<'a>(key: &'a str, at: usize) -> impl 'a + Iterator<Item = (usize, char)> {
+		key[at..]
+			.char_indices()
+			.filter(|(_, c)| is_searchable(*c))
+			.map(move |(i, c)| (i + at, c))
+	}
+
+	#[inline]
+	fn next_index<T>(key: &str, mut iter: T) -> usize
+	where
+		T: Iterator<Item = (usize, char)>,
+	{
+		iter.next().unwrap_or((key.len(), ' ')).0
+	}
+}
+
 /// Normalize the input, split it and filter out unsearchable characters.
 ///
 /// Normalization occurs as following:
@@ -17,7 +115,12 @@ use itertools::*;
 #[allow(dead_code)]
 fn search_strings<S: AsRef<str>>(query: S) -> Vec<String> {
 	let text = normalize_search_string(query, true);
+	search_strings_normalized(text)
+}
+
+fn search_strings_normalized<S: AsRef<str>>(text: S) -> Vec<String> {
 	let groups = text
+		.as_ref()
 		.chars()
 		.filter(|&c| !intra_word_removable(c))
 		.group_by(|&c| is_word_split(c));
@@ -101,6 +204,7 @@ pub trait Search {
 		T: IntoIterator<Item = char>;
 }
 
+/// Implement searching for the main database.
 impl Search for Root {
 	fn search_terms<S1, S2>(&self, query: S1, _romaji: S2, mode: SearchMode, _fuzzy: bool) -> Vec<TermRow>
 	where
@@ -201,5 +305,35 @@ mod tests {
 			search_strings("と も,だ’ち~た(ち)"),
 			vec!["と", "も", "だ", "ち", "た", "ち"]
 		);
+	}
+
+	#[test]
+	fn test_search_keys() {
+		fn check<T: IntoIterator<Item = S>, S: Into<String>>(key: &str, expected: T) {
+			use itertools::*;
+			let mut vec = search_keys(key)
+				.map(|SearchKey(c0, c1)| {
+					if c1 != '\0' {
+						vec![c0, c1].into_iter().join("")
+					} else {
+						c0.to_string()
+					}
+				})
+				.collect::<Vec<_>>();
+			let mut expected = expected.into_iter().map(|x| x.into()).collect::<Vec<_>>();
+			vec.sort();
+			expected.sort();
+			assert_eq!(vec, expected);
+		}
+
+		assert_eq!(search_keys("").count(), 0);
+		check("とも", vec!["と", "も", "とも"]);
+		check(
+			"ともだち",
+			vec![
+				"と", "も", "だ", "ち", "とも", "とだ", "とち", "もだ", "もち", "だち",
+			],
+		);
+		check("友達とも", vec!["友", "達", "と", "も", "とも"]);
 	}
 }

@@ -1,15 +1,13 @@
-use std::collections::HashMap;
 use std::collections::HashSet;
-use std::iter;
-use std::iter::FromIterator;
 
 use super::search::normalize_search_string;
+use super::search::{search_keys, SearchKey};
 
 /// Serializable database index structure.
 #[derive(Serialize, Deserialize)]
 pub struct Index {
 	/// Kanji indexes mapped by their character.
-	kanji_by_char: HashMap<char, u32>,
+	kanji_by_char: fnv::FnvHashMap<char, u32>,
 
 	/// De-duplicated sorted list of japanese search words and their respective
 	/// term indexes.
@@ -18,14 +16,17 @@ pub struct Index {
 	///
 	/// The purpose of this index is to allow for a binary search on a raw
 	/// search term prefix.
-	word_index: Vec<(String, HashSet<u32>)>,
+	word_index: Vec<(String, fnv::FnvHashSet<u32>)>,
+
+	key_index: fnv::FnvHashMap<SearchKey, fnv::FnvHashSet<u32>>,
 }
 
 impl Default for Index {
 	fn default() -> Index {
 		Index {
-			kanji_by_char: HashMap::new(),
-			word_index:    Vec::new(),
+			kanji_by_char: Default::default(),
+			word_index:    Default::default(),
+			key_index:     Default::default(),
 		}
 	}
 }
@@ -34,15 +35,25 @@ impl Index {
 	/// Clear the entire index.
 	pub fn clear(&mut self) {
 		self.kanji_by_char.clear();
-		self.word_index.clear()
+		self.word_index.clear();
+		self.key_index.clear();
 	}
 
 	// Dump index information to stdout.
 	pub fn dump_info(&self) {
+		let total = self.key_index.values().fold(0, |acc, x| acc + x.len());
+		let avg = total / self.key_index.len();
+		let max = self.key_index.values().map(|x| x.len()).max().unwrap();
+		let min = self.key_index.values().map(|x| x.len()).min().unwrap();
 		println!(
-			"Indexed {} kanji and {} words",
+			"Indexed {} kanji, {} words, and {} keys ({} total entries / {} avg / {} max / {} min)",
 			self.kanji_by_char.len(),
-			self.word_index.len()
+			self.word_index.len(),
+			self.key_index.len(),
+			total,
+			avg,
+			max,
+			min,
 		);
 	}
 
@@ -99,17 +110,45 @@ impl Index {
 		H: IntoIterator<Item = S>,
 		S: AsRef<str>,
 	{
-		let mut table = HashMap::<String, HashSet<u32>>::new();
+		// Temporary hashmap to build the sorted keyword array used for the
+		// prefix search.
+		let mut table = fnv::FnvHashMap::<String, fnv::FnvHashSet<u32>>::default();
+
 		for (index, words) in mappings.into_iter() {
 			let index = index as u32;
+
+			if index > 0 && index % 100000 == 0 {
+				println!("{}...", index);
+			}
+
 			for word in words.into_iter() {
 				let word = normalize_search_string(word.as_ref(), true);
+
+				// Map word for the "contains" search
+				for key in search_keys(&word) {
+					self.key_index
+						.entry(key)
+						.and_modify(|s| {
+							s.insert(index);
+						})
+						.or_insert_with(|| {
+							let mut set = fnv::FnvHashSet::default();
+							set.insert(index);
+							set
+						});
+				}
+
+				// Map word for the prefix search
 				table
 					.entry(word)
 					.and_modify(|s| {
 						s.insert(index);
 					})
-					.or_insert_with(|| HashSet::from_iter(iter::once(index)));
+					.or_insert_with(|| {
+						let mut set = fnv::FnvHashSet::default();
+						set.insert(index);
+						set
+					});
 			}
 		}
 		self.word_index = table.into_iter().collect();
@@ -122,12 +161,12 @@ impl Index {
 		let mut indexes = HashSet::new();
 		let word = word.as_ref();
 		if word.len() > 0 {
-			let cmp: Box<dyn (FnMut(&(String, HashSet<u32>)) -> Ordering)> = if single_mode {
+			let cmp: Box<dyn (FnMut(&(String, fnv::FnvHashSet<u32>)) -> Ordering)> = if single_mode {
 				// For `single_mode` use a straightforward comparison
-				Box::from(|it: &(String, HashSet<u32>)| it.0.as_str().cmp(word))
+				Box::from(|it: &(String, fnv::FnvHashSet<u32>)| it.0.as_str().cmp(word))
 			} else {
 				// In prefix mode, first compare the prefix
-				Box::from(|it: &(String, HashSet<u32>)| {
+				Box::from(|it: &(String, fnv::FnvHashSet<u32>)| {
 					if it.0.starts_with(word) {
 						std::cmp::Ordering::Equal
 					} else {
