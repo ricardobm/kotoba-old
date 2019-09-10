@@ -5,6 +5,86 @@ use crate::kana::*;
 
 use itertools::*;
 
+/// Available search modes for terms.
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub enum SearchMode {
+	/// Search for exact word.
+	Is,
+	/// Search words starting with the query.
+	Prefix,
+	/// Search words ending with the query.
+	Suffix,
+	/// Search words containing the query.
+	Contains,
+}
+
+impl Default for SearchMode {
+	fn default() -> SearchMode {
+		SearchMode::Contains
+	}
+}
+
+/// Trait for doing database searches.
+pub trait Search {
+	fn search_terms<S1, S2>(&self, query: S1, romaji: S2, mode: SearchMode, fuzzy: bool) -> Vec<TermRow>
+	where
+		S1: AsRef<str>,
+		S2: AsRef<str>;
+
+	fn search_kanji<T>(&self, query: T) -> Vec<KanjiRow>
+	where
+		T: IntoIterator<Item = char>;
+}
+
+/// Normalize the input, split it and filter out unsearchable characters.
+///
+/// Normalization occurs as following:
+/// - The text is normalized to the Unicode NFC form and converted to lowercase.
+/// - Katakana and Romaji are converted to Hiragana.
+/// - Intraword punctuation chars and `ー` are removed.
+/// - The Katakana `ー` is also removed.
+/// - The result is split by punctuation and spaces.
+/// - Non-kanji and non-kana characters are removed.
+#[allow(dead_code)]
+fn search_strings<S: AsRef<str>>(query: S) -> Vec<String> {
+	let text = normalize_search_string(query, true);
+	search_strings_normalized(text)
+}
+
+fn search_strings_normalized<S: AsRef<str>>(text: S) -> Vec<String> {
+	let groups = text
+		.as_ref()
+		.chars()
+		.filter(|&c| !intra_word_removable(c))
+		.group_by(|&c| is_word_split(c));
+	groups
+		.into_iter()
+		// Filter out group of split characters
+		.filter(|it| !it.0)
+		.map(|(_, e)| {
+			// Filter out non-searchable characters
+			e.filter(|&c| is_searchable(c)).collect::<String>()
+		})
+		// Filter out empty groups
+		.filter(|it| it.len() > 0)
+		.collect::<Vec<_>>()
+}
+
+/// Performs the basic normalization for a search string.
+///
+/// This performs Unicode normalization (to NFC) and lowercases the input.
+///
+/// If `japanese` is true, will also convert the input to hiragana.
+pub fn normalize_search_string<S: AsRef<str>>(query: S, japanese: bool) -> String {
+	use unicode_normalization::UnicodeNormalization;
+
+	// First step, normalize the string. We use NFC to make sure accented
+	// characters are a single codepoint.
+	let text = query.as_ref().trim().to_lowercase().nfc().collect::<String>();
+	let text = if japanese { to_hiragana(text) } else { text };
+	text
+}
+
 /// Provides a first-pass broad key to index words for a `contains` type
 /// search.
 ///
@@ -103,55 +183,6 @@ impl<S: AsRef<str>> SearchKeyIterator<S> {
 	}
 }
 
-/// Normalize the input, split it and filter out unsearchable characters.
-///
-/// Normalization occurs as following:
-/// - The text is normalized to the Unicode NFC form and converted to lowercase.
-/// - Katakana and Romaji are converted to Hiragana.
-/// - Intraword punctuation chars and `ー` are removed.
-/// - The Katakana `ー` is also removed.
-/// - The result is split by punctuation and spaces.
-/// - Non-kanji and non-kana characters are removed.
-#[allow(dead_code)]
-fn search_strings<S: AsRef<str>>(query: S) -> Vec<String> {
-	let text = normalize_search_string(query, true);
-	search_strings_normalized(text)
-}
-
-fn search_strings_normalized<S: AsRef<str>>(text: S) -> Vec<String> {
-	let groups = text
-		.as_ref()
-		.chars()
-		.filter(|&c| !intra_word_removable(c))
-		.group_by(|&c| is_word_split(c));
-	groups
-		.into_iter()
-		// Filter out group of split characters
-		.filter(|it| !it.0)
-		.map(|(_, e)| {
-			// Filter out non-searchable characters
-			e.filter(|&c| is_searchable(c)).collect::<String>()
-		})
-		// Filter out empty groups
-		.filter(|it| it.len() > 0)
-		.collect::<Vec<_>>()
-}
-
-/// Performs the basic normalization for a search string.
-///
-/// This performs Unicode normalization (to NFC) and lowercases the input.
-///
-/// If `japanese` is true, will also convert the input to hiragana.
-pub fn normalize_search_string<S: AsRef<str>>(query: S, japanese: bool) -> String {
-	use unicode_normalization::UnicodeNormalization;
-
-	// First step, normalize the string. We use NFC to make sure accented
-	// characters are a single codepoint.
-	let text = query.as_ref().trim().to_lowercase().nfc().collect::<String>();
-	let text = if japanese { to_hiragana(text) } else { text };
-	text
-}
-
 fn intra_word_removable(c: char) -> bool {
 	match c {
 		'々' | '_' | '\'' => true,
@@ -171,37 +202,6 @@ fn is_word_split(c: char) -> bool {
 		_ if is_japanese_punctuation(c) => true,
 		_ => !char::is_alphanumeric(c),
 	}
-}
-
-/// Available search modes for terms.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub enum SearchMode {
-	/// Search for exact word.
-	Is,
-	/// Search words starting with the query.
-	Prefix,
-	/// Search words ending with the query.
-	Suffix,
-	/// Search words containing the query.
-	Contains,
-}
-
-impl Default for SearchMode {
-	fn default() -> SearchMode {
-		SearchMode::Contains
-	}
-}
-
-/// Trait for doing database searches.
-pub trait Search {
-	fn search_terms<S1, S2>(&self, query: S1, romaji: S2, mode: SearchMode, fuzzy: bool) -> Vec<TermRow>
-	where
-		S1: AsRef<str>,
-		S2: AsRef<str>;
-
-	fn search_kanji<T>(&self, query: T) -> Vec<KanjiRow>
-	where
-		T: IntoIterator<Item = char>;
 }
 
 /// Implement searching for the main database.
