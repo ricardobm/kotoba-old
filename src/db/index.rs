@@ -3,11 +3,13 @@ use std::collections::HashSet;
 use super::search::normalize_search_string;
 use super::search::{search_keys, SearchKey};
 
+use fnv::{FnvHashMap, FnvHashSet};
+
 /// Serializable database index structure.
 #[derive(Serialize, Deserialize)]
 pub struct Index {
 	/// Kanji indexes mapped by their character.
-	kanji_by_char: fnv::FnvHashMap<char, u32>,
+	kanji_by_char: FnvHashMap<char, u32>,
 
 	/// De-duplicated sorted list of japanese search words and their respective
 	/// term indexes.
@@ -16,11 +18,14 @@ pub struct Index {
 	///
 	/// The purpose of this index is to allow for a binary search on a raw
 	/// search term prefix.
-	word_index: Vec<(String, fnv::FnvHashSet<u32>)>,
+	word_index: Vec<(String, FnvHashSet<u32>)>,
+
+	/// Set of indexes by the last char. Used for suffix searching.
+	suffix_index: FnvHashMap<String, FnvHashSet<u32>>,
 
 	/// Set of [SearchKey] and their respective indexes generated from the
 	/// dictionary words.
-	key_index: fnv::FnvHashMap<SearchKey, fnv::FnvHashSet<u32>>,
+	key_index: FnvHashMap<SearchKey, FnvHashSet<u32>>,
 }
 
 impl Default for Index {
@@ -28,6 +33,7 @@ impl Default for Index {
 		Index {
 			kanji_by_char: Default::default(),
 			word_index:    Default::default(),
+			suffix_index:  Default::default(),
 			key_index:     Default::default(),
 		}
 	}
@@ -38,6 +44,7 @@ impl Index {
 	pub fn clear(&mut self) {
 		self.kanji_by_char.clear();
 		self.word_index.clear();
+		self.suffix_index.clear();
 		self.key_index.clear();
 	}
 
@@ -48,22 +55,45 @@ impl Index {
 
 	// Dump index information to stdout.
 	pub fn dump_info(&self) {
+		use itertools::*;
+
+		println!(
+			"\nIndexed {} kanji and {} words (keys: {}, suffixes: {})",
+			self.kanji_by_char.len(),
+			self.word_index.len(),
+			self.key_index.len(),
+			self.suffix_index.len(),
+		);
+
+		// Suffix index
+		let total = self.suffix_index.values().fold(0, |acc, x| acc + x.len());
+		let avg = total / self.suffix_index.len();
+		let max = self.suffix_index.values().map(|x| x.len()).max().unwrap();
+		let min = self.suffix_index.values().map(|x| x.len()).min().unwrap();
+		println!(
+			"\nSuffix index has {} total entries / {} avg / {} max / {} min",
+			total, avg, max, min,
+		);
+
+		println!(
+			"-> {}",
+			self.suffix_index
+				.iter()
+				.sorted_by_key(|x| -(x.1.len() as i64))
+				.take(5)
+				.map(|x| format!("{}: {}", x.0, x.1.len()))
+				.join(", ")
+		);
+
 		let total = self.key_index.values().fold(0, |acc, x| acc + x.len());
 		let avg = total / self.key_index.len();
 		let max = self.key_index.values().map(|x| x.len()).max().unwrap();
 		let min = self.key_index.values().map(|x| x.len()).min().unwrap();
 		println!(
-			"Indexed {} kanji, {} words, and {} keys ({} total entries / {} avg / {} max / {} min)",
-			self.kanji_by_char.len(),
-			self.word_index.len(),
-			self.key_index.len(),
-			total,
-			avg,
-			max,
-			min,
+			"\nKey index has {} total entries / {} avg / {} max / {} min",
+			total, avg, max, min,
 		);
 
-		use itertools::*;
 		println!(
 			"{}  |\n",
 			self.key_index
@@ -129,7 +159,7 @@ impl Index {
 		// Stop if we get a result set this small.
 		const SMALL_ENOUGH: usize = 100;
 
-		let mut out = fnv::FnvHashSet::default();
+		let mut out = FnvHashSet::default();
 		let mut first = true;
 		for key in search_keys(word) {
 			if let Some(indexes) = self.key_index.get(&key) {
@@ -162,7 +192,7 @@ impl Index {
 	{
 		// Temporary hashmap to build the sorted keyword array used for the
 		// prefix search.
-		let mut table = fnv::FnvHashMap::<String, fnv::FnvHashSet<u32>>::default();
+		let mut table = FnvHashMap::<String, FnvHashSet<u32>>::default();
 
 		for (index, words) in mappings.into_iter() {
 			let index = index as u32;
@@ -182,7 +212,23 @@ impl Index {
 							s.insert(index);
 						})
 						.or_insert_with(|| {
-							let mut set = fnv::FnvHashSet::default();
+							let mut set = FnvHashSet::default();
+							set.insert(index);
+							set
+						});
+				}
+
+				// Map word for the suffix search
+				let suffix1 = word.chars().rev().take(1).collect::<String>();
+				let suffix2 = word.chars().rev().take(2).collect::<String>();
+				for it in vec![suffix1, suffix2].into_iter() {
+					self.suffix_index
+						.entry(it.clone())
+						.and_modify(|s| {
+							s.insert(index);
+						})
+						.or_insert_with(|| {
+							let mut set = FnvHashSet::default();
 							set.insert(index);
 							set
 						});
@@ -195,7 +241,7 @@ impl Index {
 						s.insert(index);
 					})
 					.or_insert_with(|| {
-						let mut set = fnv::FnvHashSet::default();
+						let mut set = FnvHashSet::default();
 						set.insert(index);
 						set
 					});
@@ -211,12 +257,12 @@ impl Index {
 		let mut indexes = HashSet::new();
 		let word = word.as_ref();
 		if word.len() > 0 {
-			let cmp: Box<dyn (FnMut(&(String, fnv::FnvHashSet<u32>)) -> Ordering)> = if single_mode {
+			let cmp: Box<dyn (FnMut(&(String, FnvHashSet<u32>)) -> Ordering)> = if single_mode {
 				// For `single_mode` use a straightforward comparison
-				Box::from(|it: &(String, fnv::FnvHashSet<u32>)| it.0.as_str().cmp(word))
+				Box::from(|it: &(String, FnvHashSet<u32>)| it.0.as_str().cmp(word))
 			} else {
 				// In prefix mode, first compare the prefix
-				Box::from(|it: &(String, fnv::FnvHashSet<u32>)| {
+				Box::from(|it: &(String, FnvHashSet<u32>)| {
 					if it.0.starts_with(word) {
 						std::cmp::Ordering::Equal
 					} else {
