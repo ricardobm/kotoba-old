@@ -292,15 +292,13 @@ impl Search for Root {
 				1 => SearchKey(k[0], '\0'),
 				_ => SearchKey('\0', '\0'),
 			};
-			if let Some(set) = self.index.key_index.get(&key) {
-				if set.len() > TOO_MANY_MATCHES_PREFIX_FALLBACK {
-					prefix_only = true;
-				}
+			if self.index.index_size_by_key(&key) > TOO_MANY_MATCHES_PREFIX_FALLBACK {
+				prefix_only = true;
 			}
 		}
 
 		if !prefix_only {
-			for index in self.index.get_term_set_for_keyword(&query) {
+			for index in self.index.indexes_by_keyword(&query) {
 				possible_indexes.insert(index);
 			}
 		}

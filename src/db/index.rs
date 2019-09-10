@@ -20,7 +20,7 @@ pub struct Index {
 
 	/// Set of [SearchKey] and their respective indexes generated from the
 	/// dictionary words.
-	pub(super) key_index: fnv::FnvHashMap<SearchKey, fnv::FnvHashSet<u32>>,
+	key_index: fnv::FnvHashMap<SearchKey, fnv::FnvHashSet<u32>>,
 }
 
 impl Default for Index {
@@ -111,12 +111,21 @@ impl Index {
 		out.into_iter().map(|x| x as usize).collect()
 	}
 
+	/// Number of indexes for a given key.
+	pub fn index_size_by_key(&self, key: &SearchKey) -> usize {
+		if let Some(set) = self.key_index.get(key) {
+			set.len()
+		} else {
+			0
+		}
+	}
+
 	/// Search for candidate indexes given the keyword. Assumes the keyword has
 	/// already been normalized.
 	///
 	/// This uses [search_keys] to generate all candidate keys for the given
 	/// keyword and generates a set with the intersection of all keys.
-	pub fn get_term_set_for_keyword<S: AsRef<str>>(&self, word: S) -> HashSet<usize> {
+	pub fn indexes_by_keyword<S: AsRef<str>>(&self, word: S) -> HashSet<usize> {
 		// Stop if we get a result set this small.
 		const SMALL_ENOUGH: usize = 100;
 
