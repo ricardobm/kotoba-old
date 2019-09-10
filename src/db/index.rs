@@ -20,7 +20,7 @@ pub struct Index {
 
 	/// Set of [SearchKey] and their respective indexes generated from the
 	/// dictionary words.
-	key_index: fnv::FnvHashMap<SearchKey, fnv::FnvHashSet<u32>>,
+	pub(super) key_index: fnv::FnvHashMap<SearchKey, fnv::FnvHashSet<u32>>,
 }
 
 impl Default for Index {
@@ -62,6 +62,31 @@ impl Index {
 			max,
 			min,
 		);
+
+		use itertools::*;
+		println!(
+			"{}  |\n",
+			self.key_index
+				.iter()
+				.sorted_by_key(|x| -(x.1.len() as i64))
+				.take(50)
+				.enumerate()
+				.map(|x| format!(
+					"{}{}\t{:6}",
+					if x.0 % 10 == 0 {
+						if x.0 > 0 {
+							"  |\n  |  "
+						} else {
+							"\n  |  "
+						}
+					} else {
+						"  |  "
+					},
+					(x.1).0,
+					(x.1).1.len()
+				))
+				.join("")
+		);
 	}
 
 	/// Search for a mapped kanji index by its char.
@@ -81,27 +106,8 @@ impl Index {
 	/// If the search keyword is small and could possibly return too many
 	/// results, this might revert to an exact match search.
 	pub fn search_term_word_by_prefix<S: AsRef<str>>(&self, word: S) -> HashSet<usize> {
-		// If there are this many results or more, try to perform a more
-		// focused search.
-		const TOO_MANY_CUTOFF: usize = 10000;
-
 		let word = word.as_ref();
-
-		// First try to do a broader search by prefix...
 		let out = self.search_term_word_by_prefix_opts(word, false);
-
-		// ...if there are too many results
-		let out = if out.len() > TOO_MANY_CUTOFF {
-			// then try to narrow the search by matching exactly.
-			let redo = self.search_term_word_by_prefix_opts(word, true);
-			if redo.len() > 0 {
-				redo
-			} else {
-				out // exact match found nothing, the broader search is better than nothing
-			}
-		} else {
-			out
-		};
 		out.into_iter().map(|x| x as usize).collect()
 	}
 

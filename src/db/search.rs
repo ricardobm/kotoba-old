@@ -95,6 +95,12 @@ pub fn normalize_search_string<S: AsRef<str>>(query: S, japanese: bool) -> Strin
 #[derive(Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct SearchKey(char, char);
 
+impl std::fmt::Display for SearchKey {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		write!(f, "{}{}", self.0, self.1)
+	}
+}
+
 /// Iterate over all possible search keys for the key. Note that this will
 /// not de-duplicate the output.
 ///
@@ -211,36 +217,59 @@ impl Search for Root {
 		S1: AsRef<str>,
 		S2: AsRef<str>,
 	{
+		// If a non-prefix search yields more than this number of matches,
+		// we fallback to a prefix search, if possible.
+		const TOO_MANY_MATCHES_PREFIX_FALLBACK: usize = 50_000;
+
 		let mut indexes: HashSet<usize> = HashSet::new();
 
-		// TODO: use split on the query to generate a bigger set.
+		// TODO: use split on the query to allow multiple words
 		let query = normalize_search_string(query, true);
 
-		let prefix_only = !fuzzy
+		let start = std::time::Instant::now();
+
+		// We always search by prefix, since it is stricter than by keys and
+		// will match even non-kana and non-kanji inputs.
+		let mut possible_indexes = self.index.search_term_word_by_prefix(&query);
+
+		// Fuzzy mode and "contains" require searching using the key index,
+		// which maps kana and kanji individually and all possible kana pairs
+		// in a word, so it is a much broader search and will do partial
+		// matches.
+		let mut prefix_only = !fuzzy
 			&& match mode {
 				SearchMode::Is | SearchMode::Suffix => true,
 				_ => false,
 			};
 
-		// The prefix search is a stricter search, but it is guaranteed to match
-		// even if the input keyword is not kanji or kana (as keywords allow
-		// only for those characters).
-		//
-		// We always search by prefix to make sure that non-kana/kanji words are
-		// still match-able somehow.
-		let mut possible_indexes = self.index.search_term_word_by_prefix(&query);
+		// Detect cases where the key index search would yield too many matches
+		// and revert to prefix only in those cases where we have results.
+		if !prefix_only && possible_indexes.len() > 0 {
+			let k = query.chars().filter(|c| is_kana(*c)).take(3).collect::<Vec<_>>();
+			let key = match k.len() {
+				2 => SearchKey(k[0], k[1]),
+				1 => SearchKey(k[0], '\0'),
+				_ => SearchKey('\0', '\0'),
+			};
+			if let Some(set) = self.index.key_index.get(&key) {
+				if set.len() > TOO_MANY_MATCHES_PREFIX_FALLBACK {
+					prefix_only = true;
+				}
+			}
+		}
 
 		if !prefix_only {
-			// Add keyword matches to the set. The keyword index is broader and
-			// generates a sub-set of possible candidates given the kanji and
-			// kana they contain.
-			//
-			// Since this can likely generate a lot of candidates, we limit it
-			// to non-prefix searchs and fuzzy mode.
 			for index in self.index.get_term_set_for_keyword(&query) {
 				possible_indexes.insert(index);
 			}
 		}
+
+		println!(
+			"Found {} possible indexes in {:.3}s (prefix-only: {})",
+			possible_indexes.len(),
+			start.elapsed().as_secs_f64(),
+			prefix_only,
+		);
 
 		for index in possible_indexes.into_iter() {
 			let entry = &self.terms[index];
@@ -253,7 +282,6 @@ impl Search for Root {
 			);
 			let mut is_match = false;
 			for key in keys {
-				// TODO: implement fuzzy matching
 				is_match = match mode {
 					SearchMode::Is => key == &query,
 					SearchMode::Contains => key.contains(&query),

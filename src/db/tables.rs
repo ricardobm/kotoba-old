@@ -124,6 +124,7 @@ impl Root {
 		}
 
 		if !self.index.empty() {
+			self.index.dump_info();
 			return false;
 		}
 
