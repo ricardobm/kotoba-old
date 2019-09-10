@@ -18,6 +18,8 @@ pub struct Index {
 	/// search term prefix.
 	word_index: Vec<(String, fnv::FnvHashSet<u32>)>,
 
+	/// Set of [SearchKey] and their respective indexes generated from the
+	/// dictionary words.
 	key_index: fnv::FnvHashMap<SearchKey, fnv::FnvHashSet<u32>>,
 }
 
@@ -100,6 +102,34 @@ impl Index {
 		} else {
 			out
 		};
+		out.into_iter().map(|x| x as usize).collect()
+	}
+
+	/// Search for candidate indexes given the keyword. Assumes the keyword has
+	/// already been normalized.
+	///
+	/// This uses [search_keys] to generate all candidate keys for the given
+	/// keyword and generates a set with the intersection of all keys.
+	pub fn get_term_set_for_keyword<S: AsRef<str>>(&self, word: S) -> HashSet<usize> {
+		// Stop if we get a result set this small.
+		const SMALL_ENOUGH: usize = 100;
+
+		let mut out = fnv::FnvHashSet::default();
+		let mut first = true;
+		for key in search_keys(word) {
+			if let Some(indexes) = self.key_index.get(&key) {
+				if first {
+					out = indexes.clone();
+					first = false;
+				} else {
+					out = out.intersection(indexes).cloned().collect();
+				}
+				if out.len() < SMALL_ENOUGH {
+					break;
+				}
+			}
+		}
+
 		out.into_iter().map(|x| x as usize).collect()
 	}
 

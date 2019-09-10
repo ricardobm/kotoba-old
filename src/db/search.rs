@@ -206,14 +206,42 @@ fn is_word_split(c: char) -> bool {
 
 /// Implement searching for the main database.
 impl Search for Root {
-	fn search_terms<S1, S2>(&self, query: S1, _romaji: S2, mode: SearchMode, _fuzzy: bool) -> Vec<TermRow>
+	fn search_terms<S1, S2>(&self, query: S1, _romaji: S2, mode: SearchMode, fuzzy: bool) -> Vec<TermRow>
 	where
 		S1: AsRef<str>,
 		S2: AsRef<str>,
 	{
 		let mut indexes: HashSet<usize> = HashSet::new();
+
+		// TODO: use split on the query to generate a bigger set.
 		let query = normalize_search_string(query, true);
-		let possible_indexes = self.index.search_term_word_by_prefix(&query);
+
+		let prefix_only = !fuzzy
+			&& match mode {
+				SearchMode::Is | SearchMode::Suffix => true,
+				_ => false,
+			};
+
+		// The prefix search is a stricter search, but it is guaranteed to match
+		// even if the input keyword is not kanji or kana (as keywords allow
+		// only for those characters).
+		//
+		// We always search by prefix to make sure that non-kana/kanji words are
+		// still match-able somehow.
+		let mut possible_indexes = self.index.search_term_word_by_prefix(&query);
+
+		if !prefix_only {
+			// Add keyword matches to the set. The keyword index is broader and
+			// generates a sub-set of possible candidates given the kanji and
+			// kana they contain.
+			//
+			// Since this can likely generate a lot of candidates, we limit it
+			// to non-prefix searchs and fuzzy mode.
+			for index in self.index.get_term_set_for_keyword(&query) {
+				possible_indexes.insert(index);
+			}
+		}
+
 		for index in possible_indexes.into_iter() {
 			let entry = &self.terms[index];
 			let keys = vec![&entry.expression, &entry.reading].into_iter().chain(
@@ -225,6 +253,7 @@ impl Search for Root {
 			);
 			let mut is_match = false;
 			for key in keys {
+				// TODO: implement fuzzy matching
 				is_match = match mode {
 					SearchMode::Is => key == &query,
 					SearchMode::Contains => key.contains(&query),
@@ -245,6 +274,9 @@ impl Search for Root {
 		for index in indexes {
 			out.push(self.terms[index].clone());
 		}
+
+		// TODO: improve sorting
+		out.sort_by(|a, b| b.frequency.cmp(&a.frequency));
 
 		out
 	}
