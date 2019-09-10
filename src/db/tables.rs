@@ -490,7 +490,7 @@ pub struct LinkRow {
 
 /// Index for a [SourceRow] in a [Root].
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct SourceId(usize);
+pub struct SourceId(pub usize);
 
 impl SourceId {
 	fn as_index(&self) -> usize {

@@ -42,9 +42,14 @@ fn search(input: Json<japanese::SearchArgs>, dict: State<japanese::Dictionary>) 
 	Json(dict.query(&input))
 }
 
+#[get("/tags")]
+fn tags(dict: State<japanese::Dictionary>) -> Json<japanese::DbMap> {
+	Json(dict.db_map())
+}
+
 pub fn launch(dict: japanese::Dictionary) {
 	rocket::ignite()
 		.manage(dict)
-		.mount("/api", routes![index, list, search])
+		.mount("/api", routes![index, list, search, tags])
 		.launch();
 }

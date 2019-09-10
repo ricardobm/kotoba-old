@@ -106,6 +106,19 @@ impl Dictionary {
 			args:    args.clone(),
 		}
 	}
+
+	pub fn db_map(&self) -> DbMap {
+		let mut out = DbMap { sources: Vec::new() };
+		for (i, it) in self.db.sources.iter().enumerate() {
+			let src_id = db::SourceId(i);
+			let src = DbSource {
+				info: it.clone(),
+				tags: self.db.tags.iter().filter(|t| t.source == src_id).cloned().collect(),
+			};
+			out.sources.push(src);
+		}
+		out
+	}
 }
 
 /// Root for a dictionary query.
@@ -138,4 +151,15 @@ pub struct QueryResult {
 
 	/// Arguments used in the search.
 	pub args: SearchArgs,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct DbMap {
+	pub sources: Vec<DbSource>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct DbSource {
+	pub info: db::SourceRow,
+	pub tags: Vec<db::TagRow>,
 }
