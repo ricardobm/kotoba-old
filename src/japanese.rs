@@ -6,40 +6,29 @@ use itertools::*;
 use kana::{is_kanji, to_romaji};
 
 use super::db;
-pub use db::{Search, SearchMode};
+use super::db::Search;
 
 /// Search options.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub struct SearchOptions {
-	/// Search mode.
-	#[serde(default)]
-	pub mode: SearchMode,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SearchArgs {
+	/// Main query string.
+	pub query: String,
 
-	/// If true, will also look for near matches.
-	#[serde(default)]
-	pub fuzzy: bool,
-
-	/// Skip this number of terms from beginning of the results.
-	#[serde(default)]
-	pub offset: usize,
-
-	/// Limit of terms to return.
-	#[serde(default)]
-	pub limit: usize,
-
-	/// If true, search for kanjis from the query.
+	/// If true, also returns kanjis from the query.
 	#[serde(default)]
 	pub with_kanji: bool,
+
+	/// Search options.
+	#[serde(default)]
+	pub options: db::SearchOptions,
 }
 
-impl Default for SearchOptions {
-	fn default() -> SearchOptions {
-		SearchOptions {
-			mode:       SearchMode::Contains,
-			fuzzy:      false,
-			offset:     0,
-			limit:      0,
+impl Default for SearchArgs {
+	fn default() -> SearchArgs {
+		SearchArgs {
+			query:      String::new(),
 			with_kanji: false,
+			options:    Default::default(),
 		}
 	}
 }
@@ -55,15 +44,15 @@ impl Dictionary {
 	}
 
 	/// Query the dictionary.
-	pub fn query_with_options<S: AsRef<str>>(&self, input: S, options: SearchOptions) -> QueryResult {
+	pub fn query(&self, args: &SearchArgs) -> QueryResult {
 		let start = std::time::Instant::now();
 
-		let input = input.as_ref();
+		let input = args.query.as_str();
 		let romaji = to_romaji(input);
 
-		let terms = self.db.search_terms(input, &romaji, options.mode, options.fuzzy);
+		let (terms, total) = self.db.search_terms(input, &args.options);
 
-		let kanji = if options.with_kanji {
+		let kanji = if args.with_kanji {
 			let kanji = input.chars().filter(|&x| is_kanji(x)).unique();
 			let kanji = self.db.search_kanji(kanji);
 			Some(kanji)
@@ -71,7 +60,6 @@ impl Dictionary {
 			None
 		};
 
-		let total = terms.len();
 		let elapsed = start.elapsed().as_secs_f64();
 
 		let mut tag_map = HashMap::new();
@@ -106,18 +94,6 @@ impl Dictionary {
 			}
 		}
 
-		let terms = if options.offset > 0 {
-			terms.into_iter().skip(options.offset).collect()
-		} else {
-			terms
-		};
-
-		let terms = if options.limit > 0 {
-			terms.into_iter().take(options.limit).collect()
-		} else {
-			terms
-		};
-
 		QueryResult {
 			total:   total,
 			elapsed: elapsed,
@@ -127,7 +103,7 @@ impl Dictionary {
 			kanji:   kanji,
 			tags:    tag_map,
 			sources: self.db.sources.clone(),
-			options: options,
+			args:    args.clone(),
 		}
 	}
 }
@@ -160,6 +136,6 @@ pub struct QueryResult {
 	/// List of sources for the dictionary data.
 	pub sources: Vec<db::SourceRow>,
 
-	/// Options used in the search.
-	pub options: SearchOptions,
+	/// Arguments used in the search.
+	pub args: SearchArgs,
 }

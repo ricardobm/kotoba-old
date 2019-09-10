@@ -37,17 +37,9 @@ fn list() -> Json<Vec<Item>> {
 	Json(out)
 }
 
-#[derive(Serialize, Deserialize)]
-struct SearchOptions {
-	query: String,
-
-	#[serde(default)]
-	options: japanese::SearchOptions,
-}
-
 #[post("/search", data = "<input>")]
-fn search(input: Json<SearchOptions>, dict: State<japanese::Dictionary>) -> Json<japanese::QueryResult> {
-	Json(dict.query_with_options(&input.query, input.options))
+fn search(input: Json<japanese::SearchArgs>, dict: State<japanese::Dictionary>) -> Json<japanese::QueryResult> {
+	Json(dict.query(&input))
 }
 
 pub fn launch(dict: japanese::Dictionary) {

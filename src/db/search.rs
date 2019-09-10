@@ -24,12 +24,38 @@ impl Default for SearchMode {
 	}
 }
 
+/// Search options.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SearchOptions {
+	#[serde(default)]
+	pub mode: SearchMode,
+
+	#[serde(default)]
+	pub fuzzy: bool,
+
+	#[serde(default)]
+	pub offset: usize,
+
+	#[serde(default)]
+	pub limit: usize,
+}
+
+impl Default for SearchOptions {
+	fn default() -> SearchOptions {
+		SearchOptions {
+			mode:   Default::default(),
+			fuzzy:  false,
+			offset: 0,
+			limit:  0,
+		}
+	}
+}
+
 /// Trait for doing database searches.
 pub trait Search {
-	fn search_terms<S1, S2>(&self, query: S1, romaji: S2, mode: SearchMode, fuzzy: bool) -> Vec<TermRow>
+	fn search_terms<S>(&self, query: S, options: &SearchOptions) -> (Vec<TermRow>, usize)
 	where
-		S1: AsRef<str>,
-		S2: AsRef<str>;
+		S: AsRef<str>;
 
 	fn search_kanji<T>(&self, query: T) -> Vec<KanjiRow>
 	where
@@ -212,11 +238,26 @@ fn is_word_split(c: char) -> bool {
 
 /// Implement searching for the main database.
 impl Search for Root {
-	fn search_terms<S1, S2>(&self, query: S1, _romaji: S2, mode: SearchMode, fuzzy: bool) -> Vec<TermRow>
+	fn search_terms<S>(&self, query: S, options: &SearchOptions) -> (Vec<TermRow>, usize)
 	where
-		S1: AsRef<str>,
-		S2: AsRef<str>,
+		S: AsRef<str>,
 	{
+		/*
+			Optimization ideas
+			==================
+
+			Add a hard limit to this function results and:
+
+			- Sort results by relevance in order of:
+			  - Match quality: exact, prefix, suffix, contains
+			  - Word frequency
+			- Only do key index search if necessary (not enough prefix matches):
+			  - Sort indexes in main table by word relevance.
+			  - Words in the key matches are already poor quality, so can we
+				just cull by index (no suffix-first sorting in that case).
+			- Defer cloning until the final result set.
+		*/
+
 		// If a non-prefix search yields more than this number of matches,
 		// we fallback to a prefix search, if possible.
 		const TOO_MANY_MATCHES_PREFIX_FALLBACK: usize = 50_000;
@@ -236,8 +277,8 @@ impl Search for Root {
 		// which maps kana and kanji individually and all possible kana pairs
 		// in a word, so it is a much broader search and will do partial
 		// matches.
-		let mut prefix_only = !fuzzy
-			&& match mode {
+		let mut prefix_only = !options.fuzzy
+			&& match options.mode {
 				SearchMode::Is | SearchMode::Suffix => true,
 				_ => false,
 			};
@@ -280,9 +321,11 @@ impl Search for Root {
 					.map(|x| vec![&x.expression, &x.reading].into_iter())
 					.flatten(),
 			);
+
+			// TODO: implement fuzzy matching
 			let mut is_match = false;
 			for key in keys {
-				is_match = match mode {
+				is_match = match options.mode {
 					SearchMode::Is => key == &query,
 					SearchMode::Contains => key.contains(&query),
 					SearchMode::Prefix => key.starts_with(&query),
@@ -306,7 +349,21 @@ impl Search for Root {
 		// TODO: improve sorting
 		out.sort_by(|a, b| b.frequency.cmp(&a.frequency));
 
-		out
+		let total = out.len();
+
+		let out = if options.offset > 0 {
+			out.into_iter().skip(options.offset).collect()
+		} else {
+			out
+		};
+
+		let out = if options.limit > 0 {
+			out.into_iter().take(options.limit).collect()
+		} else {
+			out
+		};
+
+		(out, total)
 	}
 
 	fn search_kanji<T>(&self, query: T) -> Vec<KanjiRow>
