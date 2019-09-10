@@ -129,24 +129,28 @@ impl Index {
 	}
 
 	/// Search for mapped term index by the japanese keyword. This search
-	/// will match by the prefix.
+	/// will match by the prefix or by full match.
 	///
 	/// Assumes the search keyword is already normalized.
-	///
-	/// If the search keyword is small and could possibly return too many
-	/// results, this might revert to an exact match search.
-	pub fn search_term_word_by_prefix<S: AsRef<str>>(&self, word: S) -> HashSet<usize> {
+	pub fn search_term_word_by_prefix<S: AsRef<str>>(&self, word: S, full_match: bool) -> HashSet<usize> {
 		let word = word.as_ref();
-		let out = self.search_term_word_by_prefix_opts(word, false);
+		let out = self.do_search_term_word_by_prefix(word, full_match);
 		out.into_iter().map(|x| x as usize).collect()
 	}
 
-	/// Number of indexes for a given key.
-	pub fn index_size_by_key(&self, key: &SearchKey) -> usize {
-		if let Some(set) = self.key_index.get(key) {
-			set.len()
+	/// Search for candidate indexes using the word suffix.
+	///
+	/// Assumes the search keyword is already normalized.
+	///
+	/// This searches for one or two character suffix matches, so it does not
+	/// guarantee a complete match.
+	pub fn search_candidates_by_suffix<S: AsRef<str>>(&self, word: S) -> HashSet<usize> {
+		let word = word.as_ref();
+		let key = word.chars().rev().take(2).collect::<String>();
+		if let Some(indexes) = self.suffix_index.get(&key) {
+			indexes.iter().map(|x| *x as usize).collect()
 		} else {
-			0
+			Default::default()
 		}
 	}
 
@@ -251,14 +255,14 @@ impl Index {
 		self.word_index.sort_by(|x, y| x.0.cmp(&y.0));
 	}
 
-	fn search_term_word_by_prefix_opts<S: AsRef<str>>(&self, word: S, single_mode: bool) -> HashSet<u32> {
+	fn do_search_term_word_by_prefix<S: AsRef<str>>(&self, word: S, full_match: bool) -> HashSet<u32> {
 		use std::cmp::Ordering;
 
 		let mut indexes = HashSet::new();
 		let word = word.as_ref();
 		if word.len() > 0 {
-			let cmp: Box<dyn (FnMut(&(String, FnvHashSet<u32>)) -> Ordering)> = if single_mode {
-				// For `single_mode` use a straightforward comparison
+			let cmp: Box<dyn (FnMut(&(String, FnvHashSet<u32>)) -> Ordering)> = if full_match {
+				// For `full_match` use a straightforward comparison
 				Box::from(|it: &(String, FnvHashSet<u32>)| it.0.as_str().cmp(word))
 			} else {
 				// In prefix mode, first compare the prefix
@@ -278,10 +282,10 @@ impl Index {
 
 				// In prefix mode, expand the result range to include all
 				// prefixed results
-				while !single_mode && sta > 0 && self.word_index[sta - 1].0.starts_with(word) {
+				while !full_match && sta > 0 && self.word_index[sta - 1].0.starts_with(word) {
 					sta -= 1;
 				}
-				while !single_mode && end < last && self.word_index[end + 1].0.starts_with(word) {
+				while !full_match && end < last && self.word_index[end + 1].0.starts_with(word) {
 					end += 1;
 				}
 

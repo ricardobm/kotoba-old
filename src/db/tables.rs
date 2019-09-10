@@ -11,6 +11,22 @@ use super::index::Index;
 
 use crate::kana::{to_hiragana, to_romaji};
 
+lazy_static! {
+	static ref SOURCE_PRECEDENCE: HashMap<&'static str, usize> = {
+		use std::iter::FromIterator;
+
+		// Dictionary sources in order of precedence:
+		let sources = vec![
+			// spell-checker: disable
+			"JMdict (English)",
+			"KireiCake",
+			"JMnedict",
+			// spell-checker: enable
+		];
+		HashMap::from_iter(sources.into_iter().enumerate().map(|(i, s)| (s, i)))
+	};
+}
+
 /// Main serialization structure for the dictionary database.
 #[derive(Serialize, Deserialize)]
 pub struct Root {
@@ -127,6 +143,28 @@ impl Root {
 			self.index.dump_info();
 			return false;
 		}
+
+		// Sort terms by frequency, source and expression. This will make index
+		// in the database sorted by relevance.
+		let sources = self.sources.iter().map(|s| s.name.clone()).collect::<Vec<_>>();
+		self.terms.sort_by(|a, b| {
+			if a.frequency != b.frequency {
+				b.frequency.cmp(&a.frequency)
+			} else {
+				let order = a.expression.cmp(&b.expression);
+				if order == std::cmp::Ordering::Equal {
+					let src_a = a.source.as_index();
+					let src_a = sources[src_a].as_str();
+					let src_b = b.source.as_index();
+					let src_b = sources[src_b].as_str();
+					let val_a = SOURCE_PRECEDENCE.get(src_a).unwrap_or(&std::usize::MAX);
+					let val_b = SOURCE_PRECEDENCE.get(src_b).unwrap_or(&std::usize::MAX);
+					val_a.cmp(&val_b)
+				} else {
+					order
+				}
+			}
+		});
 
 		println!("Updating database index...");
 		let start = std::time::Instant::now();

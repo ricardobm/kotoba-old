@@ -6,7 +6,7 @@ use crate::kana::*;
 use itertools::*;
 
 /// Available search modes for terms.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum SearchMode {
 	/// Search for exact word.
 	Is,
@@ -21,6 +21,24 @@ pub enum SearchMode {
 impl Default for SearchMode {
 	fn default() -> SearchMode {
 		SearchMode::Contains
+	}
+}
+
+impl SearchMode {
+	/// Does this search mode allow for prefix search.
+	fn includes_prefix(&self) -> bool {
+		match self {
+			SearchMode::Prefix | SearchMode::Contains => true,
+			_ => false,
+		}
+	}
+
+	/// Does this search mode allow for suffix search.
+	fn includes_suffix(&self) -> bool {
+		match self {
+			SearchMode::Suffix | SearchMode::Contains => true,
+			_ => false,
+		}
 	}
 }
 
@@ -242,126 +260,123 @@ impl Search for Root {
 	where
 		S: AsRef<str>,
 	{
-		/*
-			Optimization ideas
-			==================
+		use std::ops::Sub;
 
-			Add a hard limit to this function results and:
-
-			- Sort results by relevance in order of:
-			  - Match quality: exact, prefix, suffix, contains
-			  - Word frequency
-			- Only do key index search if necessary (not enough prefix matches):
-			  - Sort indexes in main table by word relevance.
-			  - Words in the key matches are already poor quality, so can we
-				just cull by index (no suffix-first sorting in that case).
-			- Defer cloning until the final result set.
-		*/
-
-		// If a non-prefix search yields more than this number of matches,
-		// we fallback to a prefix search, if possible.
-		const TOO_MANY_MATCHES_PREFIX_FALLBACK: usize = 50_000;
-
-		let mut indexes: HashSet<usize> = HashSet::new();
-
-		// TODO: use split on the query to allow multiple words
-		let query = normalize_search_string(query, true);
-
-		let start = std::time::Instant::now();
-
-		// We always search by prefix, since it is stricter than by keys and
-		// will match even non-kana and non-kanji inputs.
-		let mut possible_indexes = self.index.search_term_word_by_prefix(&query);
-
-		// Fuzzy mode and "contains" require searching using the key index,
-		// which maps kana and kanji individually and all possible kana pairs
-		// in a word, so it is a much broader search and will do partial
-		// matches.
-		let mut prefix_only = !options.fuzzy
-			&& match options.mode {
-				SearchMode::Is | SearchMode::Suffix => true,
-				_ => false,
-			};
-
-		// Detect cases where the key index search would yield too many matches
-		// and revert to prefix only in those cases where we have results.
-		if !prefix_only && possible_indexes.len() > 0 {
-			let k = query.chars().filter(|c| is_kana(*c)).take(3).collect::<Vec<_>>();
-			let key = match k.len() {
-				2 => SearchKey(k[0], k[1]),
-				1 => SearchKey(k[0], '\0'),
-				_ => SearchKey('\0', '\0'),
-			};
-			if self.index.index_size_by_key(&key) > TOO_MANY_MATCHES_PREFIX_FALLBACK {
-				prefix_only = true;
-			}
-		}
-
-		if !prefix_only {
-			for index in self.index.indexes_by_keyword(&query) {
-				possible_indexes.insert(index);
-			}
-		}
-
-		println!(
-			"Found {} possible indexes in {:.3}s (prefix-only: {})",
-			possible_indexes.len(),
-			start.elapsed().as_secs_f64(),
-			prefix_only,
-		);
-
-		for index in possible_indexes.into_iter() {
-			let entry = &self.terms[index];
-			let keys = vec![&entry.expression, &entry.reading].into_iter().chain(
+		// Helper to enumerate all keywords for a term by index.
+		fn keys_for(db: &Root, index: usize) -> impl Iterator<Item = &String> {
+			let entry = &db.terms[index];
+			vec![&entry.expression, &entry.reading].into_iter().chain(
 				entry
 					.forms
 					.iter()
 					.map(|x| vec![&x.expression, &x.reading].into_iter())
 					.flatten(),
-			);
-
-			// TODO: implement fuzzy matching
-			let mut is_match = false;
-			for key in keys {
-				is_match = match options.mode {
-					SearchMode::Is => key == &query,
-					SearchMode::Contains => key.contains(&query),
-					SearchMode::Prefix => key.starts_with(&query),
-					SearchMode::Suffix => key.ends_with(&query),
-				};
-				if is_match {
-					break;
-				}
-			}
-
-			if is_match {
-				indexes.insert(index);
-			}
+			)
 		}
+
+		// TODO: prioritize search terms based on the query mode
+		// TODO: implement fuzzy searching
+
+		// TODO: use split on the query to allow multiple words
+		let query = normalize_search_string(query, true);
+
+		// No matter what, never go past this many results.
+		const HARD_LIMIT: usize = 50000;
+
+		// If no limit is specified, use this.
+		let limit = if options.limit > 0 { options.limit } else { 100 };
+
+		let max_count = std::cmp::min(options.offset + limit, HARD_LIMIT);
+
+		println!("\nSearching for `{}` with max count {}...", query, max_count);
+
+		// Exact matches
+		let exact_matches = self.index.search_term_word_by_prefix(&query, true);
+		let count = exact_matches.len();
+
+		println!("... found {} exact matches", exact_matches.len());
+
+		// Exact "prefix" matches
+		let (prefix_matches, count) = if options.mode.includes_prefix() && count < max_count {
+			let set = self.index.search_term_word_by_prefix(&query, false);
+			let set = set.sub(&exact_matches);
+			let count = count + set.len();
+			(set, count)
+		} else {
+			(Default::default(), count)
+		};
+
+		println!("... found {} prefix matches", prefix_matches.len());
+
+		// Exact "suffix" matches
+		let (suffix_matches, count) = if options.mode.includes_suffix() && count < max_count {
+			let check_index = |index: &usize| -> bool {
+				if exact_matches.contains(index) || prefix_matches.contains(index) {
+					false
+				} else {
+					keys_for(self, *index).any(|s| s.ends_with(&query))
+				}
+			};
+			let max_count = max_count - count;
+			let candidates = self.index.search_candidates_by_suffix(&query).into_iter().sorted();
+			let matches = candidates.filter(check_index).take(max_count);
+			let set = matches.collect::<HashSet<usize>>();
+			let count = count + set.len();
+			(set, count)
+		} else {
+			(Default::default(), count)
+		};
+
+		println!("... found {} suffix matches", suffix_matches.len());
+
+		// Do a keyword search for "contains" and fuzzy search.
+		let is_contains = options.mode == SearchMode::Contains;
+		let indexes_by_keyword = if (is_contains || options.fuzzy) && count < max_count {
+			self.index.indexes_by_keyword(&query)
+		} else {
+			Default::default()
+		};
+
+		if indexes_by_keyword.len() > 0 {
+			println!("... matched {} by keyword", indexes_by_keyword.len());
+		}
+
+		// Exact "contains" matches
+		let (contain_matches, count) = if is_contains && count < max_count {
+			let check_index = |index: &usize| -> bool {
+				if exact_matches.contains(index) || prefix_matches.contains(index) || suffix_matches.contains(index) {
+					false
+				} else {
+					keys_for(self, *index).any(|s| s.contains(&query))
+				}
+			};
+			let max_count = max_count - count;
+			let candidates = indexes_by_keyword.iter().cloned().sorted();
+			let matches = candidates.filter(check_index).take(max_count);
+			let set = matches.collect::<HashSet<usize>>();
+			let count = count + set.len();
+			(set, count)
+		} else {
+			(Default::default(), count)
+		};
+
+		println!("... found {} contain matches", contain_matches.len());
+
+		let indexes = exact_matches
+			.into_iter()
+			.sorted()
+			.chain(prefix_matches.into_iter().sorted())
+			.chain(suffix_matches.into_iter().sorted())
+			.chain(contain_matches.into_iter().sorted())
+			.skip(options.offset)
+			.take(limit);
 
 		let mut out = Vec::new();
 		for index in indexes {
 			out.push(self.terms[index].clone());
 		}
 
-		// TODO: improve sorting
-		out.sort_by(|a, b| b.frequency.cmp(&a.frequency));
-
-		let total = out.len();
-
-		let out = if options.offset > 0 {
-			out.into_iter().skip(options.offset).collect()
-		} else {
-			out
-		};
-
-		let out = if options.limit > 0 {
-			out.into_iter().take(options.limit).collect()
-		} else {
-			out
-		};
-
-		(out, total)
+		(out, count)
 	}
 
 	fn search_kanji<T>(&self, query: T) -> Vec<KanjiRow>
