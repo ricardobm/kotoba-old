@@ -175,7 +175,7 @@ const Result: React.FC<{ data: DictResult }> = ({ data }) =>
 
 const ResultItem: React.FC<{ data: DictResult, item: DictItem }> = ({ data, item }) =>
     <div>
-        <h2>{item.expression}{item.reading != item.expression ? <span>&nbsp;({item.reading})</span> : <span />}</h2>
+        <h2>{item.expression}{item.reading !== item.expression ? <span>&nbsp;({item.reading})</span> : <span />}</h2>
         <em>From <span title={`Revision ${data.sources[item.source].revision}`}>{data.sources[item.source].name}</span></em>
         <div>
             <TagList data={data} tags={item.tags} />
@@ -183,7 +183,7 @@ const ResultItem: React.FC<{ data: DictResult, item: DictItem }> = ({ data, item
         <ol>
             {item.definition.map(item => <ResultDefinition item={item} data={data} />)}
         </ol>
-        {item.forms.length == 0 ? <div /> :
+        {item.forms.length === 0 ? <div /> :
             <div>
                 <h3>Other forms</h3>
                 {item.forms.map(it =>
@@ -203,7 +203,7 @@ const ResultDefinition: React.FC<{ data: DictResult, item: DictDefinition }> = (
             {item.info.length ? <em>{item.info.join(', ')}</em> : <em />}
             <TagList tags={item.tags} data={data} />
         </div>
-        {item.link.length == 0 ? <div /> :
+        {item.link.length === 0 ? <div /> :
             <ul>
                 {item.link.map(it => <li><a href={it.uri}>{it.title}</a></li>)}
             </ul>
