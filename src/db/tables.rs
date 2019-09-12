@@ -539,6 +539,9 @@ pub struct FormRow {
 
 	/// Kana reading as romaji.
 	pub romaji: String,
+
+	/// Frequency information for this form, when available.
+	pub frequency: Option<u64>,
 }
 
 /// Linked resource in the form.

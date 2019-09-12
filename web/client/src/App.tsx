@@ -62,7 +62,7 @@ interface DictItem {
     source: number[],
     forms: DictForm[],
     tags: number[],
-    frequency: number,
+    frequency: number | null,
     score: number,
 }
 
@@ -82,6 +82,7 @@ interface DictForm {
     reading: string,
     expression: string,
     romaji: string,
+    frequency: number | null,
 }
 
 interface DictState {
@@ -186,7 +187,7 @@ const ResultItem: React.FC<{ data: DictResult, item: DictItem }> = ({ data, item
                 (acc, val): any => acc ? [acc, ', ', val] : [val],
                 null
             )}
-
+            {item.frequency ? <em style={{ color: '#A0A0A0', paddingLeft: '10px' }}>#{item.frequency}</em> : <em />}
         </em>
         <div>
             <TagList data={data} tags={item.tags} />
@@ -201,6 +202,7 @@ const ResultItem: React.FC<{ data: DictResult, item: DictItem }> = ({ data, item
                     <div>
                         {it.expression}
                         {it.reading !== it.expression ? <span>({it.reading})</span> : <span />}
+                        {it.frequency ? <em style={{ color: '#A0A0A0', paddingLeft: '10px' }}>#{it.frequency}</em> : <em />}
                     </div>)
                 }
             </div>

@@ -70,6 +70,7 @@ pub fn do_merge_term(tags: &Vec<TagRow>, a: &TermRow, b: &TermRow) -> Option<Ter
 						expression: b.expression.clone(),
 						reading:    b.reading.clone(),
 						romaji:     b.romaji.clone(),
+						frequency:  b.frequency,
 					}))
 					.unique()
 					.collect(),
