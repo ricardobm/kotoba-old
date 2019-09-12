@@ -86,6 +86,8 @@ fn run() -> i32 {
 			start.elapsed().as_secs_f64()
 		);
 
+		db.merge_entries();
+
 		db.update_index(true);
 		db.save(&dict_path).unwrap();
 		db
@@ -96,8 +98,6 @@ fn run() -> i32 {
 		db.dump(10, &mut std::io::stdout()).unwrap();
 		println!();
 	}
-
-	// db.merge_entries();
 
 	if db.update_index(false) {
 		db.save(&dict_path).unwrap();

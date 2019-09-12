@@ -171,7 +171,12 @@ const Result: React.FC<{ data: DictResult }> = ({ data }) =>
         <h1>Results for "{data.query}" ({data.reading})</h1>
         <div>Found {data.total} results in {data.elapsed.toFixed(3)}s</div>
         <hr />
-        {data.terms.map(it => <ResultItem item={it} data={data} />)}
+        {data.terms.map(it => <ResultItem item={it} data={data} />)
+            .reduce(
+                (acc, val): any => acc ? [acc, <hr />, val] : [val],
+                null
+            )
+        }
     </div>
 
 const ResultItem: React.FC<{ data: DictResult, item: DictItem }> = ({ data, item }) =>

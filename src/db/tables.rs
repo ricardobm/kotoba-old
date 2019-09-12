@@ -392,14 +392,17 @@ impl Root {
 		(kanji_count, terms_count)
 	}
 
-	#[allow(dead_code)]
+	/// Attempt to merge database entries across dictionaries.
 	pub fn merge_entries(&mut self) {
 		use super::merge::merge_term;
 		use std::iter::FromIterator;
 
 		let count = self.terms.len();
+		println!("\nMerging {} database entries...", count);
+
 		let start = std::time::Instant::now();
 
+		// Maps expression/readings to respective indexes.
 		let mut merged_terms = Vec::new();
 		let mut indexes: HashMap<&str, HashSet<usize>> = HashMap::new();
 		for (index, it) in self.terms.iter().enumerate() {
@@ -413,6 +416,10 @@ impl Root {
 			}
 		}
 
+		// Attempt to merge the entries in the order they are given, since we
+		// can assume that entries are already sorted by relevancy:
+
+		// Set of entries that have already been merged, so we can skip them
 		let mut merged: HashSet<usize> = HashSet::new();
 		for (index, it) in self.terms.iter().enumerate() {
 			if merged.contains(&index) {
@@ -420,20 +427,22 @@ impl Root {
 			}
 			merged.insert(index);
 
-			let mut merge_set = HashSet::new();
+			// Collect all candidates for merging with the current entry
+			let mut merge_set = Vec::new();
 			for key in vec![it.expression.as_str(), it.reading.as_str()] {
 				if let Some(set) = indexes.get(key) {
 					for index in set.iter() {
 						if merged.contains(index) {
 							continue;
 						}
-						merge_set.insert(*index);
+						merge_set.push(*index);
 					}
 				}
 			}
 
+			// Try to merge current entry with
 			let mut main_entry = it.clone();
-			for (i, it) in merge_set.into_iter().map(|i| (i, &self.terms[i])) {
+			for (i, it) in merge_set.into_iter().unique().map(|i| (i, &self.terms[i])) {
 				if merge_term(&self.tags, &mut main_entry, it) {
 					merged.insert(i);
 				}
@@ -445,9 +454,8 @@ impl Root {
 		self.terms = merged_terms;
 
 		println!(
-			"Merge finished after {:.3}s (from {} to {} entries)",
+			"Merge finished after {:.3}s (reduced to {} entries)",
 			start.elapsed().as_secs_f64(),
-			count,
 			self.terms.len()
 		);
 	}
@@ -529,7 +537,7 @@ pub struct DefinitionRow {
 }
 
 /// Additional forms for a [TermRow].
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct FormRow {
 	/// Term expression.
 	pub expression: String,
@@ -545,7 +553,7 @@ pub struct FormRow {
 }
 
 /// Linked resource in the form.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct LinkRow {
 	pub uri:   String,
 	pub title: String,
