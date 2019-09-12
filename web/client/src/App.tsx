@@ -181,7 +181,7 @@ const Result: React.FC<{ data: DictResult }> = ({ data }) =>
 
 const ResultItem: React.FC<{ data: DictResult, item: DictItem }> = ({ data, item }) =>
     <div>
-        <h2>{item.expression}{item.reading !== item.expression ? <span>&nbsp;({item.reading})</span> : <span />}</h2>
+        <h2><Term term={item.expression} reading={item.reading} frequency={item.frequency} /></h2>
         <em>
             Sources:&nbsp;
             {item.source.map(src =>
@@ -192,7 +192,6 @@ const ResultItem: React.FC<{ data: DictResult, item: DictItem }> = ({ data, item
                 (acc, val): any => acc ? [acc, ', ', val] : [val],
                 null
             )}
-            {item.frequency ? <em style={{ color: '#A0A0A0', paddingLeft: '10px' }}>#{item.frequency}</em> : <em />}
         </em>
         <div>
             <TagList data={data} tags={item.tags} />
@@ -203,16 +202,21 @@ const ResultItem: React.FC<{ data: DictResult, item: DictItem }> = ({ data, item
         {item.forms.length === 0 ? <div /> :
             <div>
                 <h3>Other forms</h3>
-                {item.forms.map(it =>
-                    <div>
-                        {it.expression}
-                        {it.reading !== it.expression ? <span>({it.reading})</span> : <span />}
-                        {it.frequency ? <em style={{ color: '#A0A0A0', paddingLeft: '10px' }}>#{it.frequency}</em> : <em />}
-                    </div>)
-                }
+                <ul>
+                    {item.forms.map(it =>
+                        <li><Term term={it.expression} reading={it.reading} frequency={it.frequency} /></li>
+                    )}
+                </ul>
             </div>
         }
     </div>
+
+const Term: React.FC<{ term: string, reading: string, frequency?: number | null }> = ({ term, reading, frequency }) =>
+    <span>
+        {term}
+        {reading !== term ? <em style={{ fontWeight: 'normal', fontSize: '0.8em', paddingLeft: '15px' }}>({reading})</em> : <span />}
+        {frequency ? <em style={{ fontWeight: 'normal', fontSize: '0.7em', paddingLeft: '15px', color: '#A0A0A0' }}>#{frequency}</em> : <em />}
+    </span>
 
 const ResultDefinition: React.FC<{ data: DictResult, item: DictDefinition }> = ({ data, item }) =>
     <li>

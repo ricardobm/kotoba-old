@@ -239,7 +239,7 @@ pub struct Term {
 impl fmt::Display for Term {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "-> {}", self.expression)?;
-		if self.reading.len() > 0 {
+		if self.reading.len() > 0 && self.reading != self.expression {
 			write!(f, " 「{}」", self.reading)?;
 		}
 		write!(f, " -- {}/{}", self.sequence, self.score)?;

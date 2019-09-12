@@ -218,12 +218,16 @@ impl Root {
 		// reading is just kana, so we can translate it to hiragana.
 		if term.reading.len() == 0 {
 			term.reading = to_hiragana(&term.expression);
+		} else {
+			term.reading = to_hiragana(&term.reading);
 		}
 		term.romaji = to_romaji(&term.reading);
 
 		for it in term.forms.iter_mut() {
 			if it.reading.len() == 0 {
 				it.reading = to_hiragana(&it.expression);
+			} else {
+				it.reading = to_hiragana(&it.reading);
 			}
 			it.romaji = to_romaji(&it.reading);
 		}
@@ -447,6 +451,8 @@ impl Root {
 					merged.insert(i);
 				}
 			}
+
+			main_entry.forms.sort_by(|a, b| b.frequency.cmp(&a.frequency));
 
 			merged_terms.push(main_entry);
 		}
