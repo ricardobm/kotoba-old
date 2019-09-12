@@ -391,6 +391,66 @@ impl Root {
 
 		(kanji_count, terms_count)
 	}
+
+	#[allow(dead_code)]
+	pub fn merge_entries(&mut self) {
+		use super::merge::merge_term;
+		use std::iter::FromIterator;
+
+		let count = self.terms.len();
+		let start = std::time::Instant::now();
+
+		let mut merged_terms = Vec::new();
+		let mut indexes: HashMap<&str, HashSet<usize>> = HashMap::new();
+		for (index, it) in self.terms.iter().enumerate() {
+			for key in vec![it.expression.as_str(), it.reading.as_str()].into_iter() {
+				indexes
+					.entry(key)
+					.and_modify(|e| {
+						e.insert(index);
+					})
+					.or_insert_with(|| HashSet::from_iter(std::iter::once(index)));
+			}
+		}
+
+		let mut merged: HashSet<usize> = HashSet::new();
+		for (index, it) in self.terms.iter().enumerate() {
+			if merged.contains(&index) {
+				continue;
+			}
+			merged.insert(index);
+
+			let mut merge_set = HashSet::new();
+			for key in vec![it.expression.as_str(), it.reading.as_str()] {
+				if let Some(set) = indexes.get(key) {
+					for index in set.iter() {
+						if merged.contains(index) {
+							continue;
+						}
+						merge_set.insert(*index);
+					}
+				}
+			}
+
+			let mut main_entry = it.clone();
+			for (i, it) in merge_set.into_iter().map(|i| (i, &self.terms[i])) {
+				if merge_term(&self.tags, &mut main_entry, it) {
+					merged.insert(i);
+				}
+			}
+
+			merged_terms.push(main_entry);
+		}
+
+		self.terms = merged_terms;
+
+		println!(
+			"Merge finished after {:.3}s (from {} to {} entries)",
+			start.elapsed().as_secs_f64(),
+			count,
+			self.terms.len()
+		);
+	}
 }
 
 /// Entry for a kanji in the dictionary.
@@ -469,7 +529,7 @@ pub struct DefinitionRow {
 }
 
 /// Additional forms for a [TermRow].
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 pub struct FormRow {
 	/// Term expression.
 	pub expression: String,
@@ -521,7 +581,7 @@ pub struct MetaRow {
 
 /// Index for a [TagRow] in a [Root].
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub struct TagId(usize);
+pub struct TagId(pub usize);
 
 impl TagId {
 	fn as_index(&self) -> usize {

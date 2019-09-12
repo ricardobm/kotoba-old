@@ -97,6 +97,8 @@ fn run() -> i32 {
 		println!();
 	}
 
+	// db.merge_entries();
+
 	if db.update_index(false) {
 		db.save(&dict_path).unwrap();
 	}
