@@ -59,7 +59,7 @@ interface DictItem {
     reading: string,
     definition: DictDefinition[],
     romaji: string,
-    source: number,
+    source: number[],
     forms: DictForm[],
     tags: number[],
     frequency: number,
@@ -176,7 +176,18 @@ const Result: React.FC<{ data: DictResult }> = ({ data }) =>
 const ResultItem: React.FC<{ data: DictResult, item: DictItem }> = ({ data, item }) =>
     <div>
         <h2>{item.expression}{item.reading !== item.expression ? <span>&nbsp;({item.reading})</span> : <span />}</h2>
-        <em>From <span title={`Revision ${data.sources[item.source].revision}`}>{data.sources[item.source].name}</span></em>
+        <em>
+            Sources:&nbsp;
+            {item.source.map(src =>
+                <span title={`Revision ${data.sources[src].revision}`}>
+                    {data.sources[src].name}
+                </span>
+            ).reduce(
+                (acc, val): any => acc ? [acc, ', ', val] : [val],
+                null
+            )}
+
+        </em>
         <div>
             <TagList data={data} tags={item.tags} />
         </div>

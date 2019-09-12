@@ -109,11 +109,16 @@ impl Dictionary {
 
 	pub fn db_map(&self) -> DbMap {
 		let mut out = DbMap { sources: Vec::new() };
-		for (i, it) in self.db.sources.iter().enumerate() {
-			let src_id = db::SourceId(i);
+		for (src_index, it) in self.db.sources.iter().enumerate() {
 			let src = DbSource {
 				info: it.clone(),
-				tags: self.db.tags.iter().filter(|t| t.source == src_id).cloned().collect(),
+				tags: self
+					.db
+					.tags
+					.iter()
+					.filter(|t| t.source.0 == src_index)
+					.cloned()
+					.collect(),
 			};
 			out.sources.push(src);
 		}

@@ -153,9 +153,9 @@ impl Root {
 			} else {
 				let order = a.expression.cmp(&b.expression);
 				if order == std::cmp::Ordering::Equal {
-					let src_a = a.source.as_index();
+					let src_a = a.source[0].0;
 					let src_a = sources[src_a].as_str();
-					let src_b = b.source.as_index();
+					let src_b = b.source[0].0;
 					let src_b = sources[src_b].as_str();
 					let val_a = SOURCE_PRECEDENCE.get(src_a).unwrap_or(&std::usize::MAX);
 					let val_b = SOURCE_PRECEDENCE.get(src_b).unwrap_or(&std::usize::MAX);
@@ -241,10 +241,10 @@ impl Root {
 		self.meta_terms.push(meta);
 	}
 
-	/// Add a [SourceRow] to the database, returning the new [SourceId].
-	pub fn add_source(&mut self, source: SourceRow) -> SourceId {
+	/// Add a [SourceRow] to the database, returning the new source index.
+	pub fn add_source(&mut self, source: SourceRow) -> SourceIndex {
 		self.sources.push(source);
-		SourceId(self.sources.len() - 1)
+		SourceIndex(self.sources.len() - 1)
 	}
 
 	/// Dump a sample of the data.
@@ -493,8 +493,8 @@ pub struct TermRow {
 	/// Definitions for this term.
 	pub definition: Vec<DefinitionRow>,
 
-	/// Description of the origin for this entry.
-	pub source: SourceId,
+	/// Origin information for this entry.
+	pub source: Vec<SourceIndex>,
 
 	/// Additional forms for the term, if any.
 	pub forms: Vec<FormRow>,
@@ -548,16 +548,9 @@ pub struct LinkRow {
 	pub title: String,
 }
 
-/// Index for a [SourceRow] in a [Root].
+/// Source index for an entry.
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct SourceId(pub usize);
-
-impl SourceId {
-	fn as_index(&self) -> usize {
-		let SourceId(index) = self;
-		*index
-	}
-}
+pub struct SourceIndex(pub usize);
 
 /// Available sources for [KanjiRow] and [TermRow].
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -608,7 +601,7 @@ pub struct TagRow {
 	pub order: i32,
 
 	/// Tag source dictionary.
-	pub source: SourceId,
+	pub source: SourceIndex,
 }
 
 //
@@ -628,10 +621,14 @@ impl DbDisplay for TermRow {
 			write!(f, ", freq:{}", frequency)?;
 		}
 
-		let origin = &root.sources[self.source.as_index()];
-		if origin.name.len() > 0 {
-			write!(f, ", from:{}", origin.name)?;
-		}
+		write!(
+			f,
+			", from: {}",
+			self.source
+				.iter()
+				.map(|&SourceIndex(s)| &root.sources[s].name)
+				.join(", ")
+		)?;
 
 		write_tags(&self.tags, "\n   ", root, f)?;
 
@@ -723,7 +720,7 @@ impl DbDisplay for KanjiRow {
 
 impl fmt::Display for TagRow {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let SourceId(source) = self.source;
+		let SourceIndex(source) = self.source;
 		write!(
 			f,
 			"{name:16} | {desc:75} | {cat:14} | {order:3} | {src}",

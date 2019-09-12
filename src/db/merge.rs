@@ -39,7 +39,7 @@ pub fn do_merge_term(tags: &Vec<TagRow>, a: &TermRow, b: &TermRow) -> Option<Ter
 				reading:    a.reading.clone(),
 				romaji:     a.romaji.clone(),
 				score:      std::cmp::max(a.score, b.score),
-				source:     a.source,
+				source:     a.source.clone(),
 				tags:       merge_tags(&a.tags, &b.tags),
 				definition: merge_definitions(tags, &a, &b),
 				frequency:  std::cmp::max(a.frequency, b.frequency),
@@ -53,7 +53,7 @@ pub fn do_merge_term(tags: &Vec<TagRow>, a: &TermRow, b: &TermRow) -> Option<Ter
 				reading:    a.reading.clone(),
 				romaji:     a.romaji.clone(),
 				score:      std::cmp::max(a.score, b.score),
-				source:     a.source,
+				source:     a.source.clone(),
 				tags:       merge_tags(&a.tags, &b.tags),
 				definition: merge_definitions(tags, &a, &b),
 

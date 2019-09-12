@@ -61,7 +61,7 @@ impl Dict {
 	#[allow(dead_code)]
 	pub fn append_to<'a>(&self, db: &mut db::Root) {
 		// Add ourselves as a source
-		let source_id = db.add_source(db::SourceRow {
+		let source_index = db.add_source(db::SourceRow {
 			name:     self.title.clone(),
 			revision: self.revision.clone(),
 		});
@@ -74,13 +74,13 @@ impl Dict {
 				category:    it.category.clone(),
 				description: it.notes.clone(),
 				order:       it.order,
-				source:      source_id,
+				source:      source_index,
 			});
 			tag_map.insert(Cow::from(&it.name), tag_id);
 		}
 
 		// Add terms
-		for it in &self.terms {
+		for it in self.terms.iter() {
 			let tags = it.term_tags.iter().chain(it.rules.iter());
 			let term = db::TermRow {
 				expression: it.expression.clone(),
@@ -89,12 +89,12 @@ impl Dict {
 				definition: vec![db::DefinitionRow {
 					text: it.glossary.clone(),
 					info: Vec::new(),
-					tags: add_tags(db, source_id, &mut tag_map, &it.definition_tags),
+					tags: add_tags(db, source_index, &mut tag_map, &it.definition_tags),
 					link: Vec::new(),
 				}],
-				source:     source_id,
+				source:     vec![source_index],
 				forms:      Vec::new(),
-				tags:       add_tags(db, source_id, &mut tag_map, tags),
+				tags:       add_tags(db, source_index, &mut tag_map, tags),
 				frequency:  None,
 				score:      it.score,
 			};
@@ -107,12 +107,12 @@ impl Dict {
 				character: it.character,
 				onyomi:    it.onyomi.clone(),
 				kunyomi:   it.kunyomi.clone(),
-				tags:      add_tags(db, source_id, &mut tag_map, &it.tags),
+				tags:      add_tags(db, source_index, &mut tag_map, &it.tags),
 				meanings:  it.meanings.clone(),
 				stats:     HashMap::new(),
 				frequency: None,
 			};
-			add_tags(db, source_id, &mut tag_map, it.stats.keys());
+			add_tags(db, source_index, &mut tag_map, it.stats.keys());
 			for (key, value) in &it.stats {
 				let tag_id = tag_map.get(&Cow::from(key)).unwrap();
 				kanji.stats.insert(*tag_id, value.clone());
@@ -144,7 +144,7 @@ impl Dict {
 /// given tags' IDs.
 fn add_tags<'a, L, S>(
 	db: &mut db::Root,
-	source_id: db::SourceId,
+	source_index: db::SourceIndex,
 	tag_map: &mut HashMap<Cow<'a, str>, db::TagId>,
 	tags: L,
 ) -> HashSet<db::TagId>
@@ -165,7 +165,7 @@ where
 					category:    String::new(),
 					description: String::new(),
 					order:       0,
-					source:      source_id,
+					source:      source_index,
 				});
 				tag_map.insert(key, tag_id);
 				out.insert(tag_id);
