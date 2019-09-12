@@ -23,6 +23,10 @@ extern crate lazy_static;
 extern crate rocket;
 extern crate rocket_contrib;
 
+extern crate reqwest;
+extern crate ring;
+extern crate data_encoding;
+
 use std::path::PathBuf;
 use std::time;
 
@@ -31,6 +35,7 @@ const DUMP_WORD_SAMPLE: bool = false;
 
 mod config;
 mod db;
+mod dict;
 mod import;
 mod japanese;
 mod kana;
