@@ -33,3 +33,5 @@ Client
 - SASS
 - Find a UI library
 - UI persistence
+- History navigation
+- Debounce calls
