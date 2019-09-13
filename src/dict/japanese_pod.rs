@@ -58,13 +58,12 @@ pub fn query_dictionary(_args: Args) -> Vec<Entry> {
 pub fn load_audio(kanji: &str, kana: &str) -> Result<Option<Vec<u8>>, Box<dyn Error>> {
 	use std::time::Duration;
 
-	use data_encoding::HEXUPPER;
+	use crate::util::sha256;
 	use regex::Regex;
 	use reqwest::header;
 	use reqwest::{Client, Url};
-	use ring::digest::{Context, SHA256};
 
-	const BLACKLIST_HASH: &str = "AE6398B5A27BC8C0A771DF6C907ADE794BE15518174773C58C7C7DDD17098906";
+	const BLACKLIST_HASH: &str = "ae6398b5a27bc8c0a771df6c907ade794be15518174773c58c7c7ddd17098906";
 
 	lazy_static! {
 		static ref MP3_CONTENT_TYPE: Regex = Regex::new(r"mpeg(-?3)?").unwrap();
@@ -96,10 +95,7 @@ pub fn load_audio(kanji: &str, kana: &str) -> Result<Option<Vec<u8>>, Box<dyn Er
 			Err(format!("received empty response"))?;
 		}
 
-		let mut context = Context::new(&SHA256);
-		context.update(&buffer[..]);
-		let digest = context.finish();
-		let digest = HEXUPPER.encode(digest.as_ref());
+		let digest = sha256(&buffer[..]).unwrap();
 		if digest == BLACKLIST_HASH {
 			Ok(None)
 		} else {

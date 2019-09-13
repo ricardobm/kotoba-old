@@ -3,6 +3,8 @@ use std::error::Error;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::thread;
 
 use regex::Regex;
 
@@ -144,6 +146,53 @@ impl JapaneseService {
 			dir_path.push(p);
 		}
 
+		// Load available entries
+		let mut entries_by_src = HashMap::new();
+		for src in ALL_SOURCES.iter() {
+			let dir_path = dir_path.join(src.sub_path());
+			if let Ok(dir) = fs::read_dir(&dir_path) {
+				let entries = entries_by_src.entry(*src).or_insert(Vec::new());
+				for entry in dir {
+					if let Ok(entry) = entry {
+						if let Some(name) = entry.file_name().to_str() {
+							if let Some(caps) = ENTRY_RE.captures(name) {
+								let hash = caps.name("hash").unwrap().as_str();
+								entries.push(JapaneseAudio {
+									name:   name.to_string(),
+									hash:   hash.to_string(),
+									path:   format!("{}/{}", cache_path, src.sub_path()),
+									source: *src,
+									data:   AudioData::FromFile(entry),
+								});
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Load any entry that is not available
+		let mut handles = Vec::new();
+		let (tx, rx) = mpsc::channel();
+
+		for src in ALL_SOURCES.iter() {
+			if entries_by_src.contains_key(src) {
+				continue;
+			}
+
+			let term = term.clone();
+			let reading = reading.clone();
+			let tx = tx.clone();
+			let src = *src;
+			let mut worker = get_worker(src);
+			let handle = thread::spawn(move || {
+				tx.send((src, worker.load(term, reading))).unwrap();
+			});
+			handles.push(handle);
+		}
+
+		drop(tx);
+
 		let mut out = JapaneseResult {
 			query:      JapaneseQuery {
 				term:    term,
@@ -156,60 +205,27 @@ impl JapaneseService {
 			errors:     Vec::new(),
 		};
 
-		// Load available entries
-		let mut entries_by_src = HashMap::new();
-		for src in ALL_SOURCES.iter() {
-			let dir_path = dir_path.join(src.sub_path());
-			if let Ok(dir) = fs::read_dir(&dir_path) {
-				let entries = entries_by_src.entry(src).or_insert(Vec::new());
-				for entry in dir {
-					if let Ok(entry) = entry {
-						if let Some(name) = entry.file_name().to_str() {
-							if let Some(caps) = ENTRY_RE.captures(name) {
-								let hash = caps.name("hash").unwrap().as_str();
-								entries.push(JapaneseAudio {
-									name:   name.to_string(),
-									hash:   hash.to_string(),
-									path:   format!("{}/{}", out.cache_path, src.sub_path()),
-									source: *src,
-									data:   AudioData::FromFile(entry),
-								});
-							}
-						}
-					}
-				}
-			}
-		}
-
-		// Load any entry that is not available
-		for src in ALL_SOURCES.iter() {
-			if entries_by_src.contains_key(src) {
-				continue;
-			}
-
+		for (src, result) in rx {
 			let dir_path = dir_path.join(src.sub_path());
 			let mut entries = Vec::new();
 			let mut success = false;
-			match src {
-				AudioSource::LanguagePod => {
-					match crate::dict::japanese_pod::load_audio(&out.query.term, &out.query.reading) {
-						Ok(data) => {
-							success = true;
-							if let Some(data) = data {
-								let hash = sha256(&data[..]).unwrap();
-								let name = format!("{}.mp3", hash);
-								entries.push(JapaneseAudio {
-									name:   name,
-									hash:   hash,
-									path:   format!("{}/{}", out.cache_path, src.sub_path()),
-									source: *src,
-									data:   AudioData::Buffer(data),
-								});
-							}
-						}
-						Err(err) => out.errors.push(err.into()),
+
+			match result {
+				Ok(all_data) => {
+					success = true;
+					for data in all_data {
+						let hash = sha256(&data[..]).unwrap();
+						let name = format!("{}.mp3", hash);
+						entries.push(JapaneseAudio {
+							name:   name,
+							hash:   hash,
+							path:   format!("{}/{}", out.cache_path, src.sub_path()),
+							source: src,
+							data:   AudioData::Buffer(data),
+						});
 					}
 				}
+				Err(err) => out.errors.push(err.into()),
 			}
 
 			if success {
@@ -225,6 +241,10 @@ impl JapaneseService {
 				}
 				entries_by_src.insert(src, entries);
 			}
+		}
+
+		for it in handles {
+			it.join().unwrap();
 		}
 
 		use itertools::*;
@@ -243,4 +263,52 @@ fn normalize_string(s: &str) -> String {
 	use unicode_normalization::UnicodeNormalization;
 	let text = s.trim().to_lowercase().nfc().collect::<String>();
 	text
+}
+
+//
+// Audio workers
+//
+
+type AudioWorkerResult = Result<Vec<Vec<u8>>, WorkerError>;
+
+trait AudioWorker: Send {
+	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult;
+}
+
+fn get_worker(src: AudioSource) -> Box<dyn AudioWorker> {
+	match src {
+		AudioSource::LanguagePod => Box::new(LanguagePodWorker {}),
+	}
+}
+
+struct LanguagePodWorker {}
+
+impl AudioWorker for LanguagePodWorker {
+	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult {
+		match crate::dict::japanese_pod::load_audio(&term, &reading) {
+			Ok(data) => {
+				if let Some(data) = data {
+					Ok(vec![data])
+				} else {
+					Ok(vec![])
+				}
+			}
+			Err(err) => Err(WorkerError(format!("{}", err))),
+		}
+	}
+}
+
+#[derive(Debug)]
+struct WorkerError(String);
+
+impl std::fmt::Display for WorkerError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.0)
+	}
+}
+
+impl Error for WorkerError {
+	fn description(&self) -> &str {
+		self.0.as_str()
+	}
 }
