@@ -27,6 +27,7 @@ extern crate data_encoding;
 extern crate reqwest;
 extern crate ring;
 extern crate scraper;
+extern crate selectors;
 
 extern crate crossbeam;
 

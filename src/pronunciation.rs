@@ -10,10 +10,12 @@ use regex::Regex;
 
 use crate::dict::audio::*;
 use crate::dict::japanese_pod;
+use crate::dict::jisho;
 use crate::util;
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum AudioSource {
+	Jisho,
 	LanguagePod,
 	JapanesePod,
 }
@@ -22,8 +24,9 @@ impl AudioSource {
 	pub fn sub_path(&self) -> &'static str {
 		// spell-checker: disable
 		match self {
+			AudioSource::Jisho => "jisho",
 			AudioSource::JapanesePod => "jpod",
-			AudioSource::LanguagePod => "lang",
+			AudioSource::LanguagePod => "langpod",
 		}
 		// spell-checker: enable
 	}
@@ -31,7 +34,7 @@ impl AudioSource {
 
 lazy_static! {
 	static ref ALL_SOURCES: Vec<AudioSource> = {
-		let mut v = vec![AudioSource::JapanesePod, AudioSource::LanguagePod];
+		let mut v = vec![AudioSource::Jisho, AudioSource::JapanesePod, AudioSource::LanguagePod];
 		v.sort();
 		v
 	};
@@ -298,8 +301,17 @@ trait AudioWorker: Send {
 
 fn get_worker(src: AudioSource) -> Box<dyn AudioWorker> {
 	match src {
+		AudioSource::Jisho => Box::new(JishoWorker {}),
 		AudioSource::JapanesePod => Box::new(JapanesePodWorker {}),
 		AudioSource::LanguagePod => Box::new(LanguagePodWorker {}),
+	}
+}
+
+struct JishoWorker {}
+
+impl AudioWorker for JishoWorker {
+	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult {
+		jisho::load_pronunciations(&term, &reading)
 	}
 }
 

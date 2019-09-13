@@ -2,9 +2,9 @@
     "cSpell.words": [
         "Anki",
         "JLPT",
-        "zenkaku",
         "deserializer",
         "forvo",
+        "furigana",
         "godan",
         "hongo",
         "ichidan",
@@ -19,6 +19,7 @@
         "suru",
         "wana",
         "yomichan",
+        "zenkaku",
         "āēīōū"
     ]
 }

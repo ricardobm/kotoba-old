@@ -27,6 +27,7 @@ ring = "0.13.5"
 data-encoding = "2.1.2"
 scraper = "0.10.1"
 crossbeam = "0.7.2"
+selectors = "0.21.0"
 
 [dependencies.rocket_contrib]
 version = "0.4.2"
