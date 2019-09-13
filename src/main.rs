@@ -26,6 +26,7 @@ extern crate rocket_contrib;
 extern crate data_encoding;
 extern crate reqwest;
 extern crate ring;
+extern crate scraper;
 
 use std::path::PathBuf;
 use std::time;

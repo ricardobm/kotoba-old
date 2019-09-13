@@ -83,6 +83,20 @@ impl<'r> rocket::response::Responder<'r> for AudioResponse {
 	}
 }
 
+use super::dict;
+
+#[get("/test")]
+fn test() -> Json<Vec<dict::japanese_pod::Entry>> {
+	Json(
+		dict::japanese_pod::query_dictionary(dict::japanese_pod::Args {
+			term: "明日".to_string(),
+			starts: false,
+			..Default::default()
+		})
+		.unwrap(),
+	)
+}
+
 #[get("/audio?<kanji>&<kana>")]
 fn audio(kanji: String, kana: String, service: State<Mutex<JapaneseService>>) -> Result<AudioResponse, Box<dyn Error>> {
 	let result = service.lock().unwrap().query(JapaneseQuery {
@@ -115,6 +129,6 @@ pub fn launch(data: Data) {
 	rocket::ignite()
 		.manage(data.dict)
 		.manage(Mutex::new(data.audio))
-		.mount("/api", routes![index, list, search, tags, audio])
+		.mount("/api", routes![index, list, search, tags, audio, test])
 		.launch();
 }

@@ -25,6 +25,7 @@ fnv = "1.0.6"
 reqwest = "0.9.20"
 ring = "0.13.5"
 data-encoding = "2.1.2"
+scraper = "0.10.1"
 
 [dependencies.rocket_contrib]
 version = "0.4.2"
