@@ -55,7 +55,7 @@ pub fn query_dictionary(_args: Args) -> Vec<Entry> {
 }
 
 /// Load audio pronunciation from `languagepod101.com`.
-pub fn load_audio(kanji: String, kana: String) -> Result<Option<Vec<u8>>, Box<dyn Error>> {
+pub fn load_audio(kanji: &str, kana: &str) -> Result<Option<Vec<u8>>, Box<dyn Error>> {
 	use std::time::Duration;
 
 	use data_encoding::HEXUPPER;
@@ -72,8 +72,8 @@ pub fn load_audio(kanji: String, kana: String) -> Result<Option<Vec<u8>>, Box<dy
 
 	let mut url = Url::parse("https://assets.languagepod101.com/dictionary/japanese/audiomp3.php")?;
 	url.query_pairs_mut()
-		.append_pair("kanji", kanji.as_str())
-		.append_pair("kana", kana.as_str());
+		.append_pair("kanji", kanji)
+		.append_pair("kana", kana);
 
 	let client = Client::builder().timeout(Duration::from_millis(5000)).build()?;
 	let mut response = client.get(url).send()?;

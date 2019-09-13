@@ -23,9 +23,9 @@ extern crate lazy_static;
 extern crate rocket;
 extern crate rocket_contrib;
 
+extern crate data_encoding;
 extern crate reqwest;
 extern crate ring;
-extern crate data_encoding;
 
 use std::path::PathBuf;
 use std::time;
@@ -39,7 +39,9 @@ mod dict;
 mod import;
 mod japanese;
 mod kana;
+mod pronunciation;
 mod server;
+mod util;
 
 fn main() {
 	std::process::exit(run());
@@ -108,7 +110,10 @@ fn run() -> i32 {
 		db.save(&dict_path).unwrap();
 	}
 
-	server::launch(japanese::Dictionary::new(db));
+	server::launch(server::Data {
+		dict:  japanese::Dictionary::new(db),
+		audio: pronunciation::JapaneseService::new(&data_dir.join("audio")),
+	});
 
 	0
 }
