@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::io;
 
 use data_encoding::HEXLOWER;
@@ -19,6 +20,18 @@ pub fn sha256<T: io::Read>(mut input: T) -> io::Result<String> {
 
 	let digest = HEXLOWER.encode(digest.as_ref());
 	Ok(digest)
+}
+
+/// Check the response status, returning an error if it is not successful.
+pub fn check_response(response: &reqwest::Response) -> Result<(), Box<dyn Error>> {
+	let status = response.status();
+	if status.is_success() {
+		Ok(())
+	} else if let Some(reason) = status.canonical_reason() {
+		Err(format!("request failed with status {} ({})", status, reason).into())
+	} else {
+		Err(format!("request failed with status {}", status).into())
+	}
 }
 
 #[cfg(test)]

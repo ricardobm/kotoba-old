@@ -3,13 +3,13 @@ use std::error::Error;
 use std::io::Read;
 use std::time::Duration;
 
-use regex::Regex;
-use reqwest::header;
 use reqwest::{Client, Url};
 
 use scraper::{Html, Selector};
 
+use super::audio::{load_audio, AudioData};
 use crate::kana::to_hiragana;
+use crate::util::check_response;
 
 const DEFAULT_TIMEOUT_MS: u64 = 5000;
 
@@ -93,123 +93,80 @@ pub fn query_dictionary(args: Args) -> Result<Vec<Entry>, Box<dyn Error>> {
 		.form(&params)
 		.send()?;
 
-	if response.status().is_success() {
-		let mut doc = String::new();
-		response.read_to_string(&mut doc)?;
+	check_response(&response)?;
 
-		let mut out = Vec::new();
-		let doc = Html::parse_document(doc.as_str());
+	let mut doc = String::new();
+	response.read_to_string(&mut doc)?;
 
-		// Iterate over every result row.
-		for (order, row) in doc.select(&SEL_RESULT_ROW).enumerate() {
-			// Main term for the result row
-			let term = match row.select(&SEL_TERM_ELEM).next() {
-				Some(el) => el.text().collect::<String>().trim().to_string(),
-				_ => continue,
-			};
-			if term.len() == 0 {
-				continue;
-			}
+	let mut out = Vec::new();
+	let doc = Html::parse_document(doc.as_str());
 
-			// Kana reading for the result row
-			let kana = match row.select(&SEL_KANA_ELEM).next() {
-				Some(el) => to_hiragana(el.text().collect::<String>().trim()),
-				_ => String::new(),
-			};
-
-			let (english, info) = if let Some(el) = row.select(&SEL_ENGLISH_ELEM).next() {
-				let mut english = el.text().collect::<String>();
-				let info = el
-					.select(&SEL_ENGLISH_IS_INFO_ELEM)
-					.map(|e| e.text().collect::<String>().trim().to_string())
-					.collect::<Vec<_>>();
-				for it in info.iter() {
-					english = english.replace(it.as_str(), "");
-				}
-				english = english.trim().to_string();
-				(english, info)
-			} else {
-				Default::default()
-			};
-
-			let mut audio = Vec::new();
-			for el in row.select(&SEL_AUDIO_SRC) {
-				let src = el.value().attr("src").unwrap_or("").trim();
-				if src.len() > 0 {
-					audio.push(src.to_string());
-				}
-			}
-
-			out.push(Entry {
-				term,
-				kana,
-				english,
-				info,
-				order,
-				audio,
-			});
+	// Iterate over every result row.
+	for (order, row) in doc.select(&SEL_RESULT_ROW).enumerate() {
+		// Main term for the result row
+		let term = match row.select(&SEL_TERM_ELEM).next() {
+			Some(el) => el.text().collect::<String>().trim().to_string(),
+			_ => continue,
+		};
+		if term.len() == 0 {
+			continue;
 		}
 
-		Ok(out)
-	} else {
-		Err(response_error(&response))
+		// Kana reading for the result row
+		let kana = match row.select(&SEL_KANA_ELEM).next() {
+			Some(el) => to_hiragana(el.text().collect::<String>().trim()),
+			_ => String::new(),
+		};
+
+		let (english, info) = if let Some(el) = row.select(&SEL_ENGLISH_ELEM).next() {
+			let mut english = el.text().collect::<String>();
+			let info = el
+				.select(&SEL_ENGLISH_IS_INFO_ELEM)
+				.map(|e| e.text().collect::<String>().trim().to_string())
+				.collect::<Vec<_>>();
+			for it in info.iter() {
+				english = english.replace(it.as_str(), "");
+			}
+			english = english.trim().to_string();
+			(english, info)
+		} else {
+			Default::default()
+		};
+
+		let mut audio = Vec::new();
+		for el in row.select(&SEL_AUDIO_SRC) {
+			let src = el.value().attr("src").unwrap_or("").trim();
+			if src.len() > 0 {
+				audio.push(src.to_string());
+			}
+		}
+
+		out.push(Entry {
+			term,
+			kana,
+			english,
+			info,
+			order,
+			audio,
+		});
 	}
+
+	Ok(out)
 }
 
 /// Load audio pronunciation from `languagepod101.com`.
-pub fn load_audio(kanji: &str, kana: &str) -> Result<Option<Vec<u8>>, Box<dyn Error>> {
-	use crate::util::sha256;
-
+pub fn load_pronunciation(kanji: &str, kana: &str) -> Result<Option<AudioData>, Box<dyn Error>> {
 	const BLACKLIST_HASH: &str = "ae6398b5a27bc8c0a771df6c907ade794be15518174773c58c7c7ddd17098906";
-
-	lazy_static! {
-		static ref MP3_CONTENT_TYPE: Regex = Regex::new(r"mpeg(-?3)?").unwrap();
-	}
 
 	let mut url = Url::parse("https://assets.languagepod101.com/dictionary/japanese/audiomp3.php")?;
 	url.query_pairs_mut()
 		.append_pair("kanji", kanji)
 		.append_pair("kana", kana);
 
-	let client = Client::builder()
-		.timeout(Duration::from_millis(DEFAULT_TIMEOUT_MS))
-		.build()?;
-	let mut response = client.get(url).send()?;
-	let status = response.status();
-	if status.is_success() {
-		if let Some(content_type) = response.headers().get(header::CONTENT_TYPE) {
-			if MP3_CONTENT_TYPE.is_match(content_type.to_str()?) {
-				Ok(())
-			} else {
-				Err(format!("response with invalid content type: {:?}", content_type))
-			}
-		} else {
-			Err(format!("response has no content type"))
-		}?;
-
-		let mut buffer = Vec::new();
-		response.read_to_end(&mut buffer)?;
-
-		if buffer.len() == 0 {
-			Err(format!("received empty response"))?;
-		}
-
-		let digest = sha256(&buffer[..]).unwrap();
-		if digest == BLACKLIST_HASH {
-			Ok(None)
-		} else {
-			Ok(Some(buffer))
-		}
+	let audio = load_audio(url)?;
+	if audio.hash() == BLACKLIST_HASH {
+		Ok(None)
 	} else {
-		Err(response_error(&response))
-	}
-}
-
-fn response_error(response: &reqwest::Response) -> Box<dyn Error> {
-	let status = response.status();
-	if let Some(reason) = status.canonical_reason() {
-		format!("request failed with status {} ({})", status, reason).into()
-	} else {
-		format!("request failed with status {}", status).into()
+		Ok(Some(audio))
 	}
 }

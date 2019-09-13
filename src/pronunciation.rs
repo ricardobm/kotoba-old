@@ -8,7 +8,8 @@ use std::thread;
 
 use regex::Regex;
 
-use crate::util::sha256;
+use crate::dict::audio::AudioData;
+use crate::dict::japanese_pod;
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum AudioSource {
@@ -72,7 +73,7 @@ pub struct JapaneseResult {
 	pub errors: Vec<Box<dyn Error>>,
 }
 
-pub enum AudioData {
+pub enum AudioFile {
 	FromFile(fs::DirEntry),
 	Buffer(Vec<u8>),
 }
@@ -93,22 +94,22 @@ pub struct JapaneseAudio {
 	pub source: AudioSource,
 
 	/// Data for this entry, if loaded.
-	pub data: AudioData,
+	pub data: AudioFile,
 }
 
 impl JapaneseAudio {
 	/// Return an [io::Read] to access the contents of this item.
 	fn buffer(&self) -> Option<&[u8]> {
 		match &self.data {
-			AudioData::Buffer(data) => Some(&data[..]),
+			AudioFile::Buffer(data) => Some(&data[..]),
 			_ => None,
 		}
 	}
 
 	pub fn read(self) -> (String, io::Result<Vec<u8>>) {
 		match self.data {
-			AudioData::Buffer(data) => (self.name, Ok(data)),
-			AudioData::FromFile(dir) => (self.name, fs::read(dir.path())),
+			AudioFile::Buffer(data) => (self.name, Ok(data)),
+			AudioFile::FromFile(dir) => (self.name, fs::read(dir.path())),
 		}
 	}
 }
@@ -162,7 +163,7 @@ impl JapaneseService {
 									hash:   hash.to_string(),
 									path:   format!("{}/{}", cache_path, src.sub_path()),
 									source: *src,
-									data:   AudioData::FromFile(entry),
+									data:   AudioFile::FromFile(entry),
 								});
 							}
 						}
@@ -213,15 +214,14 @@ impl JapaneseService {
 			match result {
 				Ok(all_data) => {
 					success = true;
-					for data in all_data {
-						let hash = sha256(&data[..]).unwrap();
+					for AudioData(data, hash) in all_data {
 						let name = format!("{}.mp3", hash);
 						entries.push(JapaneseAudio {
 							name:   name,
 							hash:   hash,
 							path:   format!("{}/{}", out.cache_path, src.sub_path()),
 							source: src,
-							data:   AudioData::Buffer(data),
+							data:   AudioFile::Buffer(data),
 						});
 					}
 				}
@@ -269,7 +269,7 @@ fn normalize_string(s: &str) -> String {
 // Audio workers
 //
 
-type AudioWorkerResult = Result<Vec<Vec<u8>>, WorkerError>;
+type AudioWorkerResult = Result<Vec<AudioData>, WorkerError>;
 
 trait AudioWorker: Send {
 	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult;
@@ -285,14 +285,9 @@ struct LanguagePodWorker {}
 
 impl AudioWorker for LanguagePodWorker {
 	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult {
-		match crate::dict::japanese_pod::load_audio(&term, &reading) {
-			Ok(data) => {
-				if let Some(data) = data {
-					Ok(vec![data])
-				} else {
-					Ok(vec![])
-				}
-			}
+		match japanese_pod::load_pronunciation(&term, &reading) {
+			Ok(Some(data)) => Ok(vec![data]),
+			Ok(None) => Ok(vec![]),
 			Err(err) => Err(WorkerError(format!("{}", err))),
 		}
 	}
