@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::sync::Mutex;
 
 use rocket::State;
@@ -6,6 +5,8 @@ use rocket_contrib::json::Json;
 
 use japanese;
 use pronunciation::{JapaneseQuery, JapaneseService};
+
+use super::util;
 
 #[get("/")]
 fn index() -> &'static str {
@@ -98,7 +99,7 @@ fn test() -> Json<Vec<dict::japanese_pod::Entry>> {
 }
 
 #[get("/audio?<kanji>&<kana>")]
-fn audio(kanji: String, kana: String, service: State<Mutex<JapaneseService>>) -> Result<AudioResponse, Box<dyn Error>> {
+fn audio(kanji: String, kana: String, service: State<Mutex<JapaneseService>>) -> util::Result<AudioResponse> {
 	let result = service.lock().unwrap().query(JapaneseQuery {
 		term:    kanji,
 		reading: kana,

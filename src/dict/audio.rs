@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::io::Read;
 use std::time::Duration;
 
@@ -6,9 +5,12 @@ use regex::Regex;
 use reqwest::header;
 use reqwest::{Client, IntoUrl};
 
+use crate::util;
 use crate::util::{check_response, sha256};
 
 const DEFAULT_TIMEOUT_MS: u64 = 2500;
+
+pub type AudioResult = util::Result<AudioData>;
 
 /// Audio data and SHA-256.
 pub struct AudioData(pub Vec<u8>, pub String);
@@ -21,7 +23,7 @@ impl AudioData {
 }
 
 /// Load an audio by the given URL.
-pub fn load_audio<U: IntoUrl>(url: U) -> Result<AudioData, Box<dyn Error>> {
+pub fn load_audio<U: IntoUrl>(url: U) -> AudioResult {
 	lazy_static! {
 		static ref MP3_CONTENT_TYPE: Regex = Regex::new(r"mpeg(-?3)?").unwrap();
 	}

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::error::Error;
 use std::io::Read;
 use std::time::Duration;
 
@@ -9,6 +8,7 @@ use scraper::{Html, Selector};
 
 use super::audio::{load_audio, AudioData};
 use crate::kana::to_hiragana;
+use crate::util;
 use crate::util::check_response;
 
 const DEFAULT_TIMEOUT_MS: u64 = 5000;
@@ -63,7 +63,7 @@ pub struct Entry {
 }
 
 /// Query `japanesepod101.com` dictionary.
-pub fn query_dictionary(args: Args) -> Result<Vec<Entry>, Box<dyn Error>> {
+pub fn query_dictionary(args: Args) -> util::Result<Vec<Entry>> {
 	lazy_static! {
 		static ref SEL_RESULT_ROW: Selector = Selector::parse("div.dc-result-row").unwrap();
 		static ref SEL_TERM_ELEM: Selector = Selector::parse("span.dc-vocab").unwrap();
@@ -155,7 +155,7 @@ pub fn query_dictionary(args: Args) -> Result<Vec<Entry>, Box<dyn Error>> {
 }
 
 /// Load audio pronunciation from `languagepod101.com`.
-pub fn load_pronunciation(kanji: &str, kana: &str) -> Result<Option<AudioData>, Box<dyn Error>> {
+pub fn load_pronunciation(kanji: &str, kana: &str) -> util::Result<Option<AudioData>> {
 	const BLACKLIST_HASH: &str = "ae6398b5a27bc8c0a771df6c907ade794be15518174773c58c7c7ddd17098906";
 
 	let mut url = Url::parse("https://assets.languagepod101.com/dictionary/japanese/audiomp3.php")?;
