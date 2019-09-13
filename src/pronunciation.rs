@@ -222,7 +222,9 @@ impl JapaneseService {
 
 			match result {
 				Ok(all_data) => {
+					let mut is_empty = true;
 					for res in all_data {
+						is_empty = false;
 						match res {
 							Ok(AudioData(data, hash)) => {
 								let name = format!("{}.mp3", hash);
@@ -239,6 +241,9 @@ impl JapaneseService {
 								out.errors.push(Box::new(err));
 							}
 						}
+					}
+					if is_empty {
+						success = true;
 					}
 				}
 				Err(err) => out.errors.push(err.into()),

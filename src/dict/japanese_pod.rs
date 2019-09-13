@@ -164,7 +164,7 @@ pub fn load_dictionary_pronunciations(kanji: &str, kana: &str) -> util::Result<V
 
 	let audio_urls = result
 		.into_iter()
-		.filter(|x| &x.term == kanji && &x.kana == kana)
+		.filter(|x| &x.kana == kana)
 		.map(|x| x.audio)
 		.flatten()
 		.collect::<Vec<_>>();
