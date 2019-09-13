@@ -8,24 +8,33 @@ use std::thread;
 
 use regex::Regex;
 
-use crate::dict::audio::AudioData;
+use crate::dict::audio::*;
 use crate::dict::japanese_pod;
+use crate::util;
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum AudioSource {
 	LanguagePod,
+	JapanesePod,
 }
 
 impl AudioSource {
 	pub fn sub_path(&self) -> &'static str {
+		// spell-checker: disable
 		match self {
-			AudioSource::LanguagePod => "langpod",
+			AudioSource::JapanesePod => "jpod",
+			AudioSource::LanguagePod => "lang",
 		}
+		// spell-checker: enable
 	}
 }
 
 lazy_static! {
-	static ref ALL_SOURCES: Vec<AudioSource> = vec![AudioSource::LanguagePod,];
+	static ref ALL_SOURCES: Vec<AudioSource> = {
+		let mut v = vec![AudioSource::JapanesePod, AudioSource::LanguagePod];
+		v.sort();
+		v
+	};
 }
 
 /// Provides loading and file-system caching of Japanese pronunciation audio.
@@ -213,16 +222,23 @@ impl JapaneseService {
 
 			match result {
 				Ok(all_data) => {
-					success = true;
-					for AudioData(data, hash) in all_data {
-						let name = format!("{}.mp3", hash);
-						entries.push(JapaneseAudio {
-							name:   name,
-							hash:   hash,
-							path:   format!("{}/{}", out.cache_path, src.sub_path()),
-							source: src,
-							data:   AudioFile::Buffer(data),
-						});
+					for res in all_data {
+						match res {
+							Ok(AudioData(data, hash)) => {
+								let name = format!("{}.mp3", hash);
+								entries.push(JapaneseAudio {
+									name:   name,
+									hash:   hash,
+									path:   format!("{}/{}", out.cache_path, src.sub_path()),
+									source: src,
+									data:   AudioFile::Buffer(data),
+								});
+								success = true;
+							}
+							Err(err) => {
+								out.errors.push(Box::new(err));
+							}
+						}
 					}
 				}
 				Err(err) => out.errors.push(err.into()),
@@ -269,7 +285,7 @@ fn normalize_string(s: &str) -> String {
 // Audio workers
 //
 
-type AudioWorkerResult = Result<Vec<AudioData>, WorkerError>;
+type AudioWorkerResult = util::Result<Vec<AudioResult>>;
 
 trait AudioWorker: Send {
 	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult;
@@ -277,7 +293,16 @@ trait AudioWorker: Send {
 
 fn get_worker(src: AudioSource) -> Box<dyn AudioWorker> {
 	match src {
+		AudioSource::JapanesePod => Box::new(JapanesePodWorker {}),
 		AudioSource::LanguagePod => Box::new(LanguagePodWorker {}),
+	}
+}
+
+struct JapanesePodWorker {}
+
+impl AudioWorker for JapanesePodWorker {
+	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult {
+		japanese_pod::load_dictionary_pronunciations(&term, &reading)
 	}
 }
 
@@ -285,25 +310,9 @@ struct LanguagePodWorker {}
 
 impl AudioWorker for LanguagePodWorker {
 	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult {
-		match japanese_pod::load_pronunciation(&term, &reading) {
-			Ok(Some(data)) => Ok(vec![data]),
-			Ok(None) => Ok(vec![]),
-			Err(err) => Err(WorkerError(format!("{}", err))),
+		match japanese_pod::load_pronunciation(&term, &reading)? {
+			Some(data) => Ok(vec![Ok(data)]),
+			None => Ok(vec![]),
 		}
-	}
-}
-
-#[derive(Debug)]
-struct WorkerError(String);
-
-impl std::fmt::Display for WorkerError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.0)
-	}
-}
-
-impl Error for WorkerError {
-	fn description(&self) -> &str {
-		self.0.as_str()
 	}
 }

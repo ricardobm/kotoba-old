@@ -62,9 +62,19 @@ impl std::error::Error for Error {
 	}
 }
 
+pub trait AsError {
+	fn as_err(self) -> Error;
+}
+
 impl From<String> for Error {
 	fn from(v: String) -> Self {
 		Error(v)
+	}
+}
+
+impl AsError for String {
+	fn as_err(self) -> Error {
+		Error::from(self)
 	}
 }
 

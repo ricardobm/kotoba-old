@@ -6,7 +6,7 @@ use reqwest::{Client, Url};
 
 use scraper::{Html, Selector};
 
-use super::audio::{load_audio, AudioData};
+use super::audio::*;
 use crate::kana::to_hiragana;
 use crate::util;
 use crate::util::check_response;
@@ -152,6 +152,23 @@ pub fn query_dictionary(args: Args) -> util::Result<Vec<Entry>> {
 	}
 
 	Ok(out)
+}
+
+/// Load audio pronunciations from `japanesepod101.com` results.
+pub fn load_dictionary_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioResult>> {
+	let result = query_dictionary(Args {
+		term: kanji.to_string(),
+		vulgar: true,
+		..Default::default()
+	})?;
+
+	let audio_urls = result
+		.into_iter()
+		.filter(|x| &x.term == kanji && &x.kana == kana)
+		.map(|x| x.audio)
+		.flatten()
+		.collect::<Vec<_>>();
+	Ok(load_audio_list(audio_urls))
 }
 
 /// Load audio pronunciation from `languagepod101.com`.

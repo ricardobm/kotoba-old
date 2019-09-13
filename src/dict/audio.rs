@@ -1,4 +1,5 @@
 use std::io::Read;
+use std::thread;
 use std::time::Duration;
 
 use regex::Regex;
@@ -7,6 +8,8 @@ use reqwest::{Client, IntoUrl};
 
 use crate::util;
 use crate::util::{check_response, sha256};
+
+use crossbeam::channel::unbounded;
 
 const DEFAULT_TIMEOUT_MS: u64 = 2500;
 
@@ -20,6 +23,50 @@ impl AudioData {
 	pub fn hash(&self) -> &str {
 		self.1.as_str()
 	}
+}
+
+pub fn load_audio_list<T>(urls: T) -> Vec<AudioResult>
+where
+	T: IntoIterator<Item = String>,
+{
+	const MAX_WORKERS: usize = 8;
+
+	let urls: Vec<_> = urls.into_iter().collect();
+	let num_workers = std::cmp::min(MAX_WORKERS, urls.len());
+
+	let (tx_work, rx_work) = unbounded::<String>();
+	let (tx_data, rx_data) = unbounded::<AudioResult>();
+
+	let mut handles = Vec::new();
+	for _ in 0..num_workers {
+		let rx = rx_work.clone();
+		let tx = tx_data.clone();
+		let handle = thread::spawn(move || {
+			for url in rx.iter() {
+				let result = load_audio(&url);
+				tx.send(result).unwrap();
+			}
+		});
+		handles.push(handle);
+	}
+	drop(rx_work);
+	drop(tx_data);
+
+	for url in urls {
+		tx_work.send(url).unwrap();
+	}
+	drop(tx_work);
+
+	let mut out = Vec::new();
+	for result in rx_data {
+		out.push(result);
+	}
+
+	for h in handles {
+		h.join().unwrap();
+	}
+
+	out
 }
 
 /// Load an audio by the given URL.

@@ -28,6 +28,8 @@ extern crate reqwest;
 extern crate ring;
 extern crate scraper;
 
+extern crate crossbeam;
+
 use std::path::PathBuf;
 use std::time;
 
