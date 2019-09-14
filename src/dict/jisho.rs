@@ -11,7 +11,7 @@ use scraper::{ElementRef, Html, Selector};
 use selectors::attr::CaseSensitivity;
 
 use super::audio::*;
-use crate::kana::to_hiragana;
+use crate::kana::{is_kanji, to_hiragana};
 use crate::util;
 use crate::util::check_response;
 
@@ -51,15 +51,14 @@ pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioRes
 
 	let mut results = Vec::new();
 
-	for audio in doc.select(&SEL_AUDIO) {
+	'outer: for audio in doc.select(&SEL_AUDIO) {
 		// Look for the closest `div.concept_light-wrapper`
 		let mut wrapper = audio.parent();
 		while let Some(current) = wrapper {
-			if !current.value().is_element() {
-				wrapper = None;
-				break;
-			}
-			let val = current.value().as_element().unwrap();
+			let val = match current.value().as_element() {
+				Some(v) => v,
+				_ => continue 'outer,
+			};
 			if val.name() == "div" && val.has_class("concept_light-wrapper", CaseSensitivity::AsciiCaseInsensitive) {
 				break;
 			}
@@ -71,11 +70,20 @@ pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioRes
 			_ => continue,
 		};
 
+		// Extract the text for the entry.
 		let text = match wrapper.select(&SEL_TEXT).next() {
 			Some(v) => v.text().collect::<String>().trim().to_string(),
 			_ => continue,
 		};
 
+		// Extracts the furigana for the entry, so we can generate the kana
+		// reading.
+		//
+		// The furigana field has one `<span>` per character in the entry
+		// text. Some of those spans will contain a reading, others will be
+		// empty. The empty spans are either for kana or for kanji that have
+		// no reading (in the latter case, the reading is usually merged with
+		// the kanji before it).
 		let furigana = match wrapper.select(&SEL_FURIGANA).next() {
 			Some(v) => v
 				.select(&SEL_SPAN)
@@ -95,10 +103,11 @@ pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioRes
 			continue;
 		}
 
+		// Replace each kanji in the original text by its furigana reading.
 		let kana = furigana
 			.into_iter()
-			.zip(text.chars().map(|x| x.to_string()))
-			.map(|(f, k)| if f.len() > 0 { f } else { k })
+			.zip(text.chars())
+			.map(|(furigana, chr)| if is_kanji(chr) { furigana } else { chr.to_string() })
 			.join("");
 		let kana = to_hiragana(kana);
 
