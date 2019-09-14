@@ -134,9 +134,11 @@ pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioRes
 		});
 	}
 
+	let is_kana = !kanji.chars().any(|c| is_kanji(c));
+
 	let audio_urls = results
 		.into_iter()
-		.filter(|x| &x.kana == kana && &x.term == kanji)
+		.filter(|x| &x.kana == kana && (is_kana || &x.term == kanji))
 		.map(|x| x.src)
 		.collect::<Vec<_>>();
 	Ok(load_audio_list(audio_urls))
