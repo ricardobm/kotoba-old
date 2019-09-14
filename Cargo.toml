@@ -7,6 +7,9 @@ description = "Japanese Learning pad"
 repository = "https://github.com/ricardobm/hongo/"
 keywords = ["japanese"]
 
+[profile.release]
+debug = true
+
 [profile.dev]
 opt-level = 2
 
