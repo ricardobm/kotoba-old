@@ -151,7 +151,7 @@ impl JapaneseService {
 		}
 	}
 
-	pub fn query(&mut self, query: JapaneseQuery) -> JapaneseResult {
+	pub fn query(&self, query: JapaneseQuery) -> JapaneseResult {
 		lazy_static! {
 			static ref ENTRY_RE: Regex = Regex::new(r"^(?P<hash>[0-9a-f]{64})\.mp3$").unwrap();
 		}

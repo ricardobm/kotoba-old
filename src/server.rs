@@ -1,12 +1,11 @@
-use std::sync::Mutex;
-
 use rocket::State;
 use rocket_contrib::json::Json;
 
 use japanese;
 use pronunciation::{JapaneseQuery, JapaneseService};
 
-use super::util;
+use app::App;
+use util;
 
 mod pronunciation;
 
@@ -45,12 +44,12 @@ fn list() -> Json<Vec<Item>> {
 }
 
 #[post("/search", data = "<input>")]
-fn search(input: Json<japanese::SearchArgs>, dict: State<japanese::Dictionary>) -> Json<japanese::QueryResult> {
+fn search(input: Json<japanese::SearchArgs>, dict: State<&japanese::Dictionary>) -> Json<japanese::QueryResult> {
 	Json(dict.query(&input))
 }
 
 #[get("/tags")]
-fn tags(dict: State<japanese::Dictionary>) -> Json<japanese::DbMap> {
+fn tags(dict: State<&japanese::Dictionary>) -> Json<japanese::DbMap> {
 	Json(dict.db_map())
 }
 
@@ -101,8 +100,8 @@ fn test() -> Json<Vec<dict::japanese_pod::Entry>> {
 }
 
 #[get("/audio?<kanji>&<kana>")]
-fn audio(kanji: String, kana: String, service: State<Mutex<JapaneseService>>) -> util::Result<AudioResponse> {
-	let result = service.lock().unwrap().query(JapaneseQuery {
+fn audio(kanji: String, kana: String, service: State<&JapaneseService>) -> util::Result<AudioResponse> {
+	let result = service.query(JapaneseQuery {
 		term:    kanji,
 		reading: kana,
 		force:   false,
@@ -123,15 +122,11 @@ fn audio(kanji: String, kana: String, service: State<Mutex<JapaneseService>>) ->
 	}
 }
 
-pub struct Data {
-	pub dict:  japanese::Dictionary,
-	pub audio: JapaneseService,
-}
-
-pub fn launch(data: Data) {
+pub fn launch(app: &'static App) {
 	rocket::ignite()
-		.manage(data.dict)
-		.manage(Mutex::new(data.audio))
+		.manage(app)
+		.manage(app.dictionary())
+		.manage(app.pronunciation())
 		.mount("/api", routes![index, list, search, tags, audio, test])
 		.launch();
 }

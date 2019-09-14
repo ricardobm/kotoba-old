@@ -43,6 +43,10 @@ impl Dictionary {
 		Dictionary { db }
 	}
 
+	pub fn get_db(&self) -> &db::Root {
+		&self.db
+	}
+
 	/// Query the dictionary.
 	pub fn query(&self, args: &SearchArgs) -> QueryResult {
 		let start = std::time::Instant::now();
