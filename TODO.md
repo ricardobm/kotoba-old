@@ -1,3 +1,9 @@
+Pending list
+============
+
+- Application wide state (IOC style injection?)
+- Logging
+
 Major features
 ==============
 
@@ -6,6 +12,8 @@ Major features
     - Maybe have a first pass that loads only the main entries and a second
       pass for only the other detailed entries.
   - Properly time loading
+  - Keep metadata information
+  - Debounce requests
 - De-inflect words
 - Wiki
 - Favorite words and personal database

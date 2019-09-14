@@ -8,6 +8,8 @@ use pronunciation::{JapaneseQuery, JapaneseService};
 
 use super::util;
 
+mod pronunciation;
+
 #[get("/")]
 fn index() -> &'static str {
 	"Hello world!!!"

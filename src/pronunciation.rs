@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 
+use itertools::*;
 use regex::Regex;
 
 use crate::dict::audio::*;
@@ -32,6 +33,12 @@ impl AudioSource {
 			AudioSource::Forvo => "forvo",
 		}
 		// spell-checker: enable
+	}
+}
+
+impl std::fmt::Display for AudioSource {
+	fn fmt<'a>(&self, f: &mut std::fmt::Formatter<'a>) -> std::fmt::Result {
+		write!(f, "{}", self.sub_path())
 	}
 }
 
@@ -149,6 +156,8 @@ impl JapaneseService {
 			static ref ENTRY_RE: Regex = Regex::new(r"^(?P<hash>[0-9a-f]{64})\.mp3$").unwrap();
 		}
 
+		let start = std::time::Instant::now();
+
 		let term = normalize_string(&query.term);
 		let reading = normalize_string(&query.reading);
 		let reading = if reading.len() == 0 {
@@ -192,6 +201,12 @@ impl JapaneseService {
 			}
 		}
 
+		println!(
+			"- Loaded cached entries for {} in {:.3}s",
+			entries_by_src.keys().join("/"),
+			start.elapsed().as_secs_f64()
+		);
+
 		// Load any entry that is not available
 		let mut handles = Vec::new();
 		let (tx, rx) = mpsc::channel();
@@ -233,6 +248,18 @@ impl JapaneseService {
 
 			match result {
 				Ok(all_data) => {
+					let err_count = all_data
+						.iter()
+						.filter(|x| if let Err(_) = x { true } else { false })
+						.count();
+					println!(
+						"- {} loaded {} ({} errors) in {:.3}s",
+						src,
+						all_data.len(),
+						err_count,
+						start.elapsed().as_secs_f64()
+					);
+
 					let mut is_empty = true;
 					for res in all_data {
 						is_empty = false;
@@ -257,7 +284,10 @@ impl JapaneseService {
 						success = true;
 					}
 				}
-				Err(err) => out.errors.push(err.into()),
+				Err(err) => {
+					println!("- {} failed after {:.3}s", src, start.elapsed().as_secs_f64());
+					out.errors.push(err.into());
+				}
 			}
 
 			if success {
@@ -279,13 +309,14 @@ impl JapaneseService {
 			it.join().unwrap();
 		}
 
-		use itertools::*;
 		out.items = entries_by_src
 			.into_iter()
 			.sorted_by(|a, b| a.0.cmp(&b.0))
 			.map(|x| x.1.into_iter())
 			.flatten()
 			.collect();
+
+		println!("- finished in {:.3}s", start.elapsed().as_secs_f64());
 
 		out
 	}
