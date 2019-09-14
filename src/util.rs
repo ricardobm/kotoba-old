@@ -62,8 +62,8 @@ impl std::error::Error for Error {
 	}
 }
 
-pub trait AsError {
-	fn as_err(self) -> Error;
+pub trait ToError {
+	fn to_err(self) -> Error;
 }
 
 impl From<String> for Error {
@@ -72,9 +72,9 @@ impl From<String> for Error {
 	}
 }
 
-impl AsError for String {
-	fn as_err(self) -> Error {
-		Error::from(self)
+impl<T: Into<String>> ToError for T {
+	fn to_err(self) -> Error {
+		Error::from(self.into())
 	}
 }
 

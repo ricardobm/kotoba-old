@@ -9,6 +9,7 @@ use std::thread;
 use regex::Regex;
 
 use crate::dict::audio::*;
+use crate::dict::forvo;
 use crate::dict::japanese_pod;
 use crate::dict::jisho;
 use crate::util;
@@ -18,6 +19,7 @@ pub enum AudioSource {
 	Jisho,
 	LanguagePod,
 	JapanesePod,
+	Forvo,
 }
 
 impl AudioSource {
@@ -27,6 +29,7 @@ impl AudioSource {
 			AudioSource::Jisho => "jisho",
 			AudioSource::JapanesePod => "jpod",
 			AudioSource::LanguagePod => "langpod",
+			AudioSource::Forvo => "forvo",
 		}
 		// spell-checker: enable
 	}
@@ -34,7 +37,12 @@ impl AudioSource {
 
 lazy_static! {
 	static ref ALL_SOURCES: Vec<AudioSource> = {
-		let mut v = vec![AudioSource::Jisho, AudioSource::JapanesePod, AudioSource::LanguagePod];
+		let mut v = vec![
+			AudioSource::Jisho,
+			AudioSource::JapanesePod,
+			AudioSource::LanguagePod,
+			AudioSource::Forvo,
+		];
 		v.sort();
 		v
 	};
@@ -304,6 +312,7 @@ fn get_worker(src: AudioSource) -> Box<dyn AudioWorker> {
 		AudioSource::Jisho => Box::new(JishoWorker {}),
 		AudioSource::JapanesePod => Box::new(JapanesePodWorker {}),
 		AudioSource::LanguagePod => Box::new(LanguagePodWorker {}),
+		AudioSource::Forvo => Box::new(ForvoWorker {}),
 	}
 }
 
@@ -331,5 +340,13 @@ impl AudioWorker for LanguagePodWorker {
 			Some(data) => Ok(vec![Ok(data)]),
 			None => Ok(vec![]),
 		}
+	}
+}
+
+struct ForvoWorker {}
+
+impl AudioWorker for ForvoWorker {
+	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult {
+		forvo::load_pronunciations(&term, &reading)
 	}
 }

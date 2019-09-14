@@ -89,8 +89,7 @@ pub trait Search {
 /// - The Katakana `ー` is also removed.
 /// - The result is split by punctuation and spaces.
 /// - Non-kanji and non-kana characters are removed.
-#[allow(dead_code)]
-fn search_strings<S: AsRef<str>>(query: S) -> Vec<String> {
+pub fn search_strings<S: AsRef<str>>(query: S) -> Vec<String> {
 	let text = normalize_search_string(query, true);
 	search_strings_normalized(text)
 }

@@ -28,6 +28,7 @@ extern crate reqwest;
 extern crate ring;
 extern crate scraper;
 extern crate selectors;
+extern crate percent_encoding;
 
 extern crate crossbeam;
 
