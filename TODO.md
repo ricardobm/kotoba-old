@@ -6,6 +6,7 @@ Major features
     - Maybe have a first pass that loads only the main entries and a second
       pass for only the other detailed entries.
   - Properly time loading
+- De-inflect words
 - Wiki
 - Favorite words and personal database
 - Media file support
@@ -19,6 +20,7 @@ Major features
 - Flash cards
 - Sentences
 - TTS system
+- Word inflector (verbs, adj, ...)
 
 Backend
 =======
