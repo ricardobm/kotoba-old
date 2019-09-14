@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::time;
 
+use slog::*;
+
 use db;
 use japanese;
 use pronunciation;
@@ -13,8 +15,12 @@ const FROM_ZIP: bool = false;
 
 /// Maintains the global application state and provides top level run methods.
 pub struct App {
+	pub log: Logger,
+
 	dict:     japanese::Dictionary,
 	audio_ja: pronunciation::JapaneseService,
+
+	_global_log_guard: slog_scope::GlobalLoggerGuard,
 }
 
 #[allow(dead_code)]
@@ -23,11 +29,30 @@ impl App {
 	pub fn get() -> &'static App {
 		lazy_static! {
 			static ref APP: App = {
+				let term = slog_term::term_compact();
+				let term = std::sync::Mutex::new(term).fuse();
+
+				let global_log = slog::Logger::root(term, o!());
+				let root_log = global_log.clone();
+
+				let global_log_guard = slog_scope::set_global_logger(global_log);
+				slog_stdlog::init().unwrap();
+
+				time!(t_init);
+				info!(root_log, #"app", "starting application");
+
 				let audio_ja = pronunciation::JapaneseService::new(&App::data_dir().join("audio"));
-				App {
+				let app = App {
+					log:      root_log,
 					dict:     japanese::Dictionary::new(App::load_db()),
 					audio_ja: audio_ja,
-				}
+
+					_global_log_guard: global_log_guard,
+				};
+
+				trace!(app.log, #"app", "application initialized"; t_init);
+
+				app
 			};
 		}
 		&APP

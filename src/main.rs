@@ -1,27 +1,44 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 #![feature(duration_float)]
 
+// Logging
+
+extern crate slog;
+extern crate slog_scope;
+extern crate slog_stdlog;
+extern crate slog_term;
+
+// Serde serialization
+
 #[macro_use]
 extern crate serde;
+extern crate bincode;
 extern crate serde_json;
 extern crate serde_tuple;
 
-extern crate bincode;
+// Utilities
 
-extern crate fnv;
 extern crate itertools;
 extern crate rand;
 extern crate regex;
-extern crate unicode_normalization;
-
-extern crate zip;
 
 #[macro_use]
 extern crate lazy_static;
 
+// Unicode related
+
+extern crate fnv;
+extern crate unicode_normalization;
+
+extern crate zip;
+
+// Server related
+
 #[macro_use]
 extern crate rocket;
 extern crate rocket_contrib;
+
+// Web scraping
 
 extern crate data_encoding;
 extern crate percent_encoding;
@@ -30,9 +47,14 @@ extern crate ring;
 extern crate scraper;
 extern crate selectors;
 
+// Concurrent programming
+
 extern crate crossbeam;
 
-const DUMP_WORD_SAMPLE: bool = false;
+// Application modules
+
+#[macro_use]
+mod base;
 
 mod app;
 mod db;
@@ -43,6 +65,12 @@ mod kana;
 mod pronunciation;
 mod server;
 mod util;
+
+//
+// Main
+//
+
+const DUMP_WORD_SAMPLE: bool = false;
 
 use app::App;
 

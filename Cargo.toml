@@ -32,6 +32,9 @@ scraper = "0.10.1"
 crossbeam = "0.7.2"
 selectors = "0.21.0"
 percent-encoding = "2.1.0"
+slog-term = "2.4.1"
+slog-stdlog = "4.0.0"
+slog-scope = "4.1.2"
 
 [dependencies.rocket_contrib]
 version = "0.4.2"
@@ -44,3 +47,7 @@ features  = ["derive"]
 
 [dependencies.serde_json]
 version = "1.0"
+
+[dependencies.slog]
+version  = "2.5.2"
+features = ["max_level_trace", "release_max_level_info"]
