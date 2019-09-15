@@ -1,10 +1,10 @@
 use std::path::{Path, PathBuf};
-use std::time;
 
-use slog::*;
+use slog::Logger;
 
 use db;
 use japanese;
+use logging::*;
 use pronunciation;
 
 /// Name of the root data directory. Used when looking up the data directory.
@@ -29,33 +29,56 @@ impl App {
 	pub fn get() -> &'static App {
 		lazy_static! {
 			static ref APP: App = {
+				use slog::Drain;
 				let term = slog_term::term_compact();
 				let term = std::sync::Mutex::new(term).fuse();
 
-				let global_log = slog::Logger::root(term, o!());
-				let root_log = global_log.clone();
+				let root_log = Logger::root(term, o!());
+				let global_log = root_log.new(o!());
 
 				let global_log_guard = slog_scope::set_global_logger(global_log);
 				slog_stdlog::init().unwrap();
 
 				time!(t_init);
-				info!(root_log, #"app", "starting application");
+				info!(root_log, "starting application");
 
+				info!(
+					root_log,
+					"data directory is {path}",
+					path = App::data_dir().to_string_lossy().as_ref()
+				);
+
+				let db = App::load_db(root_log.new(o!("op" => "database loading")));
 				let audio_ja = pronunciation::JapaneseService::new(&App::data_dir().join("audio"));
 				let app = App {
 					log:      root_log,
-					dict:     japanese::Dictionary::new(App::load_db()),
+					dict:     japanese::Dictionary::new(db),
 					audio_ja: audio_ja,
 
 					_global_log_guard: global_log_guard,
 				};
 
-				trace!(app.log, #"app", "application initialized"; t_init);
+				trace!(app.log, "application initialized"; t_init);
 
 				app
 			};
 		}
 		&APP
+	}
+
+	/// Creates a new [Logger] for a request.
+	///
+	/// A request logger will still log entries globally, but will also store
+	/// entries in the [RequestLogStore.]
+	///
+	/// Returns the created logger
+	pub fn request_log<T>(&self, values: slog::OwnedKV<T>) -> (Logger, RequestLogStore)
+	where
+		T: slog::SendSyncRefUnwindSafeKV + 'static,
+	{
+		let logger = RequestLogger::new(self.log.clone());
+		let store = logger.store();
+		(Logger::root(logger, values), store)
 	}
 
 	/// The static [db::Root] instance.
@@ -98,56 +121,44 @@ impl App {
 				};
 
 				let data_path = data_path.expect("could not find the user directory");
-				println!("Found data directory at {}", data_path.to_string_lossy());
 				data_path
 			};
 		}
 		DATA_PATH.as_path()
 	}
 
-	fn load_db() -> db::Root {
+	fn load_db(logger: Logger) -> db::Root {
 		// Figure out the imported dictionary path
 		let data_dir = Self::data_dir();
 		let mut dict_path = PathBuf::from(data_dir);
 		dict_path.push("dict");
 		dict_path.push("imported.db");
-		let dict_path_str = dict_path.to_string_lossy();
+		let dict_dir = dict_path.to_string_lossy();
 
 		// Attempt to load the database from the imported path
-		let start = time::Instant::now();
+		time!(t_load);
 		let mut db = if let Some(db) = db::Root::load(&dict_path).unwrap() {
-			println!(
-				"Loaded database from {} in {:.3}s",
-				dict_path_str,
-				start.elapsed().as_secs_f64()
-			);
+			info!(logger, "loaded from {}", dict_dir; t_load);
 			db
 		} else {
 			// If the database could not be loaded, attempt to import the entries
-			println!("Database not found in {}!", dict_path_str);
-
 			let import_path = {
 				let mut p = PathBuf::from(data_dir);
 				p.push(if FROM_ZIP { "import" } else { "import-files" });
 				p
 			};
-			println!("Importing from {}...", import_path.to_string_lossy());
+			let import_dir = import_path.to_string_lossy();
+			warn!(logger, "not found in {}, importing from {}", dict_dir, import_dir);
 
 			let mut db = db::Root::new();
 			crate::import::from_yomichan(&mut db, import_path).unwrap();
-			println!(
-				"... imported{} files in {:.3}s",
-				if FROM_ZIP { " zip" } else { "" },
-				start.elapsed().as_secs_f64()
-			);
+			info!(logger, "imported{} files", if FROM_ZIP { " zip" } else { "" }; t_load);
 
-			let start = time::Instant::now();
+			time!(t_update);
 			let (kanji_count, terms_count) = db.update_frequency();
-			println!(
-				"... updated frequency metadata for {} kanji and {} terms in {:.3}s",
-				kanji_count,
-				terms_count,
-				start.elapsed().as_secs_f64()
+			info!(
+				logger,
+				"updated frequency for {} kanji and {} terms in {}", kanji_count, terms_count, t_update
 			);
 
 			db.merge_entries();

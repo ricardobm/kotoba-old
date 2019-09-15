@@ -3,6 +3,7 @@
 
 // Logging
 
+#[macro_use]
 extern crate slog;
 extern crate slog_scope;
 extern crate slog_stdlog;
@@ -62,6 +63,7 @@ mod dict;
 mod import;
 mod japanese;
 mod kana;
+mod logging;
 mod pronunciation;
 mod server;
 mod util;
