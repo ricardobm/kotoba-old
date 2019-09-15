@@ -5,6 +5,9 @@ use slog::Logger;
 use data_encoding::HEXLOWER;
 use ring::digest::{Context, SHA256};
 
+mod cache;
+pub use self::cache::Cache;
+
 /// Simple custom string error.
 #[derive(Debug)]
 pub struct Error(String);
