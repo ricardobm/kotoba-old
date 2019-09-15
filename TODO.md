@@ -1,8 +1,8 @@
-Pending list
-============
+TODO next
+=========
 
-- Application wide state (IOC style injection?)
-- Logging
+- Implement prototyped pronunciation API
+- Logging improvements
 
 Major features
 ==============
@@ -38,6 +38,10 @@ Backend
 - Improve sort ordering for results (match, all else...)
 - Fuzzy matching in sort
 - Reverse english search
+
+- Logging:
+  - Application wide logging endpoint (e.g. `/api/logs`)
+  - Check panic handling in requests
 
 Client
 ======
