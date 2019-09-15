@@ -8,12 +8,14 @@ use rocket::{Data, Request, Response};
 
 use app::App;
 
+/// UUID identifier for a request.
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct RequestId {
 	uuid: uuid::Uuid,
 }
 
 impl RequestId {
+	/// Returns a new random [RequestId].
 	pub fn new() -> RequestId {
 		use rand::Rng;
 		use uuid::{Builder, Variant, Version};
@@ -25,6 +27,7 @@ impl RequestId {
 		RequestId { uuid: uuid }
 	}
 
+	/// Returns a zero-ed RequestId.
 	pub fn nil() -> RequestId {
 		RequestId {
 			uuid: uuid::Uuid::nil(),
@@ -52,6 +55,12 @@ impl<'a, 'r> FromRequest<'a, 'r> for RequestId {
 	}
 }
 
+/// Fairing implementation for `rocket` that sets up per-request logging.
+///
+/// See also:
+///
+/// https://api.rocket.rs/v0.4/rocket/fairing/trait.Fairing.html
+/// https://api.rocket.rs/v0.4/rocket/request/trait.FromRequest.html
 #[derive(Copy, Clone)]
 pub struct ServerLogger {}
 
@@ -104,12 +113,14 @@ impl Fairing for ServerLogger {
 }
 
 /// Mantains a list of [RequestLogEntry] generated from a [RequestLogger].
+///
+/// Cloned instances share the same back-end store.
 #[derive(Clone)]
 pub struct RequestLogStore {
 	entries: Arc<Mutex<Vec<RequestLogEntry>>>,
 }
 
-/// Log entry generated from a [RequestLogger].
+/// Entry in a [RequestLogStore].
 #[derive(Debug)]
 pub struct RequestLogEntry {
 	pub level:  Level,
@@ -118,7 +129,11 @@ pub struct RequestLogEntry {
 	pub column: u32,
 	pub file:   &'static str,
 	pub module: &'static str,
-	pub keys:   HashMap<&'static str, String>,
+
+	/// Keys from the record.
+	pub keys: HashMap<&'static str, String>,
+
+	/// Keys from the logger.
 	pub values: HashMap<&'static str, String>,
 }
 
@@ -183,6 +198,8 @@ impl RequestLogStore {
 
 /// Implements a [slog::Drain] that stores log entries in a [RequestLogStore]
 /// before forwarding them to another drain.
+///
+/// Cloned entries share the same store.
 #[derive(Clone)]
 pub struct RequestLogger<D: Drain> {
 	store: RequestLogStore,
