@@ -1,10 +1,9 @@
 use rocket::State;
 use rocket_contrib::json::Json;
 
-use japanese;
-use pronunciation::{JapaneseQuery, JapaneseService};
-
 use app::App;
+use japanese;
+use pronunciation::JapaneseQuery;
 use util;
 
 mod pronunciation;
@@ -44,8 +43,9 @@ fn list() -> Json<Vec<Item>> {
 }
 
 #[post("/search", data = "<input>")]
-fn search(input: Json<japanese::SearchArgs>, dict: State<&japanese::Dictionary>) -> Json<japanese::QueryResult> {
-	Json(dict.query(&input))
+fn search(input: Json<japanese::SearchArgs>, app: State<&App>) -> Json<japanese::QueryResult> {
+	let dict = app.dictionary();
+	Json(dict.query(&app.log, &input))
 }
 
 #[get("/tags")]
@@ -88,9 +88,9 @@ impl<'r> rocket::response::Responder<'r> for AudioResponse {
 use super::dict;
 
 #[get("/test")]
-fn test() -> Json<Vec<dict::japanese_pod::Entry>> {
+fn test(app: State<&App>) -> Json<Vec<dict::japanese_pod::Entry>> {
 	Json(
-		dict::japanese_pod::query_dictionary(dict::japanese_pod::Args {
+		dict::japanese_pod::query_dictionary(&app.log, dict::japanese_pod::Args {
 			term: "明日".to_string(),
 			starts: false,
 			..Default::default()
@@ -100,15 +100,16 @@ fn test() -> Json<Vec<dict::japanese_pod::Entry>> {
 }
 
 #[get("/audio?<kanji>&<kana>")]
-fn audio(kanji: String, kana: String, service: State<&JapaneseService>) -> util::Result<AudioResponse> {
-	let result = service.query(JapaneseQuery {
-		term:    kanji,
-		reading: kana,
+fn audio(kanji: String, kana: String, app: State<&App>) -> util::Result<AudioResponse> {
+	let service = app.pronunciation();
+	let result = service.query(&app.log, JapaneseQuery {
+		term:    kanji.clone(),
+		reading: kana.clone(),
 		force:   false,
 	});
 
-	for it in result.errors {
-		eprintln!("Error loading audio: {}", it);
+	for err in result.errors {
+		error!(app.log, "{}", err; "kanji" => &kanji, "kana" => &kana);
 	}
 
 	if result.items.len() > 0 {

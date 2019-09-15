@@ -30,12 +30,17 @@ impl App {
 		lazy_static! {
 			static ref APP: App = {
 				use slog::Drain;
+
+				// Root drain that outputs to the terminal
 				let term = slog_term::term_compact();
-				let term = std::sync::Mutex::new(term).fuse();
+				let term = std::sync::Mutex::new(term);
 
-				let root_log = Logger::root(term, o!());
-				let global_log = root_log.new(o!());
+				// The root application logger
+				let root_log = Logger::root(term.fuse(), o!());
 
+				// Compatibility with libraries using `log`
+				let global_log = slog::LevelFilter::new(root_log.clone(), slog::Level::Info);
+				let global_log = Logger::root(global_log.fuse(), o!("library" => true));
 				let global_log_guard = slog_scope::set_global_logger(global_log);
 				slog_stdlog::init().unwrap();
 
@@ -48,7 +53,7 @@ impl App {
 					path = App::data_dir().to_string_lossy().as_ref()
 				);
 
-				let db = App::load_db(root_log.new(o!("op" => "database loading")));
+				let db = App::load_db(&root_log.new(o!("op" => "database loading")));
 				let audio_ja = pronunciation::JapaneseService::new(&App::data_dir().join("audio"));
 				let app = App {
 					log:      root_log,
@@ -127,7 +132,7 @@ impl App {
 		DATA_PATH.as_path()
 	}
 
-	fn load_db(logger: Logger) -> db::Root {
+	fn load_db(log: &Logger) -> db::Root {
 		// Figure out the imported dictionary path
 		let data_dir = Self::data_dir();
 		let mut dict_path = PathBuf::from(data_dir);
@@ -137,8 +142,8 @@ impl App {
 
 		// Attempt to load the database from the imported path
 		time!(t_load);
-		let mut db = if let Some(db) = db::Root::load(&dict_path).unwrap() {
-			info!(logger, "loaded from {}", dict_dir; t_load);
+		let mut db = if let Some(db) = db::Root::load(log, &dict_path).unwrap() {
+			info!(log, "loaded from {}", dict_dir; t_load);
 			db
 		} else {
 			// If the database could not be loaded, attempt to import the entries
@@ -148,29 +153,29 @@ impl App {
 				p
 			};
 			let import_dir = import_path.to_string_lossy();
-			warn!(logger, "not found in {}, importing from {}", dict_dir, import_dir);
+			warn!(log, "not found in {}, importing from {}", dict_dir, import_dir);
 
 			let mut db = db::Root::new();
 			crate::import::from_yomichan(&mut db, import_path).unwrap();
-			info!(logger, "imported{} files", if FROM_ZIP { " zip" } else { "" }; t_load);
+			info!(log, "imported{} files", if FROM_ZIP { " zip" } else { "" }; t_load);
 
 			time!(t_update);
 			let (kanji_count, terms_count) = db.update_frequency();
 			info!(
-				logger,
+				log,
 				"updated frequency for {} kanji and {} terms in {}", kanji_count, terms_count, t_update
 			);
 
-			db.merge_entries();
+			db.merge_entries(log);
 
-			db.update_index(true);
-			db.save(&dict_path).unwrap();
+			db.update_index(log, true);
+			db.save(log, &dict_path).unwrap();
 			db
 		};
 
 		// Updates the index file in case it is missing
-		if db.update_index(false) {
-			db.save(&dict_path).unwrap();
+		if db.update_index(log, false) {
+			db.save(log, &dict_path).unwrap();
 		}
 
 		db

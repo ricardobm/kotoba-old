@@ -2,6 +2,8 @@ use std::io::Read;
 use std::thread;
 use std::time::Duration;
 
+use slog::Logger;
+
 use crossbeam::channel::unbounded;
 use itertools::*;
 use percent_encoding;
@@ -17,7 +19,7 @@ use crate::util::check_response;
 const DEFAULT_TIMEOUT_MS: u64 = 5000;
 
 /// Load audio pronunciations from `forvo.com` results.
-pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioResult>> {
+pub fn load_pronunciations(log: &Logger, kanji: &str, kana: &str) -> util::Result<Vec<AudioResult>> {
 	// Since we can only lookup for the main term, Forvo search will return
 	// a lot of unrelated items.
 	//
@@ -74,7 +76,7 @@ pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioRes
 
 	let param = percent_encoding::utf8_percent_encode(kanji, percent_encoding::NON_ALPHANUMERIC);
 	let url = format!("https://forvo.com/search/{}/ja", param);
-	let index_results = scrape_page(&url)?;
+	let index_results = scrape_page(&log, &url)?;
 
 	const MAX_WORKERS: usize = 10;
 	const MAX_INDEX_RESULTS: usize = 10;
@@ -100,6 +102,7 @@ pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioRes
 	for _ in 0..num_workers {
 		let rx = rx_work.clone();
 		let tx = tx_data.clone();
+		let log = log.clone();
 		let handle = thread::spawn(move || {
 			for mut entry in rx.iter() {
 				// We want to keep the overall parent sorting order for the
@@ -111,7 +114,7 @@ pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioRes
 				entry.index *= 1000;
 				if entry.target.len() > 0 {
 					// Scrape the target page and add it to the entries.
-					let value = match scrape_page(&entry.target) {
+					let value = match scrape_page(&log, &entry.target) {
 						Ok(mut entries) => {
 							for it in entries.iter_mut() {
 								it.text = entry.text.clone();
@@ -182,7 +185,7 @@ pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioRes
 
 	let mp3 = list.into_iter().map(|it| it.mp3.into_iter().take(1)).flatten();
 
-	let mut results = load_audio_list(mp3);
+	let mut results = load_audio_list(log, mp3);
 	let results = if errs.len() > 0 {
 		let mut new_results = errs;
 		new_results.append(&mut results);
@@ -253,7 +256,7 @@ struct ForvoEntry {
 //     https://audio00.forvo.com/phrases/mp3/
 //     https://audio00.forvo.com/phrases/ogg/
 
-fn scrape_page(url: &str) -> util::Result<Vec<ForvoEntry>> {
+fn scrape_page(log: &Logger, url: &str) -> util::Result<Vec<ForvoEntry>> {
 	lazy_static! {
 		static ref SEL_PLAY: Selector = Selector::parse("li > span.play").unwrap();
 		static ref SEL_TARGET: Selector = Selector::parse("a").unwrap();
@@ -261,16 +264,24 @@ fn scrape_page(url: &str) -> util::Result<Vec<ForvoEntry>> {
 		static ref RE_PLAY: Regex = Regex::new(r"(?i)^Play(Phrase)?").unwrap();
 	}
 
+	let log = log.new(o!("url" => url.to_owned()));
+	time!(t_load);
+
+	trace!(log, "loading Forvo results");
+
 	let url = Url::parse(&url)?;
 	let client = Client::builder()
 		.timeout(Duration::from_millis(DEFAULT_TIMEOUT_MS))
 		.build()?;
 
 	let mut response = client.get(url).send()?;
-	check_response(&response)?;
+	check_response(&log, &response)?;
 
 	let mut doc = String::new();
 	response.read_to_string(&mut doc)?;
+
+	trace!(log, "loaded"; t_load);
+	time!(t_parse);
 
 	let doc = Html::parse_document(doc.as_str());
 
@@ -282,7 +293,7 @@ fn scrape_page(url: &str) -> util::Result<Vec<ForvoEntry>> {
 			_ => continue,
 		};
 
-		let (mp3, ogg, is_phrase) = extract_args(on_click);
+		let (mp3, ogg, is_phrase) = extract_args(&log, on_click);
 
 		let mut entry = ForvoEntry {
 			mp3:       mp3,
@@ -325,13 +336,15 @@ fn scrape_page(url: &str) -> util::Result<Vec<ForvoEntry>> {
 		results.push(entry);
 	}
 
+	trace!(log, "parsed {} entries", results.len(); t_parse);
+
 	Ok(results)
 }
 
 use data_encoding::BASE64;
 
 /// Extract the URLs for the `(mp3, ogg)` audio files in the `onclick` argument.
-fn extract_args(play: &str) -> (Vec<String>, Vec<String>, bool) {
+fn extract_args(log: &Logger, play: &str) -> (Vec<String>, Vec<String>, bool) {
 	lazy_static! {
 		static ref RE_PLAY_PHRASE: Regex = Regex::new(r"(?i)^PlayPhrase").unwrap();
 		static ref RE_PLAY: Regex = Regex::new(r"(?i)^Play(Phrase)?\((\d+\s*,\s*)?").unwrap();
@@ -360,11 +373,11 @@ fn extract_args(play: &str) -> (Vec<String>, Vec<String>, bool) {
 				if let Ok(s) = String::from_utf8(data) {
 					s
 				} else {
-					eprintln!("forvo::extract_args: failed to encode BASE64 to UTF-8 ({})", s);
+					warn!(log, "forvo::extract_args: failed to encode BASE64 to UTF-8 ({})", s);
 					String::new()
 				}
 			} else {
-				eprintln!("forvo::extract_args: failed to decode BASE64 ({})", s);
+				warn!(log, "forvo::extract_args: failed to decode BASE64 ({})", s);
 				String::new()
 			}
 		})

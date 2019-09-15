@@ -2,6 +2,8 @@ use std::io::Read;
 use std::thread;
 use std::time::Duration;
 
+use slog::Logger;
+
 use regex::Regex;
 use reqwest::header;
 use reqwest::{Client, IntoUrl};
@@ -25,7 +27,7 @@ impl AudioData {
 	}
 }
 
-pub fn load_audio_list<T>(urls: T) -> Vec<AudioResult>
+pub fn load_audio_list<T>(log: &Logger, urls: T) -> Vec<AudioResult>
 where
 	T: IntoIterator<Item = String>,
 {
@@ -37,13 +39,22 @@ where
 	let (tx_work, rx_work) = unbounded::<String>();
 	let (tx_data, rx_data) = unbounded::<AudioResult>();
 
+	trace!(
+		log,
+		"loading {} audio sources using {} workers",
+		urls.len(),
+		num_workers
+	);
+	time!(t_load);
+
 	let mut handles = Vec::new();
 	for _ in 0..num_workers {
 		let rx = rx_work.clone();
 		let tx = tx_data.clone();
+		let log = log.clone();
 		let handle = thread::spawn(move || {
 			for url in rx.iter() {
-				let result = load_audio(&url);
+				let result = load_audio(&log, &url);
 				tx.send(result).unwrap();
 			}
 		});
@@ -58,7 +69,11 @@ where
 	drop(tx_work);
 
 	let mut out = Vec::new();
+	let mut errs = 0;
 	for result in rx_data {
+		if !result.is_ok() {
+			errs += 1;
+		}
 		out.push(result);
 	}
 
@@ -66,41 +81,55 @@ where
 		h.join().unwrap();
 	}
 
+	trace!(log, "load finished with {} errors", errs; t_load);
+
 	out
 }
 
 /// Load an audio by the given URL.
-pub fn load_audio<U: IntoUrl>(url: U) -> AudioResult {
+pub fn load_audio<U: IntoUrl>(log: &Logger, url: U) -> AudioResult {
 	lazy_static! {
 		static ref MP3_CONTENT_TYPE: Regex = Regex::new(r"mpeg(-?3)?").unwrap();
 	}
+
+	time!(t_load);
 
 	let client = Client::builder()
 		.timeout(Duration::from_millis(DEFAULT_TIMEOUT_MS))
 		.build()?;
 	let mut response = client.get(url).send()?;
 
-	match check_response(&response) {
+	match check_response(log, &response) {
 		Ok(_) => {
-			if let Some(content_type) = response.headers().get(header::CONTENT_TYPE) {
-				if MP3_CONTENT_TYPE.is_match(content_type.to_str()?) {
-					Ok(())
+			let res = {
+				if let Some(content_type) = response.headers().get(header::CONTENT_TYPE) {
+					if MP3_CONTENT_TYPE.is_match(content_type.to_str()?) {
+						Ok(())
+					} else {
+						Err(format!("response with invalid content type: {:?}", content_type))
+					}
 				} else {
-					Err(format!("response with invalid content type: {:?}", content_type))
+					Err(format!("response has no content type"))
+				}?;
+
+				let mut buffer = Vec::new();
+				response.read_to_end(&mut buffer)?;
+
+				if buffer.len() == 0 {
+					Err(format!("received empty response"))?;
 				}
+
+				let digest = sha256(&buffer[..]).unwrap();
+				Ok(AudioData(buffer, digest))
+			};
+			let res = if let Err(err) = res {
+				warn!(log, "{} when loading {}", err, response.url());
+				Err(err)
 			} else {
-				Err(format!("response has no content type"))
-			}?;
-
-			let mut buffer = Vec::new();
-			response.read_to_end(&mut buffer)?;
-
-			if buffer.len() == 0 {
-				Err(format!("received empty response"))?;
-			}
-
-			let digest = sha256(&buffer[..]).unwrap();
-			Ok(AudioData(buffer, digest))
+				trace!(log, "{} loaded", response.url(); t_load);
+				res
+			};
+			res
 		}
 		Err(err) => Err(err),
 	}

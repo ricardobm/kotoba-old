@@ -1,9 +1,10 @@
 use std::collections::HashSet;
 
+use itertools::*;
+use slog::Logger;
+
 use super::tables::*;
 use crate::kana::*;
-
-use itertools::*;
 
 /// Available search modes for terms.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -71,11 +72,11 @@ impl Default for SearchOptions {
 
 /// Trait for doing database searches.
 pub trait Search {
-	fn search_terms<S>(&self, query: S, options: &SearchOptions) -> (Vec<TermRow>, usize)
+	fn search_terms<S>(&self, log: &Logger, query: S, options: &SearchOptions) -> (Vec<TermRow>, usize)
 	where
 		S: AsRef<str>;
 
-	fn search_kanji<T>(&self, query: T) -> Vec<KanjiRow>
+	fn search_kanji<T>(&self, log: &Logger, query: T) -> Vec<KanjiRow>
 	where
 		T: IntoIterator<Item = char>;
 }
@@ -255,7 +256,7 @@ fn is_word_split(c: char) -> bool {
 
 /// Implement searching for the main database.
 impl Search for Root {
-	fn search_terms<S>(&self, query: S, options: &SearchOptions) -> (Vec<TermRow>, usize)
+	fn search_terms<S>(&self, log: &Logger, query: S, options: &SearchOptions) -> (Vec<TermRow>, usize)
 	where
 		S: AsRef<str>,
 	{
@@ -287,13 +288,15 @@ impl Search for Root {
 
 		let max_count = std::cmp::min(options.offset + limit, HARD_LIMIT);
 
-		println!("\nSearching for `{}` with max count {}...", query, max_count);
+		let log = log.new(o!("search" => query.clone()));
+		time!(t_query);
+		trace!(log, "searching with max count {}...", max_count);
 
 		// Exact matches
 		let exact_matches = self.index.search_term_word_by_prefix(&query, true);
 		let count = exact_matches.len();
 
-		println!("... found {} exact matches", exact_matches.len());
+		trace!(log, "... found {} exact matches", exact_matches.len(); t_query);
 
 		// Exact "prefix" matches
 		let (prefix_matches, count) = if options.mode.includes_prefix() && count < max_count {
@@ -305,7 +308,7 @@ impl Search for Root {
 			(Default::default(), count)
 		};
 
-		println!("... found {} prefix matches", prefix_matches.len());
+		trace!(log, "... found {} prefix matches", prefix_matches.len(); t_query);
 
 		// Exact "suffix" matches
 		let (suffix_matches, count) = if options.mode.includes_suffix() && count < max_count {
@@ -326,7 +329,7 @@ impl Search for Root {
 			(Default::default(), count)
 		};
 
-		println!("... found {} suffix matches", suffix_matches.len());
+		trace!(log, "... found {} suffix matches", suffix_matches.len(); t_query);
 
 		// Do a keyword search for "contains" and fuzzy search.
 		let is_contains = options.mode == SearchMode::Contains;
@@ -337,7 +340,7 @@ impl Search for Root {
 		};
 
 		if indexes_by_keyword.len() > 0 {
-			println!("... matched {} by keyword", indexes_by_keyword.len());
+			trace!(log, "... matched {} by keyword", indexes_by_keyword.len(); t_query);
 		}
 
 		// Exact "contains" matches
@@ -359,7 +362,7 @@ impl Search for Root {
 			(Default::default(), count)
 		};
 
-		println!("... found {} contain matches", contain_matches.len());
+		trace!(log, "... found {} contain matches", contain_matches.len(); t_query);
 
 		let indexes = exact_matches
 			.into_iter()
@@ -375,10 +378,12 @@ impl Search for Root {
 			out.push(self.terms[index].clone());
 		}
 
+		trace!(log, "found {} matches", out.len(); t_query);
+
 		(out, count)
 	}
 
-	fn search_kanji<T>(&self, query: T) -> Vec<KanjiRow>
+	fn search_kanji<T>(&self, _log: &Logger, query: T) -> Vec<KanjiRow>
 	where
 		T: IntoIterator<Item = char>,
 	{

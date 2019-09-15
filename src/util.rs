@@ -1,5 +1,7 @@
 use std::io;
 
+use slog::Logger;
+
 use data_encoding::HEXLOWER;
 use ring::digest::{Context, SHA256};
 
@@ -29,14 +31,18 @@ pub fn sha256<T: io::Read>(mut input: T) -> io::Result<String> {
 }
 
 /// Check the response status, returning an error if it is not successful.
-pub fn check_response(response: &reqwest::Response) -> Result<()> {
+pub fn check_response(log: &Logger, response: &reqwest::Response) -> Result<()> {
 	let status = response.status();
 	if status.is_success() {
 		Ok(())
-	} else if let Some(reason) = status.canonical_reason() {
-		Err(format!("request failed with status {} ({})", status, reason).into())
 	} else {
-		Err(format!("request failed with status {}", status).into())
+		let msg = if let Some(reason) = status.canonical_reason() {
+			format!("request failed with status {} ({})", status, reason)
+		} else {
+			format!("request failed with status {}", status)
+		};
+		warn!(log, "{}: {}", response.url(), msg);
+		Err(msg.into())
 	}
 }
 

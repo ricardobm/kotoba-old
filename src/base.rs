@@ -1,6 +1,7 @@
 //! Basic utilities used throughout the code
 
 /// Simple wrapper for [std::time::Instant] that adds some logging facilities.
+#[derive(Copy, Clone)]
 pub struct PerfTimer {
 	t0: std::time::Instant,
 }

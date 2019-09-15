@@ -8,6 +8,7 @@ use std::thread;
 
 use itertools::*;
 use regex::Regex;
+use slog::Logger;
 
 use crate::dict::audio::*;
 use crate::dict::forvo;
@@ -151,12 +152,12 @@ impl JapaneseService {
 		}
 	}
 
-	pub fn query(&self, query: JapaneseQuery) -> JapaneseResult {
+	pub fn query(&self, log: &Logger, query: JapaneseQuery) -> JapaneseResult {
 		lazy_static! {
 			static ref ENTRY_RE: Regex = Regex::new(r"^(?P<hash>[0-9a-f]{64})\.mp3$").unwrap();
 		}
 
-		let start = std::time::Instant::now();
+		time!(t_query);
 
 		let term = normalize_string(&query.term);
 		let reading = normalize_string(&query.reading);
@@ -175,6 +176,10 @@ impl JapaneseService {
 		for p in cache_path.split('/') {
 			dir_path.push(p);
 		}
+
+		let log = log.new(o!("query" => format!("{} -- {} -- {}", term.clone(), reading.clone(), query_hash.clone())));
+		trace!(log, "starting query");
+		time!(t_cache);
 
 		// Load available entries
 		let mut entries_by_src = HashMap::new();
@@ -201,10 +206,11 @@ impl JapaneseService {
 			}
 		}
 
-		println!(
-			"- Loaded cached entries for {} in {:.3}s",
-			entries_by_src.keys().join("/"),
-			start.elapsed().as_secs_f64()
+		trace!(
+			log,
+			"loaded cached entries for {}",
+			entries_by_src.keys().join("/");
+			t_cache
 		);
 
 		// Load any entry that is not available
@@ -216,13 +222,14 @@ impl JapaneseService {
 				continue;
 			}
 
+			let log = log.new(o!("worker" => src.sub_path()));
 			let term = term.clone();
 			let reading = reading.clone();
 			let tx = tx.clone();
 			let src = *src;
 			let mut worker = get_worker(src);
 			let handle = thread::spawn(move || {
-				tx.send((src, worker.load(term, reading))).unwrap();
+				tx.send((src, worker.load(&log, term, reading))).unwrap();
 			});
 			handles.push(handle);
 		}
@@ -252,12 +259,13 @@ impl JapaneseService {
 						.iter()
 						.filter(|x| if let Err(_) = x { true } else { false })
 						.count();
-					println!(
-						"- {} loaded {} ({} errors) in {:.3}s",
+					trace!(
+						log,
+						"{} loaded {} ({} errors)",
 						src,
 						all_data.len(),
-						err_count,
-						start.elapsed().as_secs_f64()
+						err_count;
+						t_query
 					);
 
 					let mut is_empty = true;
@@ -285,7 +293,7 @@ impl JapaneseService {
 					}
 				}
 				Err(err) => {
-					println!("- {} failed after {:.3}s", src, start.elapsed().as_secs_f64());
+					error!(log, "{} failed", src; t_query);
 					out.errors.push(err.into());
 				}
 			}
@@ -316,7 +324,7 @@ impl JapaneseService {
 			.flatten()
 			.collect();
 
-		println!("- finished in {:.3}s", start.elapsed().as_secs_f64());
+		trace!(log, "query finished"; t_query);
 
 		out
 	}
@@ -335,7 +343,7 @@ fn normalize_string(s: &str) -> String {
 type AudioWorkerResult = util::Result<Vec<AudioResult>>;
 
 trait AudioWorker: Send {
-	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult;
+	fn load(&mut self, log: &Logger, term: String, reading: String) -> AudioWorkerResult;
 }
 
 fn get_worker(src: AudioSource) -> Box<dyn AudioWorker> {
@@ -350,24 +358,24 @@ fn get_worker(src: AudioSource) -> Box<dyn AudioWorker> {
 struct JishoWorker {}
 
 impl AudioWorker for JishoWorker {
-	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult {
-		jisho::load_pronunciations(&term, &reading)
+	fn load(&mut self, log: &Logger, term: String, reading: String) -> AudioWorkerResult {
+		jisho::load_pronunciations(log, &term, &reading)
 	}
 }
 
 struct JapanesePodWorker {}
 
 impl AudioWorker for JapanesePodWorker {
-	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult {
-		japanese_pod::load_dictionary_pronunciations(&term, &reading)
+	fn load(&mut self, log: &Logger, term: String, reading: String) -> AudioWorkerResult {
+		japanese_pod::load_dictionary_pronunciations(log, &term, &reading)
 	}
 }
 
 struct LanguagePodWorker {}
 
 impl AudioWorker for LanguagePodWorker {
-	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult {
-		match japanese_pod::load_pronunciation(&term, &reading)? {
+	fn load(&mut self, log: &Logger, term: String, reading: String) -> AudioWorkerResult {
+		match japanese_pod::load_pronunciation(log, &term, &reading)? {
 			Some(data) => Ok(vec![Ok(data)]),
 			None => Ok(vec![]),
 		}
@@ -377,7 +385,7 @@ impl AudioWorker for LanguagePodWorker {
 struct ForvoWorker {}
 
 impl AudioWorker for ForvoWorker {
-	fn load(&mut self, term: String, reading: String) -> AudioWorkerResult {
-		forvo::load_pronunciations(&term, &reading)
+	fn load(&mut self, log: &Logger, term: String, reading: String) -> AudioWorkerResult {
+		forvo::load_pronunciations(log, &term, &reading)
 	}
 }

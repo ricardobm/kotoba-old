@@ -6,6 +6,7 @@ use std::io;
 use std::path::Path;
 
 use itertools::*;
+use slog::Logger;
 
 use super::index::Index;
 
@@ -67,7 +68,7 @@ impl Root {
 	/// - Returns `Ok(Some(database))` if successful.
 	/// - If the path does not exists, returns `Ok(None)`.
 	/// - If the path exists, but there was an error loading, returns `Err(_)`.
-	pub fn load<P: AsRef<Path>>(path: P) -> io::Result<Option<Root>> {
+	pub fn load<P: AsRef<Path>>(log: &Logger, path: P) -> io::Result<Option<Root>> {
 		let path = path.as_ref();
 		let from = path.to_string_lossy();
 		if !path.exists() {
@@ -95,10 +96,7 @@ impl Root {
 			}
 
 			if !index_loaded {
-				eprintln!(
-					"WARNING: Failed to load index file from {}",
-					index_path.to_string_lossy()
-				);
+				warn!(log, "failed to load index file from {}", index_path.to_string_lossy());
 			}
 
 			Ok(Some(db))
@@ -106,8 +104,8 @@ impl Root {
 	}
 
 	/// Save the database to the given path.
-	pub fn save<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
-		let start = std::time::Instant::now();
+	pub fn save<P: AsRef<Path>>(&self, log: &Logger, path: P) -> io::Result<()> {
+		time!(t_save);
 		let path = path.as_ref();
 		let fs = File::create(path)?;
 		let fs = io::BufWriter::new(fs);
@@ -122,10 +120,11 @@ impl Root {
 			return io::Result::Err(io::Error::new(io::ErrorKind::Other, err));
 		}
 
-		println!(
-			"Saved database to {} in {:.3}s",
-			path.to_string_lossy(),
-			start.elapsed().as_secs_f64()
+		info!(
+			log,
+			"saved database to {}",
+			path.to_string_lossy();
+			t_save
 		);
 
 		Ok(())
@@ -134,13 +133,13 @@ impl Root {
 	/// Updates the internal indexes of the database.
 	///
 	/// Returns true if the index was updated.
-	pub fn update_index(&mut self, force: bool) -> bool {
+	pub fn update_index(&mut self, log: &Logger, force: bool) -> bool {
 		if force {
 			self.index.clear();
 		}
 
 		if !self.index.empty() {
-			self.index.dump_info();
+			self.index.dump_info(log);
 			return false;
 		}
 
@@ -166,8 +165,8 @@ impl Root {
 			}
 		});
 
-		println!("Updating database index...");
-		let start = std::time::Instant::now();
+		info!(log, "updating database index...");
+		time!(t_update);
 
 		// Map all kanji in the database
 		for (index, kanji) in self.kanji.iter().enumerate() {
@@ -183,10 +182,10 @@ impl Root {
 			);
 			(index, keys)
 		});
-		self.index.map_term_keywords(all_terms);
+		self.index.map_term_keywords(log, all_terms);
 
-		println!("...updated indexes in {:.3}s", start.elapsed().as_secs_f64());
-		self.index.dump_info();
+		info!(log, "...updated indexes"; t_update);
+		self.index.dump_info(log);
 
 		true
 	}
@@ -397,14 +396,13 @@ impl Root {
 	}
 
 	/// Attempt to merge database entries across dictionaries.
-	pub fn merge_entries(&mut self) {
+	pub fn merge_entries(&mut self, log: &Logger) {
 		use super::merge::merge_term;
 		use std::iter::FromIterator;
 
 		let count = self.terms.len();
-		println!("\nMerging {} database entries...", count);
-
-		let start = std::time::Instant::now();
+		info!(log, "merging {} database entries...", count);
+		time!(t_merge);
 
 		// Maps expression/readings to respective indexes.
 		let mut merged_terms = Vec::new();
@@ -459,10 +457,11 @@ impl Root {
 
 		self.terms = merged_terms;
 
-		println!(
-			"Merge finished after {:.3}s (reduced to {} entries)",
-			start.elapsed().as_secs_f64(),
-			self.terms.len()
+		info!(
+			log,
+			"merge finished, reducing to {} entries",
+			self.terms.len();
+			t_merge
 		);
 	}
 }

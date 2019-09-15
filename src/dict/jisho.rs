@@ -6,6 +6,7 @@ use reqwest::{Client, Url};
 use regex::Regex;
 
 use itertools::*;
+use slog::Logger;
 
 use scraper::{ElementRef, Html, Selector};
 use selectors::attr::CaseSensitivity;
@@ -18,7 +19,7 @@ use crate::util::check_response;
 const DEFAULT_TIMEOUT_MS: u64 = 3500;
 
 /// Load audio pronunciations from `jisho.org` results.
-pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioResult>> {
+pub fn load_pronunciations(log: &Logger, kanji: &str, kana: &str) -> util::Result<Vec<AudioResult>> {
 	lazy_static! {
 		static ref SEL_AUDIO: Selector = Selector::parse("audio").unwrap();
 		static ref SEL_TEXT: Selector = Selector::parse("span.text").unwrap();
@@ -28,6 +29,9 @@ pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioRes
 		static ref RE_MP3: Regex = Regex::new(r"(?i)\.mp3$").unwrap();
 	}
 
+	trace!(log, "loading https://jisho.org/search/");
+	time!(t_load);
+
 	let mut url = Url::parse("https://jisho.org/search/")?;
 	url.query_pairs_mut().append_pair("keyword", kanji);
 
@@ -36,10 +40,13 @@ pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioRes
 		.build()?;
 
 	let mut response = client.get(url).send()?;
-	check_response(&response)?;
+	check_response(log, &response)?;
 
 	let mut doc = String::new();
 	response.read_to_string(&mut doc)?;
+
+	trace!(log, "loaded"; t_load);
+	time!(t_parse);
 
 	let doc = Html::parse_document(doc.as_str());
 
@@ -94,8 +101,9 @@ pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioRes
 
 		let char_count = text.chars().count();
 		if char_count != furigana.len() {
-			eprintln!(
-				"WARNING: Jisho furigana for {} does not match text length ({} != {})",
+			warn!(
+				log,
+				"Jisho furigana for {} does not match text length ({} != {})",
 				text,
 				char_count,
 				furigana.len()
@@ -136,10 +144,14 @@ pub fn load_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioRes
 
 	let is_kana = !kanji.chars().any(|c| is_kanji(c));
 
+	let result_count = results.len();
 	let audio_urls = results
 		.into_iter()
 		.filter(|x| &x.kana == kana && (is_kana || &x.term == kanji))
 		.map(|x| x.src)
 		.collect::<Vec<_>>();
-	Ok(load_audio_list(audio_urls))
+
+	trace!(log, "parsed {} results into {} audio URLs", result_count, audio_urls.len(); t_parse);
+
+	Ok(load_audio_list(log, audio_urls))
 }

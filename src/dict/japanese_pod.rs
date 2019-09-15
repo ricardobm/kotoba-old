@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::time::Duration;
 
-use reqwest::{Client, Url};
+use slog::Logger;
 
+use reqwest::{Client, Url};
 use scraper::{Html, Selector};
 
 use super::audio::*;
@@ -63,7 +64,7 @@ pub struct Entry {
 }
 
 /// Query `japanesepod101.com` dictionary.
-pub fn query_dictionary(args: Args) -> util::Result<Vec<Entry>> {
+pub fn query_dictionary(log: &Logger, args: Args) -> util::Result<Vec<Entry>> {
 	lazy_static! {
 		static ref SEL_RESULT_ROW: Selector = Selector::parse("div.dc-result-row").unwrap();
 		static ref SEL_TERM_ELEM: Selector = Selector::parse("span.dc-vocab").unwrap();
@@ -93,7 +94,7 @@ pub fn query_dictionary(args: Args) -> util::Result<Vec<Entry>> {
 		.form(&params)
 		.send()?;
 
-	check_response(&response)?;
+	check_response(log, &response)?;
 
 	let mut doc = String::new();
 	response.read_to_string(&mut doc)?;
@@ -155,8 +156,8 @@ pub fn query_dictionary(args: Args) -> util::Result<Vec<Entry>> {
 }
 
 /// Load audio pronunciations from `japanesepod101.com` results.
-pub fn load_dictionary_pronunciations(kanji: &str, kana: &str) -> util::Result<Vec<AudioResult>> {
-	let result = query_dictionary(Args {
+pub fn load_dictionary_pronunciations(log: &Logger, kanji: &str, kana: &str) -> util::Result<Vec<AudioResult>> {
+	let result = query_dictionary(log, Args {
 		term: kanji.to_string(),
 		vulgar: true,
 		..Default::default()
@@ -168,11 +169,11 @@ pub fn load_dictionary_pronunciations(kanji: &str, kana: &str) -> util::Result<V
 		.map(|x| x.audio)
 		.flatten()
 		.collect::<Vec<_>>();
-	Ok(load_audio_list(audio_urls))
+	Ok(load_audio_list(log, audio_urls))
 }
 
 /// Load audio pronunciation from `languagepod101.com`.
-pub fn load_pronunciation(kanji: &str, kana: &str) -> util::Result<Option<AudioData>> {
+pub fn load_pronunciation(log: &Logger, kanji: &str, kana: &str) -> util::Result<Option<AudioData>> {
 	const BLACKLIST_HASH: &str = "ae6398b5a27bc8c0a771df6c907ade794be15518174773c58c7c7ddd17098906";
 
 	let mut url = Url::parse("https://assets.languagepod101.com/dictionary/japanese/audiomp3.php")?;
@@ -180,7 +181,7 @@ pub fn load_pronunciation(kanji: &str, kana: &str) -> util::Result<Option<AudioD
 		.append_pair("kanji", kanji)
 		.append_pair("kana", kana);
 
-	let audio = load_audio(url)?;
+	let audio = load_audio(log, url)?;
 	if audio.hash() == BLACKLIST_HASH {
 		Ok(None)
 	} else {

@@ -1,9 +1,10 @@
 use std::collections::HashSet;
 
+use fnv::{FnvHashMap, FnvHashSet};
+use slog::Logger;
+
 use super::search::normalize_search_string;
 use super::search::{search_keys, SearchKey};
-
-use fnv::{FnvHashMap, FnvHashSet};
 
 /// Serializable database index structure.
 #[derive(Serialize, Deserialize)]
@@ -54,11 +55,12 @@ impl Index {
 	}
 
 	// Dump index information to stdout.
-	pub fn dump_info(&self) {
+	pub fn dump_info(&self, log: &Logger) {
 		use itertools::*;
 
-		println!(
-			"\nIndexed {} kanji and {} words (keys: {}, suffixes: {})",
+		debug!(
+			log,
+			"indexed {} kanji and {} words (keys: {}, suffixes: {})",
 			self.kanji_by_char.len(),
 			self.word_index.len(),
 			self.key_index.len(),
@@ -70,12 +72,13 @@ impl Index {
 		let avg = total / self.suffix_index.len();
 		let max = self.suffix_index.values().map(|x| x.len()).max().unwrap();
 		let min = self.suffix_index.values().map(|x| x.len()).min().unwrap();
-		println!(
-			"\nSuffix index has {} total entries / {} avg / {} max / {} min",
-			total, avg, max, min,
+		debug!(
+			log,
+			"suffix index has {} total entries / {} avg / {} max / {} min", total, avg, max, min,
 		);
 
-		println!(
+		debug!(
+			log,
 			"-> {}",
 			self.suffix_index
 				.iter()
@@ -89,13 +92,14 @@ impl Index {
 		let avg = total / self.key_index.len();
 		let max = self.key_index.values().map(|x| x.len()).max().unwrap();
 		let min = self.key_index.values().map(|x| x.len()).min().unwrap();
-		println!(
-			"\nKey index has {} total entries / {} avg / {} max / {} min",
-			total, avg, max, min,
+		debug!(
+			log,
+			"key index has {} total entries / {} avg / {} max / {} min", total, avg, max, min,
 		);
 
-		println!(
-			"{}  |\n",
+		debug!(
+			log,
+			"\n{}  |\n",
 			self.key_index
 				.iter()
 				.sorted_by_key(|x| -(x.1.len() as i64))
@@ -188,7 +192,7 @@ impl Index {
 	}
 
 	/// Map a term index by a keyword.
-	pub fn map_term_keywords<'a, T, H, S>(&mut self, mappings: T)
+	pub fn map_term_keywords<'a, T, H, S>(&mut self, log: &Logger, mappings: T)
 	where
 		T: IntoIterator<Item = (usize, H)>,
 		H: IntoIterator<Item = S>,
@@ -202,7 +206,7 @@ impl Index {
 			let index = index as u32;
 
 			if index > 0 && index % 100000 == 0 {
-				println!("...{}", index);
+				trace!(log, "...{} words", index);
 			}
 
 			for word in words.into_iter() {

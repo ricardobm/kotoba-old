@@ -3,10 +3,11 @@
 use std::collections::HashMap;
 
 use itertools::*;
-use kana::{is_kanji, to_romaji};
+use slog::Logger;
 
 use super::db;
 use super::db::Search;
+use kana::{is_kanji, to_romaji};
 
 /// Search options.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -48,17 +49,17 @@ impl Dictionary {
 	}
 
 	/// Query the dictionary.
-	pub fn query(&self, args: &SearchArgs) -> QueryResult {
+	pub fn query(&self, logger: &Logger, args: &SearchArgs) -> QueryResult {
 		let start = std::time::Instant::now();
 
 		let input = args.query.as_str();
 		let romaji = to_romaji(input);
 
-		let (terms, total) = self.db.search_terms(input, &args.options);
+		let (terms, total) = self.db.search_terms(logger, input, &args.options);
 
 		let kanji = if args.with_kanji {
 			let kanji = input.chars().filter(|&x| is_kanji(x)).unique();
-			let kanji = self.db.search_kanji(kanji);
+			let kanji = self.db.search_kanji(logger, kanji);
 			Some(kanji)
 		} else {
 			None
