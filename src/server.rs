@@ -4,7 +4,7 @@ use rocket_contrib::json::Json;
 use app::App;
 
 use japanese;
-use logging;
+use logging::{RequestLog, ServerLogger};
 use pronunciation::JapaneseQuery;
 use util;
 
@@ -45,9 +45,9 @@ fn list() -> Json<Vec<Item>> {
 }
 
 #[post("/search", data = "<input>")]
-fn search(input: Json<japanese::SearchArgs>, app: State<&App>) -> Json<japanese::QueryResult> {
+fn search(log: RequestLog, input: Json<japanese::SearchArgs>, app: State<&App>) -> Json<japanese::QueryResult> {
 	let dict = app.dictionary();
-	Json(dict.query(&app.log, &input))
+	Json(dict.query(&log, &input))
 }
 
 #[get("/tags")]
@@ -90,10 +90,10 @@ impl<'r> rocket::response::Responder<'r> for AudioResponse {
 use super::dict;
 
 #[get("/test")]
-fn test(app: State<&App>) -> Json<Vec<dict::japanese_pod::Entry>> {
+fn test(log: RequestLog) -> Json<Vec<dict::japanese_pod::Entry>> {
 	Json(
 		dict::japanese_pod::query_dictionary(
-			&app.log,
+			&log,
 			dict::japanese_pod::Args {
 				term: "明日".to_string(),
 				starts: false,
@@ -105,10 +105,10 @@ fn test(app: State<&App>) -> Json<Vec<dict::japanese_pod::Entry>> {
 }
 
 #[get("/audio?<kanji>&<kana>")]
-fn audio(kanji: String, kana: String, app: State<&App>) -> util::Result<AudioResponse> {
+fn audio(log: RequestLog, kanji: String, kana: String, app: State<&App>) -> util::Result<AudioResponse> {
 	let service = app.pronunciation();
 	let result = service.query(
-		&app.log,
+		&log,
 		JapaneseQuery {
 			term:    kanji.clone(),
 			reading: kana.clone(),
@@ -117,7 +117,7 @@ fn audio(kanji: String, kana: String, app: State<&App>) -> util::Result<AudioRes
 	);
 
 	for err in result.errors {
-		error!(app.log, "{}", err; "kanji" => &kanji, "kana" => &kana);
+		error!(log, "{}", err; "kanji" => &kanji, "kana" => &kana);
 	}
 
 	if result.items.len() > 0 {
@@ -133,7 +133,7 @@ fn audio(kanji: String, kana: String, app: State<&App>) -> util::Result<AudioRes
 
 pub fn launch(app: &'static App) {
 	rocket::ignite()
-		.attach(logging::ServerLogger {})
+		.attach(ServerLogger {})
 		.manage(app)
 		.manage(app.dictionary())
 		.manage(app.pronunciation())

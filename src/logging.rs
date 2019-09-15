@@ -8,6 +8,35 @@ use rocket::{Data, Request, Response};
 
 use app::App;
 
+/// Wrapper for a [slog::Logger] that can be used as a `rocket` request
+/// guard.
+pub struct RequestLog {
+	log: Logger,
+}
+
+impl RequestLog {
+	pub fn wrap(log: Logger) -> RequestLog {
+		RequestLog { log }
+	}
+}
+
+impl std::ops::Deref for RequestLog {
+	type Target = Logger;
+
+	fn deref(&self) -> &Self::Target {
+		&self.log
+	}
+}
+
+impl<'a, 'r> FromRequest<'a, 'r> for RequestLog {
+	type Error = ();
+
+	fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
+		let log = request.local_cache(|| -> Logger { panic!("request logger has not been registered") });
+		Outcome::Success(RequestLog::wrap(log.clone()))
+	}
+}
+
 /// UUID identifier for a request.
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct RequestId {
@@ -44,12 +73,6 @@ impl std::fmt::Display for RequestId {
 impl<'a, 'r> FromRequest<'a, 'r> for RequestId {
 	type Error = ();
 
-	/// Derives an instance of `Self` from the incoming request metadata.
-	///
-	/// If the derivation is successful, an outcome of `Success` is returned. If
-	/// the derivation fails in an unrecoverable fashion, `Failure` is returned.
-	/// `Forward` is returned to indicate that the request should be forwarded
-	/// to other matching routes, if any.
 	fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
 		Outcome::Success(*request.local_cache(|| RequestId::nil()))
 	}
@@ -75,21 +98,23 @@ impl Fairing for ServerLogger {
 	fn on_request(&self, request: &mut Request, _data: &Data) {
 		let request_id = RequestId::new();
 		let app: State<&'static App> = request.guard::<State<&App>>().unwrap();
-		let info = format!(
-			"{} {} (from: {}) -- {}",
+
+		let target = format!(
+			"{} {} ({})",
 			request.method(),
-			request.uri(),
-			match request.client_ip() {
-				Some(ip) => format!("{}", ip),
-				None => String::from("unknown"),
-			},
+			percent_encoding::percent_decode_str(&request.uri().to_string()).decode_utf8_lossy(),
 			request_id,
 		);
+
+		let client = match request.client_ip() {
+			Some(ip) => format!("{}", ip),
+			None => String::from("unknown"),
+		};
 
 		request.local_cache(|| request_id);
 
 		// Create a logger for the request
-		let (logger, store) = app.request_log(o!("request" => info));
+		let (logger, store) = app.request_log(o!("client" => client, "target" => target));
 		request.local_cache(|| store);
 		request.local_cache(|| logger);
 
