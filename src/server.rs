@@ -2,7 +2,9 @@ use rocket::State;
 use rocket_contrib::json::Json;
 
 use app::App;
+
 use japanese;
+use logging;
 use pronunciation::JapaneseQuery;
 use util;
 
@@ -90,11 +92,14 @@ use super::dict;
 #[get("/test")]
 fn test(app: State<&App>) -> Json<Vec<dict::japanese_pod::Entry>> {
 	Json(
-		dict::japanese_pod::query_dictionary(&app.log, dict::japanese_pod::Args {
-			term: "明日".to_string(),
-			starts: false,
-			..Default::default()
-		})
+		dict::japanese_pod::query_dictionary(
+			&app.log,
+			dict::japanese_pod::Args {
+				term: "明日".to_string(),
+				starts: false,
+				..Default::default()
+			},
+		)
 		.unwrap(),
 	)
 }
@@ -102,11 +107,14 @@ fn test(app: State<&App>) -> Json<Vec<dict::japanese_pod::Entry>> {
 #[get("/audio?<kanji>&<kana>")]
 fn audio(kanji: String, kana: String, app: State<&App>) -> util::Result<AudioResponse> {
 	let service = app.pronunciation();
-	let result = service.query(&app.log, JapaneseQuery {
-		term:    kanji.clone(),
-		reading: kana.clone(),
-		force:   false,
-	});
+	let result = service.query(
+		&app.log,
+		JapaneseQuery {
+			term:    kanji.clone(),
+			reading: kana.clone(),
+			force:   false,
+		},
+	);
 
 	for err in result.errors {
 		error!(app.log, "{}", err; "kanji" => &kanji, "kana" => &kana);
@@ -125,6 +133,7 @@ fn audio(kanji: String, kana: String, app: State<&App>) -> util::Result<AudioRes
 
 pub fn launch(app: &'static App) {
 	rocket::ignite()
+		.attach(logging::ServerLogger {})
 		.manage(app)
 		.manage(app.dictionary())
 		.manage(app.pronunciation())

@@ -2,6 +2,107 @@ use slog::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use rocket::fairing::{Fairing, Info, Kind};
+use rocket::request::{FromRequest, Outcome, State};
+use rocket::{Data, Request, Response};
+
+use app::App;
+
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct RequestId {
+	uuid: uuid::Uuid,
+}
+
+impl RequestId {
+	pub fn new() -> RequestId {
+		use rand::Rng;
+		use uuid::{Builder, Variant, Version};
+		let rand = rand::thread_rng().gen();
+		let uuid = Builder::from_bytes(rand)
+			.set_variant(Variant::RFC4122)
+			.set_version(Version::Random)
+			.build();
+		RequestId { uuid: uuid }
+	}
+
+	pub fn nil() -> RequestId {
+		RequestId {
+			uuid: uuid::Uuid::nil(),
+		}
+	}
+}
+
+impl std::fmt::Display for RequestId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		self.uuid.fmt(f)
+	}
+}
+
+impl<'a, 'r> FromRequest<'a, 'r> for RequestId {
+	type Error = ();
+
+	/// Derives an instance of `Self` from the incoming request metadata.
+	///
+	/// If the derivation is successful, an outcome of `Success` is returned. If
+	/// the derivation fails in an unrecoverable fashion, `Failure` is returned.
+	/// `Forward` is returned to indicate that the request should be forwarded
+	/// to other matching routes, if any.
+	fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
+		Outcome::Success(*request.local_cache(|| RequestId::nil()))
+	}
+}
+
+#[derive(Copy, Clone)]
+pub struct ServerLogger {}
+
+impl Fairing for ServerLogger {
+	fn info(&self) -> Info {
+		Info {
+			name: "Request Logger",
+			kind: Kind::Request | Kind::Response,
+		}
+	}
+
+	fn on_request(&self, request: &mut Request, _data: &Data) {
+		let request_id = RequestId::new();
+		let app: State<&'static App> = request.guard::<State<&App>>().unwrap();
+		let info = format!(
+			"{} {} (from: {}) -- {}",
+			request.method(),
+			request.uri(),
+			match request.client_ip() {
+				Some(ip) => format!("{}", ip),
+				None => String::from("unknown"),
+			},
+			request_id,
+		);
+
+		request.local_cache(|| request_id);
+
+		// Create a logger for the request
+		let (logger, store) = app.request_log(o!("request" => info));
+		request.local_cache(|| store);
+		request.local_cache(|| logger);
+
+		time!(t_request);
+		request.local_cache(|| t_request);
+	}
+
+	fn on_response(&self, request: &Request, response: &mut Response) {
+		time!(t_none);
+
+		// Send a request ID as a header
+		let request_id = request.guard::<RequestId>().unwrap();
+		response.set_raw_header("X-Request-Id", format!("{}", request_id));
+
+		// Send the response time header
+		let t_request = *request.local_cache(|| t_none);
+		if t_request != t_none {
+			response.set_raw_header("X-Response-Time", format!("{}", t_request));
+		}
+	}
+}
+
 /// Mantains a list of [RequestLogEntry] generated from a [RequestLogger].
 #[derive(Clone)]
 pub struct RequestLogStore {
