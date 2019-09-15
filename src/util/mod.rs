@@ -6,7 +6,7 @@ use data_encoding::HEXLOWER;
 use ring::digest::{Context, SHA256};
 
 mod cache;
-pub use self::cache::Cache;
+pub use self::cache::{Cache, CacheKey, CacheVal, CacheMap};
 
 /// Simple custom string error.
 #[derive(Debug)]
@@ -102,6 +102,7 @@ error_from!(reqwest::header::ToStrError);
 error_from!(reqwest::Error);
 error_from!(reqwest::UrlError);
 error_from!(std::io::Error);
+error_from!(uuid::parser::ParseError);
 
 #[cfg(test)]
 mod tests {

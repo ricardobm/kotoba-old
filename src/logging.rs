@@ -3,10 +3,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use rocket::fairing::{Fairing, Info, Kind};
-use rocket::request::{FromRequest, Outcome, State};
+use rocket::request::{FromFormValue, FromParam, FromRequest, Outcome, State};
 use rocket::{Data, Request, Response};
+use rocket::http::RawStr;
 
 use app::App;
+use util;
 
 /// Wrapper for a [slog::Logger] that can be used as a `rocket` request
 /// guard.
@@ -56,6 +58,12 @@ impl RequestId {
 		RequestId { uuid: uuid }
 	}
 
+	/// Parse a string as a [RequestId].
+	pub fn parse<S: AsRef<str>>(s: S) -> util::Result<RequestId> {
+		let uuid = uuid::Uuid::parse_str(s.as_ref())?;
+		Ok(RequestId { uuid: uuid })
+	}
+
 	/// Returns a zero-ed RequestId.
 	pub fn nil() -> RequestId {
 		RequestId {
@@ -75,6 +83,35 @@ impl<'a, 'r> FromRequest<'a, 'r> for RequestId {
 
 	fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
 		Outcome::Success(*request.local_cache(|| RequestId::nil()))
+	}
+}
+
+impl<'v> FromFormValue<'v> for RequestId {
+	type Error = &'v RawStr;
+
+	fn from_form_value(form_value: &'v RawStr) -> std::result::Result<Self, Self::Error> {
+		if let Ok(value) = RequestId::parse(form_value) {
+			Ok(value)
+		} else {
+			Err(form_value)
+		}
+	}
+
+	#[inline(always)]
+	fn default() -> Option<Self> {
+		None
+	}
+}
+
+impl<'a> FromParam<'a> for RequestId {
+	type Error = &'a RawStr;
+
+	fn from_param(param: &'a RawStr) -> std::result::Result<Self, Self::Error> {
+		if let Ok(value) = RequestId::parse(param) {
+			Ok(value)
+		} else {
+			Err(param)
+		}
 	}
 }
 
@@ -134,6 +171,16 @@ impl Fairing for ServerLogger {
 		if t_request != t_none {
 			response.set_raw_header("X-Response-Time", format!("{}", t_request));
 		}
+
+		// Store log entries by the request id:
+
+		let app: State<&'static App> = request.guard::<State<&App>>().unwrap();
+
+		let entries = request.local_cache(|| RequestLogStore::new());
+		let entries = entries.iter().into_iter().cloned().collect::<Vec<_>>();
+
+		let cache = app.cache();
+		cache.save(request_id, entries, std::time::Duration::from_secs(10 * 60));
 	}
 }
 
@@ -146,9 +193,11 @@ pub struct RequestLogStore {
 }
 
 /// Entry in a [RequestLogStore].
-#[derive(Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct RequestLogEntry {
-	pub level:  Level,
+	#[serde(serialize_with = "level_to_string")]
+	pub level: Level,
+
 	pub msg:    String,
 	pub line:   u32,
 	pub column: u32,
@@ -160,6 +209,10 @@ pub struct RequestLogEntry {
 
 	/// Keys from the logger.
 	pub values: HashMap<&'static str, String>,
+}
+
+fn level_to_string<S: serde::Serializer>(level: &Level, s: S) -> std::result::Result<S::Ok, S::Error> {
+	s.serialize_str(level.as_str())
 }
 
 impl Serializer for RequestLogEntry {

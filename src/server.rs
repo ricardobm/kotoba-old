@@ -4,6 +4,7 @@ use rocket_contrib::json::Json;
 use app::App;
 
 use japanese;
+use logging;
 use logging::{RequestLog, ServerLogger};
 use pronunciation::JapaneseQuery;
 use util;
@@ -19,6 +20,17 @@ fn index() -> &'static str {
 struct Item {
 	pub(self) id:   String,
 	pub(self) text: String,
+}
+
+#[get("/log/<req>")]
+fn log(req: logging::RequestId, app: State<&App>) -> Json<Vec<logging::RequestLogEntry>> {
+	let cache = app.cache();
+	if let Some(entries) = cache.get(&req) {
+		let entries: &Vec<logging::RequestLogEntry> = &*entries;
+		Json(entries.clone())
+	} else {
+		Json(vec![])
+	}
 }
 
 #[get("/list")]
@@ -137,6 +149,6 @@ pub fn launch(app: &'static App) {
 		.manage(app)
 		.manage(app.dictionary())
 		.manage(app.pronunciation())
-		.mount("/api", routes![index, list, search, tags, audio, test])
+		.mount("/api", routes![index, list, search, tags, audio, test, log])
 		.launch();
 }

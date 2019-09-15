@@ -3,14 +3,100 @@ use std::hash::Hash;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use std::any::{Any, TypeId};
+use std::cell::UnsafeCell;
+
 pub trait CacheKey: Send + Sync + Clone + Eq + Hash + std::fmt::Display {}
 pub trait CacheVal {}
 
 impl<T: Send + Sync + Clone + Eq + Hash + std::fmt::Display> CacheKey for T {}
 impl<T> CacheVal for T {}
 
+/// Provides unique [Cache<K, V>] instances for each pair of `(K, V)` types.
+pub struct CacheMap {
+	inner: Arc<Mutex<CacheMapInner>>,
+}
+
+struct CacheMapInner {
+	init: bool,
+	data: UnsafeCell<*mut HashMap<TypeId, *mut dyn Any>>,
+}
+
+unsafe impl Send for CacheMapInner {}
+
+impl Default for CacheMap {
+	fn default() -> CacheMap {
+		CacheMap {
+			inner: Arc::new(Mutex::new(CacheMapInner {
+				init: false,
+				data: UnsafeCell::new(0 as *mut _),
+			})),
+		}
+	}
+}
+
+impl CacheMap {
+	pub fn new() -> CacheMap {
+		Default::default()
+	}
+
+	/// Returns a global cache instance for a given key and value types.
+	///
+	/// The cache value is returned by value, but its backing store is shared
+	/// with any instance returned by this method for the same `K` and `V`
+	/// types.
+	pub fn get<K: CacheKey + 'static, V: CacheVal + 'static>(&self) -> Cache<K, V> {
+		let mut inner = self.inner.lock().unwrap();
+		if !inner.init {
+			let map = Box::new(Default::default());
+			unsafe {
+				*inner.data.get() = Box::into_raw(map);
+				inner.init = true;
+			}
+		}
+
+		let type_id = TypeId::of::<(K, V)>();
+		let item = unsafe { (**inner.data.get()).get(&type_id) };
+
+		let entry_ptr = if let Some(entry) = item {
+			*entry
+		} else {
+			let entry: Box<Cache<K, V>> = Box::new(Cache::default());
+			unsafe {
+				let entry = entry as Box<dyn Any>;
+				let entry = Box::into_raw(entry);
+				(**inner.data.get()).insert(type_id, entry);
+				entry
+			}
+		};
+
+		unsafe {
+			let cache = entry_ptr as *const Cache<K, V>;
+			(*cache).clone()
+		}
+	}
+}
+
+impl Drop for CacheMapInner {
+	fn drop(&mut self) {
+		if !self.init {
+			return;
+		}
+
+		unsafe {
+			let map = &mut **self.data.get();
+			for value in map.values_mut() {
+				let mut value = Box::from_raw(*value);
+				drop(&mut value);
+			}
+
+			let mut map = Box::from_raw(map);
+			drop(&mut map);
+		}
+	}
+}
+
 /// In memory cache structure with support for TTL and interior mutability.
-#[allow(dead_code)]
 pub struct Cache<K: CacheKey, V: CacheVal> {
 	store: Arc<Mutex<CacheStore<K, V>>>,
 }
@@ -158,5 +244,78 @@ mod tests {
 		// Purge should work.
 		cache.purge();
 		assert!(cache.get(&"c").is_none());
+	}
+
+	#[test]
+	fn test_cache_map() {
+		let cache_map = CacheMap::new();
+		let duration = Duration::from_secs(99999);
+
+		// Test basic retrieval
+		let c1 = cache_map.get::<&'static str, u16>();
+		let c2 = cache_map.get::<&'static str, u32>();
+		let c3 = cache_map.get::<u32, &'static str>();
+
+		c1.save("101", 101_u16, duration);
+		c1.save("102", 102_u16, duration);
+
+		c2.save("203", 203_u32, duration);
+		c2.save("204", 204_u32, duration);
+
+		c3.save(305_u32, "305", duration);
+		c3.save(306_u32, "306", duration);
+
+		// Test retrieving an existing instance
+		let c1 = cache_map.get::<&'static str, u16>();
+		let c2 = cache_map.get::<&'static str, u32>();
+		let c3 = cache_map.get::<u32, &'static str>();
+
+		assert_eq!(*c1.get(&"101").unwrap(), 101_u16);
+		assert_eq!(*c1.get(&"102").unwrap(), 102_u16);
+		assert_eq!(*c2.get(&"203").unwrap(), 203_u32);
+		assert_eq!(*c2.get(&"204").unwrap(), 204_u32);
+		assert_eq!(*c3.get(&305_u32).unwrap(), "305");
+		assert_eq!(*c3.get(&306_u32).unwrap(), "306");
+
+		// Make sure instances share the backing store
+		let c3_b = cache_map.get::<u32, &'static str>();
+		c3.save(307_u32, "307", duration);
+		assert_eq!(*c3_b.get(&307_u32).unwrap(), "307");
+	}
+
+	#[test]
+	fn test_cache_map_drops() {
+		struct DropCheck<T: Fn()> {
+			drop_fn: Box<T>,
+		}
+
+		impl<T: Fn()> Drop for DropCheck<T> {
+			fn drop(&mut self) {
+				(self.drop_fn)();
+			}
+		}
+
+		use std::cell::RefCell;
+
+		let dropped = RefCell::new(false);
+
+		{
+			let cache_map = CacheMap::new();
+			let cache = cache_map.get::<usize, DropCheck<_>>();
+			let dropped = dropped.clone();
+			let drop_fn = move || {
+				dropped.replace(true);
+			};
+
+			cache.save(
+				0,
+				DropCheck {
+					drop_fn: Box::new(drop_fn),
+				},
+				Duration::from_secs(9999),
+			);
+		}
+
+		assert!(*dropped.borrow(), true);
 	}
 }

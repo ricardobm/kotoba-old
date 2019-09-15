@@ -6,6 +6,7 @@ use db;
 use japanese;
 use logging::*;
 use pronunciation;
+use util::{Cache, CacheKey, CacheMap, CacheVal};
 
 /// Name of the root data directory. Used when looking up the data directory.
 const DATA_DIR: &str = "hongo-data";
@@ -17,8 +18,9 @@ const FROM_ZIP: bool = false;
 pub struct App {
 	pub log: Logger,
 
-	dict:     japanese::Dictionary,
-	audio_ja: pronunciation::JapaneseService,
+	dict:      japanese::Dictionary,
+	audio_ja:  pronunciation::JapaneseService,
+	cache_map: CacheMap,
 
 	_global_log_guard: slog_scope::GlobalLoggerGuard,
 }
@@ -59,6 +61,7 @@ impl App {
 					log:      root_log,
 					dict:     japanese::Dictionary::new(db),
 					audio_ja: audio_ja,
+					cache_map: CacheMap::new(),
 
 					_global_log_guard: global_log_guard,
 				};
@@ -97,6 +100,11 @@ impl App {
 
 	pub fn pronunciation(&self) -> &pronunciation::JapaneseService {
 		&self.audio_ja
+	}
+
+	/// Returns a global cache instance for a given key and value types.
+	pub fn cache<K: CacheKey + 'static, V: CacheVal + 'static>(&self) -> Cache<K, V> {
+		self.cache_map.get()
 	}
 
 	/// Root directory that contains static application data.
