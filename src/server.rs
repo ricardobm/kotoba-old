@@ -9,8 +9,6 @@ use logging::{RequestLog, ServerLogger};
 use pronunciation::JapaneseQuery;
 use util;
 
-mod pronunciation;
-
 #[get("/")]
 fn index() -> &'static str {
 	"Hello world!!!"
@@ -148,6 +146,8 @@ fn audio(log: RequestLog, kanji: String, kana: String, app: State<&App>) -> util
 	}
 }
 
+use api;
+
 pub fn launch(app: &'static App) {
 	rocket::ignite()
 		.attach(ServerLogger {})
@@ -156,7 +156,7 @@ pub fn launch(app: &'static App) {
 		.manage(app.pronunciation())
 		.mount(
 			"/api",
-			routes![index, list, search, tags, audio, test, logs, log_by_req],
+			routes![index, list, search, tags, audio, test, logs, log_by_req, api::audio::query_audio],
 		)
 		.launch();
 }

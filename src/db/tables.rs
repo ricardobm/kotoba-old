@@ -525,6 +525,22 @@ pub struct TermRow {
 	pub score: i32,
 }
 
+impl TermRow {
+	pub fn reading_for<S: AsRef<str>>(&self, term: S) -> Option<&String> {
+		let term = term.as_ref();
+		if term == self.expression {
+			Some(&self.reading)
+		} else {
+			for it in self.forms.iter() {
+				if term == it.expression {
+					return Some(&it.reading)
+				}
+			}
+			None
+		}
+	}
+}
+
 /// English definition for a [TermRow].
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DefinitionRow {

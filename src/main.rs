@@ -58,7 +58,9 @@ extern crate crossbeam;
 #[macro_use]
 mod base;
 
+mod api;
 mod app;
+mod audio;
 mod db;
 mod dict;
 mod import;

@@ -9,6 +9,32 @@ use super::db;
 use super::db::Search;
 use kana::{is_kanji, to_romaji};
 
+//
+// Japanese audio support
+//
+
+use audio::{AudioQuery, AudioSource};
+
+pub trait JapaneseAudioSource: AudioSource<JapaneseAudioQuery> {}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct JapaneseAudioQuery {
+	pub expression: String,
+	pub reading: String,
+}
+
+impl AudioQuery for JapaneseAudioQuery {
+	fn query_hash(&self) -> String {
+		let query_hash = format!("{}\n{}", self.expression, self.reading);
+		let query_hash = crate::util::sha256(query_hash.as_bytes()).unwrap();
+		query_hash
+	}
+}
+
+//
+// Search
+//
+
 /// Search options.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SearchArgs {

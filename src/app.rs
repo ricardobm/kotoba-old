@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use slog::Logger;
 
+use audio;
 use db;
 use japanese;
 use logging;
@@ -17,6 +18,8 @@ const FROM_ZIP: bool = false;
 /// Maintains the global application state and provides top level run methods.
 pub struct App {
 	pub log: Logger,
+
+	japanese_audio: audio::AudioLoader<japanese::JapaneseAudioQuery>,
 
 	ring_log:  logging::RingLogger,
 	dict:      japanese::Dictionary,
@@ -104,6 +107,8 @@ impl App {
 					audio_ja: audio_ja,
 					cache_map: CacheMap::new(),
 
+					japanese_audio: audio::AudioLoader::new(),
+
 					_compat_log_guard: compat_log_guard,
 				};
 
@@ -128,6 +133,10 @@ impl App {
 		let logger = logging::RequestLogger::new(self.log.clone());
 		let store = logger.store();
 		(Logger::root(logger, values), store)
+	}
+
+	pub fn japanese_audio(&self) -> &audio::AudioLoader<japanese::JapaneseAudioQuery> {
+		&self.japanese_audio
 	}
 
 	/// Return the latest log entries for the application.

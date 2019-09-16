@@ -1,5 +1,11 @@
 //! Audio API
 
+use rocket::State;
+use rocket_contrib::json::Json;
+
+use app::App;
+use logging::RequestLog;
+
 /// Pronunciation API request arguments.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Request {
@@ -67,12 +73,6 @@ pub struct Response {
 	/// Note that source specific errors are returned in their respective
 	/// sources.
 	pub errors: Vec<String>,
-
-	/// Number of seconds the request took to process server-side.
-	pub elapsed: f64,
-
-	/// Log information for this request.
-	pub log: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -88,6 +88,23 @@ pub struct Item {
 
 	/// Relative URL to request for this pronunciation file.
 	pub url: String,
+
+	/// This is `true` if this item was loaded from cache.
+	pub cached: bool,
+}
+
+use audio;
+
+impl Item {
+	fn from_info(info: &audio::AudioInfo) -> Item {
+		Item {
+			source: info.source.to_string(),
+			name:   info.file.split('/').rev().next().unwrap().to_string(),
+			hash:   info.hash.clone(),
+			url:    format!("{}/{}", AUDIO_LOAD_BASE_PATH, info.file),
+			cached: info.cached,
+		}
+	}
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -98,24 +115,97 @@ pub struct Source {
 	/// Source human readable name,
 	pub name: String,
 
-	/// This is `true` if this source was loaded from cache.
-	pub cached: bool,
-
 	/// Total results from this source in the response.
 	pub total_results: usize,
 
-	/// Source specific errors, if any.
-	///
-	/// If the request was cached, these are the original errors. Note that
-	/// error-ed requests are only cached if they provide at least one result.
-	///
-	/// Having errors does not necessarily prevent the request from having
-	/// results.
-	pub errors: Vec<String>,
+	/// Total number of errors from this source in the response.
+	pub total_errors: usize,
 
 	/// Number of seconds elapsed loading this source.
 	pub elapsed: f64,
+}
 
-	/// Log information for this source.
-	pub log: Vec<String>,
+const AUDIO_LOAD_BASE_PATH: &'static str = "/audio/get";
+
+#[post("/audio/query", data = "<input>")]
+pub fn query_audio(log: RequestLog, input: Json<Request>, app: State<&App>) -> Json<Response> {
+	use audio::AudioQuery;
+	use db::{Search, SearchMode, SearchOptions};
+	use japanese::JapaneseAudioQuery;
+	use kana::normalize_search_string;
+
+	let expression = normalize_search_string(input.expression.trim(), false);
+	let reading = input.reading.trim();
+	let reading = if reading.len() == 0 {
+		let db = app.db();
+		let options = SearchOptions {
+			mode: SearchMode::Is,
+			..Default::default()
+		};
+		let (terms, _) = db.search_terms(&log, &expression, &options);
+		let mut found_reading = None;
+		for it in terms {
+			if let Some(reading) = it.reading_for(&expression) {
+				found_reading = Some(reading.clone());
+			}
+		}
+		if let Some(reading) = found_reading {
+			reading
+		} else {
+			String::new()
+		}
+	} else {
+		normalize_search_string(reading, true)
+	};
+
+	let query = JapaneseAudioQuery { expression, reading };
+
+	let mut response = Response {
+		id:         input.id,
+		expression: query.expression.clone(),
+		reading:    query.reading.clone(),
+		cache_key:  query.query_hash(),
+
+		results:    Vec::new(),
+		sources:    Vec::new(),
+		has_errors: false,
+		errors:     Vec::new(),
+	};
+
+	let loader = app.japanese_audio();
+	let worker = loader.query(query, input.reload_sources);
+
+	let mut loaded = false;
+	if input.quick_load {
+		if let Some(info) = worker.wait_any() {
+			response.results.push(Item::from_info(&info));
+			loaded = true;
+		}
+	}
+
+	if !loaded {
+		let result = worker.wait();
+		result.each(|it| {
+			match it {
+				Ok(info) => response.results.push(Item::from_info(info)),
+				Err(err) => {
+					response.has_errors = true;
+					response.errors.push(format!("{}", err));
+				}
+			}
+			true
+		});
+		result.each_source(|it| {
+			response.sources.push(Source {
+				source:        it.id.to_string(),
+				name:          it.name.to_string(),
+				total_results: it.total_results,
+				total_errors:  it.total_errors,
+				elapsed:       it.elapsed,
+			});
+			true
+		});
+	}
+
+	Json(response)
 }
