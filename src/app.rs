@@ -4,7 +4,7 @@ use slog::Logger;
 
 use db;
 use japanese;
-use logging::*;
+use logging;
 use pronunciation;
 use util::{Cache, CacheKey, CacheMap, CacheVal};
 
@@ -18,11 +18,12 @@ const FROM_ZIP: bool = false;
 pub struct App {
 	pub log: Logger,
 
+	ring_log:  logging::RingLogger,
 	dict:      japanese::Dictionary,
 	audio_ja:  pronunciation::JapaneseService,
 	cache_map: CacheMap,
 
-	_global_log_guard: slog_scope::GlobalLoggerGuard,
+	_compat_log_guard: slog_scope::GlobalLoggerGuard,
 }
 
 #[allow(dead_code)]
@@ -33,37 +34,77 @@ impl App {
 			static ref APP: App = {
 				use slog::Drain;
 
+				// Compatibility with libraries using `log`
+
+				// Logging schema
+				// ==============
+				//
+				//     ┌─────┐
+				//     │     │  ← ← ←  [filter > info]     ┌───────────────────┐
+				//     │  T  │                ↑            │                   │
+				//     │  E  │              [dup]        ← │ log compatibility │
+				//     │  R  │                ↓            │                   │
+				//     │  M  │        ┌───────────────┐    └───────────────────┘
+				//     │  I  │        │ App::ring_log │
+				//     │  N  │        └───────────────┘
+				//     │  A  │                ↑            ┌───────────────────┐
+				//     │  L  │        ┌───────────────┐    │                   │
+				//     │     │  ← ← ← │   App::log    │  ← │ application logs  │
+				//     └─────┘        └───────────────┘    │                   │
+				//                            ↑            └───────────────────┘
+				//                            ↑
+				//                            ↑            ┌───────────────────┐
+				//  ┌───────────┐     ┌───────────────┐    │                   │
+				//  │ Log Cache │ ← ← │ RequestLogger │  ← │   request logs    │
+				//  └───────────┘     └───────────────┘    │                   │
+				//                                         └───────────────────┘
+				//
+
 				// Root drain that outputs to the terminal
 				let term = slog_term::term_compact();
 				let term = std::sync::Mutex::new(term);
 
-				// The root application logger
-				let root_log = Logger::root(term.fuse(), o!());
+				// The root logger, outputting to the terminal
+				let term = Logger::root(term.fuse(), o!());
 
-				// Compatibility with libraries using `log`
-				let global_log = slog::LevelFilter::new(root_log.clone(), slog::Level::Info);
-				let global_log = Logger::root(global_log.fuse(), o!("library" => true));
-				let global_log_guard = slog_scope::set_global_logger(global_log);
+				// Ring drain that keep all entries for `/api/logs`
+				let ring_log = logging::RingLogger::new(1000);
+
+				// Filter out debug/trace entries from libraries
+				let filter = slog::LevelFilter::new(term.clone(), slog::Level::Info);
+
+				// The compatibility logs go filtered to `term` and unfiltered
+				// to the ring logger.
+				let compat_log = slog::Duplicate::new(ring_log.clone(), filter);
+
+				// Setup the compatibility logger
+				let compat_log = Logger::root(compat_log.fuse(), o!("library" => true));
+				let compat_log_guard = slog_scope::set_global_logger(compat_log);
 				slog_stdlog::init().unwrap();
 
+				// Application logs go to the ring logger and `term`.
+				let app_log = slog::Duplicate::new(ring_log.clone(), term);
+				let app_log = Logger::root(app_log.fuse(), o!());
+
 				time!(t_init);
-				info!(root_log, "starting application");
+				info!(app_log, "starting application");
 
 				info!(
-					root_log,
+					app_log,
 					"data directory is {path}",
 					path = App::data_dir().to_string_lossy().as_ref()
 				);
 
-				let db = App::load_db(&root_log.new(o!("op" => "database loading")));
+				let db = App::load_db(&app_log.new(o!("op" => "database loading")));
 				let audio_ja = pronunciation::JapaneseService::new(&App::data_dir().join("audio"));
 				let app = App {
-					log:      root_log,
+					log:      app_log,
+					ring_log: ring_log,
 					dict:     japanese::Dictionary::new(db),
 					audio_ja: audio_ja,
 					cache_map: CacheMap::new(),
 
-					_global_log_guard: global_log_guard,
+					_compat_log_guard: compat_log_guard,
 				};
 
 				trace!(app.log, "application initialized"; t_init);
@@ -80,13 +121,18 @@ impl App {
 	/// entries in the [RequestLogStore.]
 	///
 	/// Returns the created logger
-	pub fn request_log<T>(&self, values: slog::OwnedKV<T>) -> (Logger, RequestLogStore)
+	pub fn request_log<T>(&self, values: slog::OwnedKV<T>) -> (Logger, logging::RequestLogStore)
 	where
 		T: slog::SendSyncRefUnwindSafeKV + 'static,
 	{
-		let logger = RequestLogger::new(self.log.clone());
+		let logger = logging::RequestLogger::new(self.log.clone());
 		let store = logger.store();
 		(Logger::root(logger, values), store)
+	}
+
+	/// Return the latest log entries for the application.
+	pub fn all_logs(&self) -> Vec<logging::LogEntry> {
+		self.ring_log.entries()
 	}
 
 	/// The static [db::Root] instance.

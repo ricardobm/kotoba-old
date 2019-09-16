@@ -1,11 +1,12 @@
 use slog::*;
 use std::collections::HashMap;
+use std::collections::LinkedList;
 use std::sync::{Arc, Mutex};
 
 use rocket::fairing::{Fairing, Info, Kind};
+use rocket::http::RawStr;
 use rocket::request::{FromFormValue, FromParam, FromRequest, Outcome, State};
 use rocket::{Data, Request, Response};
-use rocket::http::RawStr;
 
 use app::App;
 use util;
@@ -184,96 +185,6 @@ impl Fairing for ServerLogger {
 	}
 }
 
-/// Mantains a list of [RequestLogEntry] generated from a [RequestLogger].
-///
-/// Cloned instances share the same back-end store.
-#[derive(Clone)]
-pub struct RequestLogStore {
-	entries: Arc<Mutex<Vec<RequestLogEntry>>>,
-}
-
-/// Entry in a [RequestLogStore].
-#[derive(Clone, Debug, Serialize)]
-pub struct RequestLogEntry {
-	#[serde(serialize_with = "level_to_string")]
-	pub level: Level,
-
-	pub msg:    String,
-	pub line:   u32,
-	pub column: u32,
-	pub file:   &'static str,
-	pub module: &'static str,
-
-	/// Keys from the record.
-	pub keys: HashMap<&'static str, String>,
-
-	/// Keys from the logger.
-	pub values: HashMap<&'static str, String>,
-}
-
-fn level_to_string<S: serde::Serializer>(level: &Level, s: S) -> std::result::Result<S::Ok, S::Error> {
-	s.serialize_str(level.as_str())
-}
-
-impl Serializer for RequestLogEntry {
-	fn emit_arguments(&mut self, key: Key, val: &std::fmt::Arguments) -> Result {
-		self.keys.insert(key, format!("{}", val));
-		Ok(())
-	}
-}
-
-impl RequestLogStore {
-	pub fn new() -> RequestLogStore {
-		RequestLogStore {
-			entries: Arc::new(Mutex::new(Vec::new())),
-		}
-	}
-
-	/// Returns an iterator for the items on the store.
-	///
-	/// Example
-	/// =======
-	///
-	/// ```
-	/// let store = RequestLogStore::new();
-	/// for _it in &store.iter() {
-	///     // ...
-	/// }
-	///
-	/// let mut iter = store.iter();
-	/// while Some(it) = iter.next() {
-	///     // ...
-	/// }
-	/// ```
-	#[allow(dead_code)]
-	pub fn iter<'a>(&'a self) -> RequestLogStoreIter<'a, RequestLogEntry> {
-		RequestLogStoreIter {
-			index: 0,
-			guard: self.entries.lock().unwrap(),
-		}
-	}
-
-	pub fn push(&self, record: &Record, values: &OwnedKVList) {
-		let mut entry = RequestLogEntry {
-			level:  record.level(),
-			msg:    format!("{}", record.msg()),
-			line:   record.line(),
-			column: record.column(),
-			file:   record.file(),
-			module: record.module(),
-			keys:   HashMap::new(),
-			values: HashMap::new(),
-		};
-
-		values.serialize(record, &mut entry).ok();
-		entry.values = entry.keys;
-		entry.keys = HashMap::new();
-
-		record.kv().serialize(record, &mut entry).ok();
-		self.entries.lock().unwrap().push(entry)
-	}
-}
-
 /// Implements a [slog::Drain] that stores log entries in a [RequestLogStore]
 /// before forwarding them to another drain.
 ///
@@ -309,6 +220,103 @@ impl<D: Drain> Drain for RequestLogger<D> {
 	}
 }
 
+/// Mantains a list of [LogEntry] generated from a [RequestLogger].
+///
+/// Cloned instances share the same back-end store.
+#[derive(Clone)]
+pub struct RequestLogStore {
+	entries: Arc<Mutex<Vec<LogEntry>>>,
+}
+
+/// Saved entry from a logger.
+#[derive(Clone, Debug, Serialize)]
+pub struct LogEntry {
+	#[serde(serialize_with = "level_to_string")]
+	pub level: Level,
+
+	pub msg:    String,
+	pub line:   u32,
+	pub column: u32,
+	pub file:   &'static str,
+	pub module: &'static str,
+
+	/// Keys from the record.
+	pub keys: HashMap<&'static str, String>,
+
+	/// Keys from the logger.
+	pub values: HashMap<&'static str, String>,
+}
+
+impl LogEntry {
+	pub fn from_record(record: &Record, values: &OwnedKVList) -> LogEntry {
+		let mut entry = LogEntry {
+			level:  record.level(),
+			msg:    format!("{}", record.msg()),
+			line:   record.line(),
+			column: record.column(),
+			file:   record.file(),
+			module: record.module(),
+			keys:   HashMap::new(),
+			values: HashMap::new(),
+		};
+
+		values.serialize(record, &mut entry).ok();
+		entry.values = entry.keys;
+		entry.keys = HashMap::new();
+
+		record.kv().serialize(record, &mut entry).ok();
+		entry
+	}
+}
+
+fn level_to_string<S: serde::Serializer>(level: &Level, s: S) -> std::result::Result<S::Ok, S::Error> {
+	s.serialize_str(level.as_str())
+}
+
+impl Serializer for LogEntry {
+	fn emit_arguments(&mut self, key: Key, val: &std::fmt::Arguments) -> Result {
+		self.keys.insert(key, format!("{}", val));
+		Ok(())
+	}
+}
+
+impl RequestLogStore {
+	pub fn new() -> RequestLogStore {
+		RequestLogStore {
+			entries: Arc::new(Mutex::new(Vec::new())),
+		}
+	}
+
+	/// Returns an iterator for the items on the store.
+	///
+	/// Example
+	/// =======
+	///
+	/// ```
+	/// let store = RequestLogStore::new();
+	/// for _it in &store.iter() {
+	///     // ...
+	/// }
+	///
+	/// let mut iter = store.iter();
+	/// while Some(it) = iter.next() {
+	///     // ...
+	/// }
+	/// ```
+	#[allow(dead_code)]
+	pub fn iter<'a>(&'a self) -> RequestLogStoreIter<'a, LogEntry> {
+		RequestLogStoreIter {
+			index: 0,
+			guard: self.entries.lock().unwrap(),
+		}
+	}
+
+	pub fn push(&self, record: &Record, values: &OwnedKVList) {
+		let entry = LogEntry::from_record(record, values);
+		self.entries.lock().unwrap().push(entry)
+	}
+}
+
 pub struct RequestLogStoreIter<'a, T: 'a> {
 	index: usize,
 	guard: std::sync::MutexGuard<'a, Vec<T>>,
@@ -333,5 +341,52 @@ impl<'a, 'b: 'a, T: 'a> IntoIterator for &'b RequestLogStoreIter<'a, T> {
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.guard.iter()
+	}
+}
+
+/// Implement a ring logger drain that keeps the last N entries.
+#[derive(Clone)]
+pub struct RingLogger {
+	keep_n:  usize,
+	entries: Arc<Mutex<LinkedList<LogEntry>>>,
+}
+
+impl RingLogger {
+	pub fn new(keep_n: usize) -> RingLogger {
+		RingLogger {
+			keep_n:  keep_n,
+			entries: Default::default(),
+		}
+	}
+
+	/// Returns a copy of all entries current in the logger.
+	pub fn entries(&self) -> Vec<LogEntry> {
+		let mut out = Vec::new();
+		let entries = self.entries.lock().unwrap();
+		for it in entries.iter() {
+			out.push(it.clone());
+		}
+		out
+	}
+
+	fn push(&self, record: &Record, values: &OwnedKVList) {
+		let entry = LogEntry::from_record(record, values);
+		let mut entries = self.entries.lock().unwrap();
+		entries.push_back(entry);
+		if self.keep_n > 0 {
+			while entries.len() > self.keep_n {
+				entries.pop_front();
+			}
+		}
+	}
+}
+
+impl Drain for RingLogger {
+	type Ok = ();
+	type Err = ();
+
+	fn log(&self, record: &Record, values: &OwnedKVList) -> std::result::Result<Self::Ok, Self::Err> {
+		self.push(record, values);
+		Ok(())
 	}
 }

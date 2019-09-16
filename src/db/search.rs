@@ -141,7 +141,11 @@ pub struct SearchKey(char, char);
 
 impl std::fmt::Display for SearchKey {
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-		write!(f, "{}{}", self.0, self.1)
+		if self.1 != '\0' {
+			write!(f, "{}{}", self.0, self.1)
+		} else {
+			write!(f, "{}", self.0)
+		}
 	}
 }
 

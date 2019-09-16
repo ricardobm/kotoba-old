@@ -22,11 +22,16 @@ struct Item {
 	pub(self) text: String,
 }
 
+#[get("/logs")]
+fn logs(app: State<&App>) -> Json<Vec<logging::LogEntry>> {
+	Json(app.all_logs())
+}
+
 #[get("/log/<req>")]
-fn log(req: logging::RequestId, app: State<&App>) -> Json<Vec<logging::RequestLogEntry>> {
+fn log_by_req(req: logging::RequestId, app: State<&App>) -> Json<Vec<logging::LogEntry>> {
 	let cache = app.cache();
 	if let Some(entries) = cache.get(&req) {
-		let entries: &Vec<logging::RequestLogEntry> = &*entries;
+		let entries: &Vec<logging::LogEntry> = &*entries;
 		Json(entries.clone())
 	} else {
 		Json(vec![])
@@ -149,6 +154,9 @@ pub fn launch(app: &'static App) {
 		.manage(app)
 		.manage(app.dictionary())
 		.manage(app.pronunciation())
-		.mount("/api", routes![index, list, search, tags, audio, test, log])
+		.mount(
+			"/api",
+			routes![index, list, search, tags, audio, test, logs, log_by_req],
+		)
 		.launch();
 }
