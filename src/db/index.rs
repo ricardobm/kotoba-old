@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use fnv::{FnvHashMap, FnvHashSet};
 use slog::Logger;
 
-use super::search::normalize_search_string;
+use crate::kana::normalize_search_string;
 use super::search::{search_keys, SearchKey};
 
 /// Serializable database index structure.

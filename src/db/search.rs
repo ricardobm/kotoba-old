@@ -91,7 +91,7 @@ pub trait Search {
 /// - The result is split by punctuation and spaces.
 /// - Non-kanji and non-kana characters are removed.
 pub fn search_strings<S: AsRef<str>>(query: S) -> Vec<String> {
-	let text = normalize_search_string(query, true);
+	let text = crate::kana::normalize_search_string(query, true);
 	search_strings_normalized(text)
 }
 
@@ -112,21 +112,6 @@ fn search_strings_normalized<S: AsRef<str>>(text: S) -> Vec<String> {
 		// Filter out empty groups
 		.filter(|it| it.len() > 0)
 		.collect::<Vec<_>>()
-}
-
-/// Performs the basic normalization for a search string.
-///
-/// This performs Unicode normalization (to NFC) and lowercases the input.
-///
-/// If `japanese` is true, will also convert the input to hiragana.
-pub fn normalize_search_string<S: AsRef<str>>(query: S, japanese: bool) -> String {
-	use unicode_normalization::UnicodeNormalization;
-
-	// First step, normalize the string. We use NFC to make sure accented
-	// characters are a single codepoint.
-	let text = query.as_ref().trim().to_lowercase().nfc().collect::<String>();
-	let text = if japanese { to_hiragana(text) } else { text };
-	text
 }
 
 /// Provides a first-pass broad key to index words for a `contains` type
@@ -282,7 +267,7 @@ impl Search for Root {
 		// TODO: implement fuzzy searching
 
 		// TODO: use split on the query to allow multiple words
-		let query = normalize_search_string(query, true);
+		let query = crate::kana::normalize_search_string(query, true);
 
 		// No matter what, never go past this many results.
 		const HARD_LIMIT: usize = 50000;
