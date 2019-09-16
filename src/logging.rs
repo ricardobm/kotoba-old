@@ -75,7 +75,7 @@ impl RequestId {
 
 impl std::fmt::Display for RequestId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		self.uuid.fmt(f)
+		write!(f, "{}", self.uuid.to_simple())
 	}
 }
 
