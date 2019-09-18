@@ -6,10 +6,10 @@ use std::time::{Duration, Instant};
 use std::any::{Any, TypeId};
 use std::cell::UnsafeCell;
 
-pub trait CacheKey: Send + Sync + Clone + Eq + Hash + std::fmt::Display {}
+pub trait CacheKey: Send + Sync + Clone + Eq + Hash {}
 pub trait CacheVal {}
 
-impl<T: Send + Sync + Clone + Eq + Hash + std::fmt::Display> CacheKey for T {}
+impl<T: Send + Sync + Clone + Eq + Hash> CacheKey for T {}
 impl<T> CacheVal for T {}
 
 /// Provides unique [Cache<K, V>] instances for each pair of `(K, V)` types.
@@ -110,8 +110,9 @@ impl<K: CacheKey, V: CacheVal> Clone for Cache<K, V> {
 }
 
 struct CacheStore<K: CacheKey, V: CacheVal> {
-	ttl: BinaryHeap<CacheKeyEntry<K>>,
-	map: HashMap<K, Arc<V>>,
+	real_ttl: HashMap<K, Instant>,
+	next_ttl: BinaryHeap<CacheKeyEntry<K>>,
+	map:      HashMap<K, Arc<V>>,
 }
 
 #[allow(dead_code)]
@@ -121,7 +122,7 @@ impl<K: CacheKey, V: CacheVal> Cache<K, V> {
 	}
 
 	/// Save an entry to the cache. Calls [purge] before inserting.
-	pub fn save(&self, key: K, val: V, ttl: Duration) {
+	pub fn save(&self, key: K, val: V, ttl: Duration) -> Arc<V> {
 		let now = Instant::now();
 		let ttl = now + ttl;
 
@@ -129,17 +130,41 @@ impl<K: CacheKey, V: CacheVal> Cache<K, V> {
 		store = Self::do_purge(store);
 
 		// Insert new entry
-		store.ttl.push(CacheKeyEntry {
-			expire: ttl,
+
+		// We use a BinaryHeap to make pruning faster by storing the next
+		// entries to expire.
+		store.next_ttl.push(CacheKeyEntry {
+			expire: ttl.clone(),
 			key:    key.clone(),
 		});
-		store.map.insert(key, Arc::new(val));
+
+		// We also store the TTL in a HashMap because it can change if the
+		// same key is inserted multiple times. Updating the BinaryHeap would
+		// be too expensive.
+		store.real_ttl.insert(key.clone(), ttl);
+
+		let res = Arc::new(val);
+		store.map.insert(key, res.clone());
+
+		res
 	}
 
 	pub fn get(&self, key: &K) -> Option<Arc<V>> {
 		let store = self.store.lock().unwrap();
 		if let Some(val) = store.map.get(key) {
 			Some(val.clone())
+		} else {
+			None
+		}
+	}
+
+	pub fn get_and_renew(&self, key: &K, ttl: Duration) -> Option<Arc<V>> {
+		let now = Instant::now();
+		let ttl = now + ttl;
+		let mut store = self.store.lock().unwrap();
+		if let Some(val) = store.map.get(key).cloned() {
+			store.real_ttl.insert(key.clone(), ttl); // Update the expiration
+			Some(val)
 		} else {
 			None
 		}
@@ -155,11 +180,21 @@ impl<K: CacheKey, V: CacheVal> Cache<K, V> {
 		let now = Instant::now();
 
 		// Remove all expired entries from the cache.
-		while let Some(entry) = store.ttl.peek() {
+		while let Some(entry) = store.next_ttl.peek() {
 			let expired = entry.expire <= now;
 			if expired {
-				let entry = store.ttl.pop().unwrap();
-				store.map.remove(&entry.key);
+				// Remove the expired entry from the BinaryHeap
+				let entry = store.next_ttl.pop().unwrap();
+
+				// To actually remove the cached entry, we have to check that
+				// the actual expiration is the same as it was stored on the
+				// heap, since we don't update the heap if the TTL changes.
+				if let Some(actual_ttl) = store.real_ttl.get(&entry.key) {
+					if actual_ttl == &entry.expire {
+						store.real_ttl.remove(&entry.key);
+						store.map.remove(&entry.key);
+					}
+				}
 			} else {
 				break;
 			}
@@ -173,8 +208,9 @@ impl<K: CacheKey, V: CacheVal> Default for Cache<K, V> {
 	fn default() -> Cache<K, V> {
 		Cache {
 			store: Arc::new(Mutex::new(CacheStore {
-				ttl: Default::default(),
-				map: Default::default(),
+				real_ttl: Default::default(),
+				next_ttl: Default::default(),
+				map:      Default::default(),
 			})),
 		}
 	}
@@ -247,6 +283,27 @@ mod tests {
 	}
 
 	#[test]
+	fn test_cache_map_ttl_reset_and_replace() {
+		let cache = Cache::new();
+
+		cache.save("a", "A", Duration::from_millis(10));
+		cache.save("b", "B", Duration::from_millis(10));
+		cache.save("c", "C1", Duration::from_millis(10));
+
+		cache.get_and_renew(&"b", Duration::from_millis(9999));
+		sleep(Duration::from_millis(20));
+
+		cache.save("c", "C2", Duration::from_millis(9999));
+		assert_eq!(*cache.get(&"c").unwrap(), "C2");
+
+		cache.save("", "", Duration::from_millis(0));
+
+		assert!(cache.get(&"a").is_none());
+		assert!(cache.get(&"b").is_some());
+		assert!(cache.get(&"c").is_some());
+	}
+
+	#[test]
 	fn test_cache_map() {
 		let cache_map = CacheMap::new();
 		let duration = Duration::from_secs(99999);
@@ -295,16 +352,21 @@ mod tests {
 			}
 		}
 
-		use std::cell::RefCell;
+		struct Check {
+			dropped: bool,
+		}
 
-		let dropped = RefCell::new(false);
+		use std::cell::RefCell;
+		use std::rc::Rc;
+
+		let check = Rc::new(RefCell::new(Check { dropped: false }));
 
 		{
 			let cache_map = CacheMap::new();
 			let cache = cache_map.get::<usize, DropCheck<_>>();
-			let dropped = dropped.clone();
+			let check = check.clone();
 			let drop_fn = move || {
-				dropped.replace(true);
+				check.borrow_mut().dropped = true;
 			};
 
 			cache.save(
@@ -316,6 +378,6 @@ mod tests {
 			);
 		}
 
-		assert!(*dropped.borrow(), true);
+		assert!(check.borrow().dropped);
 	}
 }
