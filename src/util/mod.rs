@@ -8,6 +8,13 @@ use ring::digest::{Context, SHA256};
 mod cache;
 pub use self::cache::{Cache, CacheKey, CacheVal, CacheMap};
 
+#[allow(dead_code)]
+mod datetime;
+pub use self::datetime::*;
+
+mod file;
+pub use self::file::*;
+
 /// Simple custom string error.
 #[derive(Debug)]
 pub struct Error(String);
@@ -103,6 +110,7 @@ error_from!(reqwest::Error);
 error_from!(reqwest::UrlError);
 error_from!(std::io::Error);
 error_from!(uuid::parser::ParseError);
+error_from!(serde_json::Error);
 
 #[cfg(test)]
 mod tests {
