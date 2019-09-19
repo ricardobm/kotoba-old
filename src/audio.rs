@@ -23,7 +23,7 @@ pub struct AudioResult {
 }
 
 impl AudioResult {
-	pub fn is_empty(&self) -> bool {
+	pub fn has_items(&self) -> bool {
 		self.items.values().any(|x| x.len() > 0)
 	}
 
@@ -670,6 +670,11 @@ impl AudioCache {
 		let entry = self.load(&log, &query_hash);
 		let mut entry = entry.lock().unwrap();
 		let meta_ref = &mut meta;
+
+		// Make sure we have a data entry for this source (in case it returns empty)
+		entry.data_by_src.entry(source.id).or_insert(Default::default());
+
+		// Insert the metadata
 		let metadata = entry
 			.info_by_src
 			.entry(source.id)

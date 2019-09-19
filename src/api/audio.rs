@@ -22,7 +22,7 @@ pub struct Request {
 	///
 	/// This will be converted to hiragana.
 	#[serde(default)]
-	pub reading: String, // TODO: query this from the dictionary when not available
+	pub reading: String,
 
 	/// If `true` will force loading from the source even if there is a cached
 	/// result available.
@@ -30,12 +30,12 @@ pub struct Request {
 	/// Even if this is `true`, cached entries will still be returned, alongside
 	/// any entries loaded from the source.
 	#[serde(default)]
-	pub reload_sources: bool,
+	pub force_reload: bool,
 
 	/// If `true`, try to return a single result as fast as possible.
 	///
 	/// This will still trigger a full load in the background, even
-	/// respecting the [reload_sources] flag, but the request itself will
+	/// respecting the [force_reload] flag, but the request itself will
 	/// return as soon as a single source is available.
 	///
 	/// For cached requests this is no different than a normal load, since all
@@ -71,10 +71,13 @@ pub struct Response {
 impl Response {
 	pub fn append_result(&mut self, mut result: audio::AudioResult) {
 		for it in result.sources {
-			let total = match result.items.get(it.name.as_str()) {
+			let total = match result.items.get(it.source.as_str()) {
 				Some(items) => items.len(),
 				None => 0,
 			};
+			if it.errors.len() > 0 {
+				self.has_errors = true;
+			}
 			self.sources.push(Source {
 				source:        it.source,
 				name:          it.name,
@@ -196,12 +199,12 @@ pub fn query_audio(log: RequestLog, input: Json<Request>, app: State<&App>) -> J
 	};
 
 	let loader = app.japanese_audio();
-	let worker = loader.query(&log, query, input.reload_sources);
+	let worker = loader.query(&log, query, input.force_reload);
 
 	let mut loaded = false;
 	if input.quick_load {
 		let result = worker.wait_any();
-		if !result.is_empty() {
+		if result.has_items() {
 			response.append_result(result);
 			loaded = true;
 		}
