@@ -107,7 +107,7 @@ pub trait AudioSource<Q: AudioQuery>: Send + Sync {
 	fn name(&self) -> &'static str;
 
 	/// Loads a query from this source.
-	fn load(&self, query: Q, log: Logger) -> mpsc::Receiver<AudioResultData>;
+	fn load(&self, query: Q, log: Logger, id: SourceId, sink: mpsc::Sender<(SourceId, AudioResultData)>);
 }
 
 /// Provides loading of audio pronunciation data.
@@ -121,14 +121,18 @@ pub struct AudioLoader<Q: AudioQuery> {
 }
 
 impl<Q: AudioQuery> AudioLoader<Q> {
-	pub fn new(base_path: &Path) -> AudioLoader<Q> {
+	pub fn new(base_path: &Path, sources: Vec<Box<dyn AudioSource<Q>>>) -> AudioLoader<Q> {
+		let mut cache_sources = Vec::new();
+		for it in sources.iter() {
+			cache_sources.push((it.id(), it.name()));
+		}
 		let cache = AudioCache {
 			cache:     util::Cache::new(),
-			sources:   Vec::new(),
+			sources:   cache_sources,
 			base_path: base_path.to_owned(),
 		};
 		AudioLoader {
-			sources: Default::default(),
+			sources: Arc::new(sources),
 			jobs:    Default::default(),
 			cache:   Arc::new(Mutex::new(cache)),
 		}
@@ -469,13 +473,10 @@ impl<Q: AudioQuery> AudioJobImpl for AudioJobInner<Q> {
 						let handle = spawn(move || {
 							time!(t_load);
 
-							// Send all entries
-							for it in audio_src.load(query, log) {
-								tx_dat.send((src.clone(), it)).unwrap();
-							}
+							audio_src.load(query, log, src.clone(), tx_dat);
 
-							// Send the metadata (in this case just the elapsed time)
-							tx_src.send((src.clone(), t_load.elapsed().as_secs_f64())).unwrap();
+							// Send the metadata (for now just the elapsed time)
+							tx_src.send((src, t_load.elapsed().as_secs_f64())).unwrap();
 						});
 						handles.push(handle);
 					}
@@ -595,7 +596,7 @@ pub struct AudioSourceMetadata {
 }
 
 #[derive(Clone)]
-struct SourceId {
+pub struct SourceId {
 	id:    &'static str,
 	name:  &'static str,
 	index: usize,

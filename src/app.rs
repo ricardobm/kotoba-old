@@ -109,7 +109,7 @@ impl App {
 					audio_ja: audio_ja,
 					cache_map: CacheMap::new(),
 
-					japanese_audio: audio::AudioLoader::new(&audio_cache_dir),
+					japanese_audio: japanese::new_audio_loader(&audio_cache_dir),
 
 					_compat_log_guard: compat_log_guard,
 				};

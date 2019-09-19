@@ -1,6 +1,7 @@
 //! Entry point for japanese word and kanji queries.
 
 use std::collections::HashMap;
+use std::sync::mpsc::Sender;
 
 use itertools::*;
 use slog::Logger;
@@ -13,7 +14,19 @@ use kana::{is_kanji, to_romaji};
 // Japanese pronunciation audio support
 //
 
-use audio::{AudioQuery, AudioSource};
+use audio::{AudioLoader, AudioQuery, AudioResultData, AudioSource, SourceId};
+
+pub fn new_audio_loader(base_path: &std::path::Path) -> AudioLoader<JapaneseAudioQuery> {
+	AudioLoader::new(
+		base_path,
+		vec![
+			Box::new(JishoSource {}),
+			Box::new(JapanesePodSource {}),
+			Box::new(LanguagePodSource {}),
+			Box::new(ForvoSource {}),
+		],
+	)
+}
 
 pub trait JapaneseAudioSource: AudioSource<JapaneseAudioQuery> {}
 
@@ -35,6 +48,104 @@ impl AudioQuery for JapaneseAudioQuery {
 
 	fn query_info(&self) -> String {
 		format!("{} / {}", self.expression, self.reading)
+	}
+}
+
+//
+// Japanese audio sources
+//
+
+struct JishoSource {}
+
+impl JapaneseAudioSource for JishoSource {}
+
+impl AudioSource<JapaneseAudioQuery> for JishoSource {
+	fn copy(&self) -> Box<dyn AudioSource<JapaneseAudioQuery>> {
+		Box::new(JishoSource {})
+	}
+
+	fn id(&self) -> &'static str {
+		"jisho"
+	}
+
+	fn name(&self) -> &'static str {
+		"Jisho"
+	}
+
+	fn load(&self, query: JapaneseAudioQuery, log: Logger, id: SourceId, sink: Sender<(SourceId, AudioResultData)>) {
+		panic!()
+	}
+}
+
+struct JapanesePodSource {}
+
+impl JapaneseAudioSource for JapanesePodSource {}
+
+impl AudioSource<JapaneseAudioQuery> for JapanesePodSource {
+	fn copy(&self) -> Box<dyn AudioSource<JapaneseAudioQuery>> {
+		Box::new(JapanesePodSource {})
+	}
+
+	fn id(&self) -> &'static str {
+		// spell-checker: disable
+		"jpod"
+		// spell-checker: enable
+	}
+
+	fn name(&self) -> &'static str {
+		"JapanesePod101.com"
+	}
+
+	fn load(&self, query: JapaneseAudioQuery, log: Logger, id: SourceId, sink: Sender<(SourceId, AudioResultData)>) {
+		panic!()
+	}
+}
+
+struct LanguagePodSource {}
+
+impl JapaneseAudioSource for LanguagePodSource {}
+
+impl AudioSource<JapaneseAudioQuery> for LanguagePodSource {
+	fn copy(&self) -> Box<dyn AudioSource<JapaneseAudioQuery>> {
+		Box::new(LanguagePodSource {})
+	}
+
+	fn id(&self) -> &'static str {
+		// spell-checker: disable
+		"langpod"
+		// spell-checker: enable
+	}
+
+	fn name(&self) -> &'static str {
+		"LanguagePod101.com"
+	}
+
+	fn load(&self, query: JapaneseAudioQuery, log: Logger, id: SourceId, sink: Sender<(SourceId, AudioResultData)>) {
+		panic!()
+	}
+}
+
+struct ForvoSource {}
+
+impl JapaneseAudioSource for ForvoSource {}
+
+impl AudioSource<JapaneseAudioQuery> for ForvoSource {
+	fn copy(&self) -> Box<dyn AudioSource<JapaneseAudioQuery>> {
+		Box::new(ForvoSource {})
+	}
+
+	fn id(&self) -> &'static str {
+		// spell-checker: disable
+		"forvo"
+		// spell-checker: enable
+	}
+
+	fn name(&self) -> &'static str {
+		"Forvo"
+	}
+
+	fn load(&self, query: JapaneseAudioQuery, log: Logger, id: SourceId, sink: Sender<(SourceId, AudioResultData)>) {
+		panic!()
 	}
 }
 
