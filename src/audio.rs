@@ -56,7 +56,6 @@ impl AudioResult {
 }
 
 /// Single item returned by an [AudioSource]
-#[allow(dead_code)]
 pub type AudioDataResult = util::Result<AudioData>;
 
 #[derive(Clone)]
@@ -139,10 +138,18 @@ impl<Q: AudioQuery> AudioLoader<Q> {
 	}
 
 	pub fn from_cache(&self, log: &Logger, query_hash: &str, src: &str, hash: &str) -> Option<Vec<u8>> {
-		let entry = self.cache.lock().unwrap().load_with_optional_save(log, query_hash, false);
+		let entry = self
+			.cache
+			.lock()
+			.unwrap()
+			.load_with_optional_save(log, query_hash, false);
 		let entry = entry.lock().unwrap();
 		if let Some(entries) = entry.data_by_src.get(src) {
-			entries.iter().filter(|x| &x.hash == hash).map(|x| x.data.clone()).next()
+			entries
+				.iter()
+				.filter(|x| &x.hash == hash)
+				.map(|x| x.data.clone())
+				.next()
 		} else {
 			None
 		}

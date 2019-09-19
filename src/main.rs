@@ -19,10 +19,10 @@ extern crate serde_tuple;
 
 // Utilities
 
+extern crate chrono;
 extern crate itertools;
 extern crate rand;
 extern crate regex;
-extern crate chrono;
 
 #[macro_use]
 extern crate lazy_static;
@@ -63,12 +63,10 @@ mod api;
 mod app;
 mod audio;
 mod db;
-mod dict;
 mod import;
 mod japanese;
 mod kana;
 mod logging;
-mod pronunciation;
 mod server;
 mod util;
 

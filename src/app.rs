@@ -6,7 +6,6 @@ use audio;
 use db;
 use japanese;
 use logging;
-use pronunciation;
 use util::{Cache, CacheKey, CacheMap, CacheVal};
 
 /// Name of the root data directory. Used when looking up the data directory.
@@ -23,7 +22,6 @@ pub struct App {
 
 	ring_log:  logging::RingLogger,
 	dict:      japanese::Dictionary,
-	audio_ja:  pronunciation::JapaneseService,
 	cache_map: CacheMap,
 
 	_compat_log_guard: slog_scope::GlobalLoggerGuard,
@@ -101,12 +99,10 @@ impl App {
 				let audio_cache_dir = App::data_dir().join("audio");
 
 				let db = App::load_db(&app_log.new(o!("op" => "database loading")));
-				let audio_ja = pronunciation::JapaneseService::new(&App::data_dir().join("audio"));
 				let app = App {
 					log:      app_log,
 					ring_log: ring_log,
 					dict:     japanese::Dictionary::new(db),
-					audio_ja: audio_ja,
 					cache_map: CacheMap::new(),
 
 					japanese_audio: japanese::new_audio_loader(&audio_cache_dir),
@@ -153,10 +149,6 @@ impl App {
 
 	pub fn dictionary(&self) -> &japanese::Dictionary {
 		&self.dict
-	}
-
-	pub fn pronunciation(&self) -> &pronunciation::JapaneseService {
-		&self.audio_ja
 	}
 
 	/// Returns a global cache instance for a given key and value types.
