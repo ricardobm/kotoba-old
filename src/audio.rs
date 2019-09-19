@@ -138,6 +138,16 @@ impl<Q: AudioQuery> AudioLoader<Q> {
 		}
 	}
 
+	pub fn from_cache(&self, log: &Logger, query_hash: &str, src: &str, hash: &str) -> Option<Vec<u8>> {
+		let entry = self.cache.lock().unwrap().load_with_optional_save(log, query_hash, false);
+		let entry = entry.lock().unwrap();
+		if let Some(entries) = entry.data_by_src.get(src) {
+			entries.iter().filter(|x| &x.hash == hash).map(|x| x.data.clone()).next()
+		} else {
+			None
+		}
+	}
+
 	pub fn query(&self, log: &Logger, query: Q, force_reload: bool) -> AudioJob {
 		let mut jobs = self.jobs.lock().unwrap();
 
@@ -693,7 +703,7 @@ impl AudioCache {
 		}
 	}
 
-	fn get_entry_dir(&self, log: &Logger, src: &'static str, query_hash: &String) -> Option<PathBuf> {
+	fn get_entry_dir(&self, log: &Logger, src: &'static str, query_hash: &str) -> Option<PathBuf> {
 		let (_, cache_path) = self.cache_path(query_hash);
 		let cache_path = cache_path.join(src);
 		match fs::create_dir_all(&cache_path) {
@@ -709,10 +719,18 @@ impl AudioCache {
 	///
 	/// If the entry is not available in the cache, it will be loaded from disk
 	/// and cached in memory.
-	pub fn load(&self, log: &Logger, query_hash: &String) -> Arc<Mutex<AudioCacheEntry>> {
+	pub fn load(&self, log: &Logger, query_hash: &str) -> Arc<Mutex<AudioCacheEntry>> {
+		self.load_with_optional_save(log, query_hash, true)
+	}
+
+	pub fn load_with_optional_save(&self, log: &Logger, query_hash: &str, save: bool) -> Arc<Mutex<AudioCacheEntry>> {
 		lazy_static! {
 			static ref ENTRY_RE: Regex = Regex::new(r"^(?P<hash>[0-9a-f]{64})\.mp3$").unwrap();
 		}
+
+		// TODO: remove this weirdness
+		let query_hash = query_hash.to_string();
+		let query_hash = &query_hash;
 
 		if let Some(res) = self.cache.get_and_renew(query_hash, AUDIO_CACHE_ENTRY_TTL) {
 			trace!(log, "loaded {} from memory cache", query_hash);
@@ -811,8 +829,12 @@ impl AudioCache {
 			};
 
 			// Store the entry in the cache and return it
-			self.cache
-				.save(query_hash.clone(), Mutex::new(entry), AUDIO_CACHE_ENTRY_TTL)
+			if save {
+				self.cache
+					.save(query_hash.clone(), Mutex::new(entry), AUDIO_CACHE_ENTRY_TTL)
+			} else {
+				Arc::new(Mutex::new(entry))
+			}
 		}
 	}
 

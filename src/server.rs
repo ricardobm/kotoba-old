@@ -156,7 +156,18 @@ pub fn launch(app: &'static App) {
 		.manage(app.pronunciation())
 		.mount(
 			"/api",
-			routes![index, list, search, tags, audio, test, logs, log_by_req, api::audio::query_audio],
+			routes![
+				index,
+				list,
+				search,
+				tags,
+				audio,
+				test,
+				logs,
+				log_by_req,
+				api::audio::query_audio,
+				api::audio::get_audio_file,
+			],
 		)
 		.launch();
 }

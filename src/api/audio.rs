@@ -1,5 +1,6 @@
 //! Audio API
 
+use regex::Regex;
 use rocket::State;
 use rocket_contrib::json::Json;
 
@@ -124,11 +125,14 @@ pub struct Item {
 
 impl Item {
 	fn from_audio_info(info: audio::AudioInfo) -> Item {
+		// Skip the first directory in the file path (e.g. `05/05f3d31...`)
+		use itertools::*;
+		let file_name = info.file.splitn(2, '/').skip(1).join("/");
 		Item {
 			source: info.source.to_string(),
 			name:   info.file.split('/').rev().next().unwrap().to_string(),
 			hash:   info.hash,
-			url:    format!("{}/{}", AUDIO_LOAD_BASE_PATH, info.file),
+			url:    format!("{}/{}", AUDIO_LOAD_BASE_PATH, file_name),
 			cached: info.cached,
 		}
 	}
@@ -152,7 +156,39 @@ pub struct Source {
 	pub elapsed: f64,
 }
 
-const AUDIO_LOAD_BASE_PATH: &'static str = "/audio/get";
+const AUDIO_LOAD_BASE_PATH: &'static str = "/api/audio/get";
+
+#[get("/audio/get/<query>/<src>/<file>")]
+pub fn get_audio_file(
+	log: RequestLog,
+	app: State<&App>,
+	query: String,
+	src: String,
+	file: String,
+) -> AudioFileResponse {
+	lazy_static! {
+		static ref RE_HASH: Regex = Regex::new(r"^[a-z0-9]+$").unwrap();
+		static ref RE_NAME: Regex = Regex::new(r"^[a-z]+$").unwrap();
+		static ref RE_FILE: Regex = Regex::new(r"^[a-z0-9]+\.mp3$").unwrap();
+	}
+
+	let log = log.new(o!("audio" => format!("{}/{}/{}", query, src, file)));
+
+	if !RE_HASH.is_match(&query) {
+		AudioFileResponse::NotFound
+	} else if !RE_NAME.is_match(&src) {
+		AudioFileResponse::NotFound
+	} else if !RE_FILE.is_match(&file) {
+		AudioFileResponse::NotFound
+	} else {
+		let loader = app.japanese_audio();
+		let hash = file.trim_end_matches(".mp3");
+		match loader.from_cache(&log, &query, &src, &hash) {
+			Some(data) => AudioFileResponse::File(file, data),
+			None => AudioFileResponse::NotFound,
+		}
+	}
+}
 
 #[post("/audio/query", data = "<input>")]
 pub fn query_audio(log: RequestLog, input: Json<Request>, app: State<&App>) -> Json<Response> {
@@ -215,4 +251,36 @@ pub fn query_audio(log: RequestLog, input: Json<Request>, app: State<&App>) -> J
 	}
 
 	Json(response)
+}
+
+pub enum AudioFileResponse {
+	File(String, Vec<u8>),
+	NotFound,
+}
+
+use rocket::http::hyper::header::{Charset, ContentDisposition, DispositionParam, DispositionType};
+
+impl<'r> rocket::response::Responder<'r> for AudioFileResponse {
+	fn respond_to(self, _request: &rocket::Request) -> rocket::response::Result<'r> {
+		use rocket::http::ContentType;
+		use rocket::Response;
+
+		let response = match self {
+			AudioFileResponse::File(name, data) => Response::build()
+				.header(ContentType::new("audio", "mpeg"))
+				.header(ContentDisposition {
+					disposition: DispositionType::Inline,
+					parameters:  vec![DispositionParam::Filename(
+						Charset::Ext("UTF-8".into()),
+						None,
+						name.into_bytes(),
+					)],
+				})
+				.sized_body(std::io::Cursor::new(data))
+				.finalize(),
+			AudioFileResponse::NotFound => Response::build().status(rocket::http::Status::NotFound).finalize(),
+		};
+
+		Ok(response)
+	}
 }
