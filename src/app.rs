@@ -98,6 +98,8 @@ impl App {
 					path = App::data_dir().to_string_lossy().as_ref()
 				);
 
+				let audio_cache_dir = App::data_dir().join("audio");
+
 				let db = App::load_db(&app_log.new(o!("op" => "database loading")));
 				let audio_ja = pronunciation::JapaneseService::new(&App::data_dir().join("audio"));
 				let app = App {
@@ -107,7 +109,7 @@ impl App {
 					audio_ja: audio_ja,
 					cache_map: CacheMap::new(),
 
-					japanese_audio: audio::AudioLoader::new(),
+					japanese_audio: audio::AudioLoader::new(&audio_cache_dir),
 
 					_compat_log_guard: compat_log_guard,
 				};

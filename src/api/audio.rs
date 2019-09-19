@@ -173,7 +173,7 @@ pub fn query_audio(log: RequestLog, input: Json<Request>, app: State<&App>) -> J
 	};
 
 	let loader = app.japanese_audio();
-	let worker = loader.query(query, input.reload_sources);
+	let worker = loader.query(&log, query, input.reload_sources);
 
 	let mut loaded = false;
 	if input.quick_load {

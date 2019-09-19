@@ -10,16 +10,19 @@ use super::db::Search;
 use kana::{is_kanji, to_romaji};
 
 //
-// Japanese audio support
+// Japanese pronunciation audio support
 //
 
 use audio::{AudioQuery, AudioSource};
 
 pub trait JapaneseAudioSource: AudioSource<JapaneseAudioQuery> {}
 
+/// Query arguments to load Japanese pronunciation audio.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct JapaneseAudioQuery {
+	/// The main expression to lookup.
 	pub expression: String,
+	/// The reading for the expression to lookup.
 	pub reading: String,
 }
 
@@ -28,6 +31,10 @@ impl AudioQuery for JapaneseAudioQuery {
 		let query_hash = format!("{}\n{}", self.expression, self.reading);
 		let query_hash = crate::util::sha256(query_hash.as_bytes()).unwrap();
 		query_hash
+	}
+
+	fn query_info(&self) -> String {
+		format!("{} / {}", self.expression, self.reading)
 	}
 }
 
