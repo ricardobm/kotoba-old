@@ -6,7 +6,7 @@ use data_encoding::HEXLOWER;
 use ring::digest::{Context, SHA256};
 
 mod cache;
-pub use self::cache::{Cache, CacheKey, CacheVal, CacheMap};
+pub use self::cache::{Cache, CacheKey, CacheMap, CacheVal};
 
 #[allow(dead_code)]
 mod datetime;
@@ -14,6 +14,9 @@ pub use self::datetime::*;
 
 mod file;
 pub use self::file::*;
+
+mod concurrency;
+pub use self::concurrency::*;
 
 /// Simple custom string error.
 #[derive(Debug)]

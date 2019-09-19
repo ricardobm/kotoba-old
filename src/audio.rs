@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::spawn;
+use std::time::{Duration, Instant};
 
 use slog::Logger;
 
@@ -17,40 +18,42 @@ use util;
 
 /// Completed result for an [AudioQuery].
 pub struct AudioResult {
-	_items:   Vec<AudioResultItem>,
-	_sources: Vec<AudioSourceInfo>,
+	pub items:   HashMap<&'static str, Vec<AudioInfo>>,
+	pub sources: Vec<AudioSourceMetadata>,
 }
 
 impl AudioResult {
-	/// Iterate over each [AudioResultItem] in the results with a closure.
-	///
-	/// The closure can return `false` to stop the iteration.
-	///
-	/// Returns `false` if the iteration was stopped by the closure.
-	pub fn each<F>(&self, _f: F) -> bool
-	where
-		F: FnMut(&AudioResultItem) -> bool,
-	{
-		panic!()
+	pub fn is_empty(&self) -> bool {
+		self.items.values().any(|x| x.len() > 0)
 	}
 
-	/// Iterate over each [AudioSourceInfo] in the results with a closure.
-	///
-	/// The closure can return `false` to stop the iteration.
-	///
-	/// Returns `false` if the iteration was stopped by the closure.
-	pub fn each_source<F>(&self, _f: F) -> bool
-	where
-		F: FnMut(&AudioSourceInfo) -> bool,
-	{
-		panic!()
+	fn from_cache_entry(base_path: &str, entry: &AudioCacheEntry) -> AudioResult {
+		let mut result = AudioResult {
+			items:   Default::default(),
+			sources: Default::default(),
+		};
+
+		for (src, val) in entry.data_by_src.iter() {
+			let mut entries = vec![];
+			for it in val.iter() {
+				entries.push(AudioInfo {
+					source: src,
+					hash:   it.hash.clone(),
+					file:   format!("{}/{}/{}.mp3", base_path, src, it.hash),
+					cached: it.from_cache,
+				});
+			}
+			result.items.insert(src, entries);
+		}
+
+		for meta in entry.info_by_src.values() {
+			result.sources.push(meta.clone())
+		}
+		result.sources.sort_by_key(|x| x.index);
+
+		result
 	}
 }
-
-/// Singe item in an [AudioResult].
-///
-/// This is either the complete audio data or an error.
-pub type AudioResultItem = util::Result<AudioInfo>;
 
 /// Single item returned by an [AudioSource]
 #[allow(dead_code)]
@@ -73,25 +76,12 @@ pub struct AudioInfo {
 	pub cached: bool,
 }
 
-pub struct AudioSourceInfo {
-	/// Identifier for this audio source.
-	pub id: &'static str,
-
-	/// Human readable name for this audio source.
-	pub name: &'static str,
-
-	/// Total results from this source in the [AudioResult].
-	pub total_results: usize,
-
-	/// Number of errors generated from this source in the [AudioResult].
-	pub total_errors: usize,
-
-	/// Number of seconds elapsed loading this source.
-	pub elapsed: f64,
+/// Audio data.
+pub struct AudioData {
+	pub data:       Vec<u8>,
+	pub hash:       String,
+	pub from_cache: bool,
 }
-
-/// Audio data and its SHA-256 hash.
-pub struct AudioData(pub Vec<u8>, pub String);
 
 /// Trait for a type that can be used in an audio query.
 pub trait AudioQuery: Clone + Sync + Send + Hash + Eq + 'static {
@@ -146,6 +136,8 @@ impl<Q: AudioQuery> AudioLoader<Q> {
 
 	pub fn query(&self, log: &Logger, query: Q, force_reload: bool) -> AudioJob {
 		let mut jobs = self.jobs.lock().unwrap();
+
+		// Retrieve an existing job for this query.
 		let job = if let Some(job) = jobs.get(&query) {
 			Some(job.clone())
 		} else {
@@ -153,18 +145,28 @@ impl<Q: AudioQuery> AudioLoader<Q> {
 		};
 
 		let job = if let Some(job) = job {
-			// Since there is no guarantee when a completed job will be cleared
-			// from the `jobs` map (if ever), if the job is already complete we
-			// want to start a new one to prevent returning stale results.
+			// Check if the job is stale or completed. If it is completed we
+			// want to start a new job (since this is a new request) and since
+			// we don't purge completed jobs from the map (for simplicity sake).
 			//
 			// Audio loading is already cached in disk and loaded entries
 			// already cached in memory with a TTL, so we don't need another
 			// level of caching here.
 			//
+			// We also check the timeout on the job to prevent a stale timeout
+			// job from blocking requests forever. Having multiple jobs active
+			// for the same request is not good, but it is better than never
+			// finishing a particular query.
+			//
+			// Having multiple jobs is safe, since the final cache write is
+			// protected by a global lock and results end-up merged.
+			//
 			// Note that we don't care about the race condition of the job
 			// completing between now and the time we call start. In this case
 			// the `start` will be a no-op and the results will be fresh enough.
-			if job.is_complete() {
+			let (started_at, completed) = job.get_status();
+			if completed || (Instant::now() - started_at) > AUDIO_JOB_TIMEOUT {
+				// Clear the stale job.
 				jobs.remove(&query);
 				None
 			} else {
@@ -186,7 +188,7 @@ impl<Q: AudioQuery> AudioLoader<Q> {
 					state:   Default::default(),
 				};
 				let job = AudioJob {
-					inner: Arc::new(Mutex::new(Box::new(inner))),
+					inner: Arc::new(Box::new(inner)),
 				};
 				jobs.insert(query, job.clone());
 				job
@@ -210,40 +212,44 @@ impl<Q: AudioQuery> AudioLoader<Q> {
 /// synchronization and caching.
 #[derive(Clone)]
 pub struct AudioJob {
-	/// This is the actual implementation for the Job.
+	/// This contains the actual implementation for the Job.
 	///
-	/// There is at most one instance of any given job for a query `Q`, and this
-	/// instance is shared between the respective [AudioJob] instances.
+	/// There is usually one instance of any given job for a query `Q`, and this
+	/// instance is shared between the respective [AudioJob] instances. This
+	/// managing is done by the [AudioLoader<Q>].
 	///
-	/// The [AudioJob] instance is just a container for this inner job. This
-	/// allows us to decouple the type parameter `Q` from the actual job and
-	/// to freely clone and pass instances of [AudioJob] around without
-	/// worrying with lifetimes and such.
-	inner: Arc<Mutex<Box<dyn AudioJobImpl>>>,
+	/// The outer [AudioJob] just provides a query-independent wrapper for the
+	/// inner job.
+	inner: Arc<Box<dyn AudioJobImpl>>,
 }
+
+/// Global timeout on any [AudioJob].
+///
+/// A new job will be started even if there is a pending one that has been
+/// started for longer than this.
+const AUDIO_JOB_TIMEOUT: Duration = Duration::from_secs(15);
 
 impl AudioJob {
 	/// Blocks until the job is completed, returning all available results.
-	pub fn wait(&self) -> Arc<AudioResult> {
-		panic!()
+	pub fn wait(&self) -> AudioResult {
+		self.inner.wait()
 	}
 
 	/// Waits until there is some [AudioData] available in the result or the
 	/// job completes.
 	///
-	/// Returns the [AudioData] as soon as it is available, or `None` if the
-	/// request completed without loading any data.
-	pub fn wait_any(&self) -> Option<AudioInfo> {
-		panic!()
+	/// Returns the available results, if any.
+	pub fn wait_any(&self) -> AudioResult {
+		self.inner.wait_any()
 	}
 
-	/// Is `true` if the job has already completed.
+	/// Returns the job created time and its completion flag.
 	///
-	/// This is meant as an imprecise check to decide whether to start a new
-	/// job or keep the currently running one. It is not meant to provide
-	/// precise synchronization.
-	fn is_complete(&self) -> bool {
-		self.inner.lock().unwrap().is_complete()
+	/// This is provided as a way to check the status of a job and decide if
+	/// a new one can be spawned. It is not meant for precise synchronization
+	/// since there is no lock on status changes after this call returns.
+	fn get_status(&self) -> (Instant, bool) {
+		self.inner.get_status()
 	}
 
 	/// Force this job to load from source even if a cached result is available.
@@ -251,7 +257,7 @@ impl AudioJob {
 	/// If this is called after a job has already completed from cache, this
 	/// will cause it to reload.
 	fn force_load(&self) {
-		self.inner.lock().unwrap().force_load();
+		self.inner.force_load();
 	}
 
 	/// This will start the job the first time it is called.
@@ -259,14 +265,16 @@ impl AudioJob {
 	/// For a completed or running job this is a no-op. As such this method can
 	/// be called at any point in the job lifetime.
 	fn start(&self) {
-		self.inner.lock().unwrap().start();
+		self.inner.start();
 	}
 }
 
 trait AudioJobImpl: Send + Sync {
-	fn is_complete(&self) -> bool;
-	fn force_load(&mut self);
-	fn start(&mut self);
+	fn wait(&self) -> AudioResult;
+	fn wait_any(&self) -> AudioResult;
+	fn get_status(&self) -> (Instant, bool);
+	fn force_load(&self);
+	fn start(&self);
 }
 
 /// Inner implementation for an [AudioJob].
@@ -282,42 +290,100 @@ struct AudioJobInner<Q: AudioQuery> {
 }
 
 struct AudioJobState {
-	started:    bool,
-	force_load: bool,
-	completed:  bool,
-	was_cached: bool,
+	started:     bool,
+	created_at:  Instant,
+	force_load:  bool,
+	completed:   bool,
+	was_cached:  bool,
+	has_results: bool,
+	loaded_one:  util::Condition,
+	loaded_all:  util::Condition,
 }
 
 impl Default for AudioJobState {
 	fn default() -> AudioJobState {
 		AudioJobState {
-			started:    false,
-			force_load: false,
-			completed:  false,
-			was_cached: false,
+			started:     false,
+			created_at:  Instant::now(),
+			force_load:  false,
+			completed:   false,
+			was_cached:  false,
+			has_results: false,
+			loaded_one:  Default::default(),
+			loaded_all:  Default::default(),
 		}
 	}
 }
 
 impl<Q: AudioQuery> AudioJobImpl for AudioJobInner<Q> {
-	fn is_complete(&self) -> bool {
-		self.state.lock().unwrap().completed
+	fn wait(&self) -> AudioResult {
+		let loaded_all = {
+			let state = self.state.lock().unwrap();
+			state.loaded_all.clone()
+		};
+		loaded_all.wait();
+
+		let query_hash = self.query.query_hash();
+		let entry = self.cache.lock().unwrap().load(&self.log, &query_hash);
+		let entry = entry.lock().unwrap();
+		AudioResult::from_cache_entry(&entry.base_path, &entry)
 	}
 
-	fn force_load(&mut self) {
+	fn wait_any(&self) -> AudioResult {
+		let loaded_one = {
+			let state = self.state.lock().unwrap();
+			state.loaded_one.clone()
+		};
+		loaded_one.wait();
+
+		let query_hash = self.query.query_hash();
+		let entry = self.cache.lock().unwrap().load(&self.log, &query_hash);
+		let entry = entry.lock().unwrap();
+		AudioResult::from_cache_entry(&entry.base_path, &entry)
+	}
+
+	fn get_status(&self) -> (Instant, bool) {
+		let state = self.state.lock().unwrap();
+		(state.created_at, state.completed)
+	}
+
+	fn force_load(&self) {
 		let mut state = self.state.lock().unwrap();
-		let need_restart = state.completed && state.was_cached;
+
+		// Force loading from sources. There are three scenarios for us setting
+		// this:
+		//
+		// - Before [start] checks the `force_load` flag:
+		//   - [start] will pick up on the value and force loading.
+		// - After [start] checked the `force_load` flag, before it completes:
+		//   - [start] has a check at the end that will cause it to restart.
+		// - After [start] has already completed:
+		//   - we need to restart manually.
 		state.force_load = true;
+
+		// If job was completed with cached entries we need to restart it.
+		let need_restart = state.completed && state.was_cached;
+
+		// If we need to restart...
 		if need_restart {
-			state.started = false; // Force start to go again
-		}
-		drop(state);
-		if need_restart {
+			// force a call to [start] to spawn a new thread
+			state.started = false;
+
+			// reset the "loaded" conditions
+			state.loaded_all.reset();
+			if !state.has_results {
+				// give the "loaded one" condition another shot since we are
+				// reloading
+				state.loaded_one.reset();
+			}
+
+			// Release the state lock on the state and call start again
+			drop(state);
 			self.start();
 		}
 	}
 
-	fn start(&mut self) {
+	fn start(&self) {
 		lazy_static! {
 			static ref ENTRY_RE: Regex = Regex::new(r"^(?P<hash>[0-9a-f]{64})\.mp3$").unwrap();
 		}
@@ -326,7 +392,7 @@ impl<Q: AudioQuery> AudioJobImpl for AudioJobInner<Q> {
 
 		if !state.started {
 			state.started = true;
-			drop(state);
+			drop(state); // We don't want to keep the state locked for long
 
 			// We don't want to keep any reference to self in the thread
 			let query = self.query.clone();
@@ -335,6 +401,7 @@ impl<Q: AudioQuery> AudioJobImpl for AudioJobInner<Q> {
 			let log = self.log.clone();
 			let state = self.state.clone();
 
+			// Spawn a new thread for loading.
 			spawn(move || {
 				let query_hash = query.query_hash();
 
@@ -344,111 +411,126 @@ impl<Q: AudioQuery> AudioJobImpl for AudioJobInner<Q> {
 				let mut need_restart = true;
 				while need_restart {
 					// Load the cached entry. This will create a new empty entry
-					let cached = cache.lock().unwrap().load(&log, &query_hash);
+					// if it does not exist.
+					let cached_entry = cache.lock().unwrap().load(&log, &query_hash);
 
+					// Check if we are forced to load from source.
 					let force_load = state.lock().unwrap().force_load;
 
-					// Load any entry that is not available on the cached entry, or
-					// if `force_load` is true then reload all sources.
+					// Determine what sources do we need to load from and spawn
+					// workers to load them:
 
-					let mut new_entry = AudioCacheEntry::default(); // New cache entries
+					let mut has_cached_entries = false;
+					let cached_entry = cached_entry.lock().unwrap();
+					let mut has_results = cached_entry.has_results();
+
 					let mut handles = Vec::new(); // Worker thread handles for joining
 					let (tx_dat, rx_dat) = mpsc::channel(); // Receive the loaded audio entries
 					let (tx_src, rx_src) = mpsc::channel(); // Receive the src metadata
 
-					// Lock the cache entry
-					let entry = cached.lock().unwrap();
+					let mut src_metadata = HashMap::new();
 
-					let mut loaded_from_cache = false;
-					for src in sources.iter() {
-						let src = src.copy();
-						let id = src.id();
+					for (index, src) in sources.iter().enumerate() {
+						let audio_src = src.copy();
+						let src = SourceId {
+							id:    src.id(),
+							name:  src.name(),
+							index: index,
+						};
 
-						new_entry.data_by_src.insert(id, Default::default());
-						new_entry.info_by_src.insert(
-							id,
-							AudioSourceMetadata {
-								source: id.to_string(),
-								..Default::default()
-							},
-						);
-
-						// Skip source if we don't need to load it
+						// Check if we can skip the source
 						if !force_load {
-							if let Some(entry) = entry.as_ref() {
-								if let Some(data) = entry.data_by_src.get(&id) {
-									// If there is any data available at all, skip
-									// loading.
-									if data.len() > 0 {
-										loaded_from_cache = true;
-										continue;
-									}
+							if let Some(data) = cached_entry.data_by_src.get(&src.id) {
+								// If there is any data available at all,
+								// skip loading.
+								if data.len() > 0 {
+									has_cached_entries = true;
+									continue;
+								}
 
-									// If there is no data available, but also no
-									// errors, we can also skip (empty results).
-									if let Some(meta) = entry.info_by_src.get(&id) {
-										if meta.errors.len() == 0 {
-											loaded_from_cache = true;
-											continue;
-										}
+								// If there is no data available, but also no
+								// errors, we can also skip (empty results).
+								if let Some(meta) = cached_entry.info_by_src.get(&src.id) {
+									if meta.errors.len() == 0 {
+										has_cached_entries = true;
+										continue;
 									}
 								}
 							}
 						}
 
-						let log = log.new(o!("worker" => id));
+						// Setup the metadata entry for this source
+						src_metadata.insert(src.id, AudioSourceMetadata::new(&src));
+
+						// Spawn a worker thread to load from the source
+						let log = log.new(o!("worker" => src.id));
 						let query = query.clone();
 						let (tx_dat, tx_src) = (tx_dat.clone(), tx_src.clone());
 						let handle = spawn(move || {
 							time!(t_load);
-							for it in src.load(query, log) {
-								tx_dat.send((id, it)).unwrap();
+
+							// Send all entries
+							for it in audio_src.load(query, log) {
+								tx_dat.send((src.clone(), it)).unwrap();
 							}
-							tx_src.send((id, t_load.elapsed().as_secs_f64())).unwrap();
+
+							// Send the metadata (in this case just the elapsed time)
+							tx_src.send((src.clone(), t_load.elapsed().as_secs_f64())).unwrap();
 						});
 						handles.push(handle);
 					}
 
-					drop(entry);
-					drop(cached);
+					// don't keep the cache entry lock while we wait for results
+					drop(cached_entry);
+
+					// drop those here otherwise the receivers will not close
 					drop(tx_dat);
 					drop(tx_src);
 
-					for (id, result) in rx_dat {
-						match result {
-							Ok(data) => {
-								let entry = new_entry.data_by_src.get_mut(id).unwrap();
-								entry.push(data);
-							}
-							Err(err) => {
-								let entry = new_entry.info_by_src.get_mut(id).unwrap();
-								entry.errors.push(format!("{}", err));
-							}
+					// Consume the results from all workers and add cache it
+					for (src, result) in rx_dat {
+						let is_ok = result.is_ok();
+						cache.lock().unwrap().merge_result(&log, &src, &query_hash, result);
+						if is_ok {
+							has_results = true;
+							state.lock().unwrap().loaded_one.trigger();
 						}
 					}
 
-					for (id, elapsed) in rx_src {
-						let entry = new_entry.info_by_src.get_mut(id).unwrap();
-						entry.elapsed = elapsed;
+					// Consume the result metadata and add cache it
+					for (src, elapsed) in rx_src {
+						let mut metadata = src_metadata.remove(src.id).unwrap();
+						metadata.elapsed = elapsed;
+						cache.lock().unwrap().merge_metadata(&log, &src, &query_hash, metadata);
 					}
 
+					// Join all threads
 					for it in handles {
 						it.join().unwrap();
 					}
 
-					cache.lock().unwrap().merge(&log, query_hash.clone(), new_entry);
-
+					// If could happen that the `force_load` flag was updated
+					// after we checked it.
+					//
+					// In that case, the complete flag was not set, so the job
+					// would not attempt to restart the load and we need to do
+					// it ourselves.
 					let mut state = state.lock().unwrap();
-					need_restart = state.force_load && loaded_from_cache;
-					state.was_cached = loaded_from_cache;
-					state.completed = true;
+					need_restart = state.force_load && has_cached_entries;
+					if !need_restart {
+						state.was_cached = has_cached_entries;
+						state.has_results = has_results;
+						state.completed = true;
+						state.loaded_one.trigger();
+						state.loaded_all.trigger();
+					}
 				}
 			});
 		}
 	}
 }
 
-/// Provides in-memory caching for audio data.
+/// Provides in-memory caching for audio data and manages the disk cache.
 ///
 /// This implementation makes a few assumptions:
 /// - For any given `base_path`, there is a single instance of [AudioCache]
@@ -456,7 +538,7 @@ impl<Q: AudioQuery> AudioJobImpl for AudioJobInner<Q> {
 /// - All access to this [AudioCache] is protected by a mutex.
 struct AudioCache {
 	sources:   Vec<(&'static str, &'static str)>,
-	cache:     util::Cache<String, Mutex<Option<AudioCacheEntry>>>,
+	cache:     util::Cache<String, Mutex<AudioCacheEntry>>,
 	base_path: PathBuf,
 }
 
@@ -471,15 +553,24 @@ const AUDIO_CACHE_ENTRY_TTL: std::time::Duration = std::time::Duration::from_sec
 /// Entries are cached by [AudioQuery::query_hash] and store the whole result
 /// data.
 struct AudioCacheEntry {
+	/// Base path for this entry, relative to the cache base path.
+	base_path: String,
 	/// Audio data results indexed per [AudioSource].
 	data_by_src: HashMap<&'static str, Vec<AudioData>>,
 	/// Audio source metadata.
 	info_by_src: HashMap<&'static str, AudioSourceMetadata>,
 }
 
-impl Default for AudioCacheEntry {
-	fn default() -> AudioCacheEntry {
+impl AudioCacheEntry {
+	fn has_results(&self) -> bool {
+		self.data_by_src.values().any(|x| x.len() > 0)
+	}
+}
+
+impl AudioCacheEntry {
+	fn new(base_path: String) -> AudioCacheEntry {
 		AudioCacheEntry {
+			base_path:   base_path,
 			data_by_src: Default::default(),
 			info_by_src: Default::default(),
 		}
@@ -487,10 +578,14 @@ impl Default for AudioCacheEntry {
 }
 
 /// Metadata for the results from an [AudioSource].
-#[derive(Serialize, Deserialize)]
-struct AudioSourceMetadata {
+#[derive(Clone, Serialize, Deserialize)]
+pub struct AudioSourceMetadata {
 	/// Source ID.
 	pub source: String,
+	/// Source name.
+	pub name: String,
+	/// Index of this source in the priority list.
+	pub index: usize,
 	/// List of errors when loading this result.
 	pub errors: Vec<String>,
 	/// Time elapsed loading all results from this source.
@@ -499,130 +594,121 @@ struct AudioSourceMetadata {
 	pub timestamp: util::DateTime,
 }
 
-impl Default for AudioSourceMetadata {
-	fn default() -> AudioSourceMetadata {
+#[derive(Clone)]
+struct SourceId {
+	id:    &'static str,
+	name:  &'static str,
+	index: usize,
+}
+
+impl AudioSourceMetadata {
+	fn new(source: &SourceId) -> AudioSourceMetadata {
 		AudioSourceMetadata {
-			source:    Default::default(),
+			source:    source.id.to_string(),
+			name:      source.name.to_string(),
+			index:     source.index,
 			errors:    Default::default(),
 			elapsed:   Default::default(),
 			timestamp: util::DateTime::now(),
 		}
 	}
+
+	fn new_with_error(source: &SourceId, err: String) -> AudioSourceMetadata {
+		let mut out = Self::new(source);
+		out.errors.push(err);
+		out
+	}
 }
 
 impl AudioCache {
-	/// Merge cache data with any currently available data and save it to disk.
+	/// Merge a single audio result into the cache.
 	///
-	/// Returns the actual cached entry, with the merged data.
-	///
-	/// If persisting the cache entry to disk fails, this will still cache the
-	/// merged data in memory and log an error.
-	pub fn merge(
-		&self,
-		log: &Logger,
-		query_hash: String,
-		to_merge: AudioCacheEntry,
-	) -> Arc<Mutex<Option<AudioCacheEntry>>> {
-		let log = log.new(o!("saving" => query_hash.clone()));
-		let cache_entry = self.load(&log, &query_hash);
-		let entry = cache_entry.clone();
+	/// NOTE: this does not persist metadata information.
+	pub fn merge_result(&self, log: &Logger, source: &SourceId, query_hash: &String, data: AudioResultData) {
+		let log = log.new(o!("saving" => format!("{}/{}", query_hash, source.id)));
+		let entry = self.load(&log, query_hash);
 		let mut entry = entry.lock().unwrap();
 
-		let (_, full_cache_path) = self.cache_path(&query_hash);
+		match data {
+			Ok(audio) => {
+				// Save the audio data to the disk
+				if let Some(cache_path) = self.get_entry_dir(&log, source.id, query_hash) {
+					let entry_path = cache_path.join(format!("{}.mp3", audio.hash));
+					if let Err(err) = fs::write(&entry_path, &audio.data) {
+						error!(log, "writing `{}` entry: {}", audio.hash, err);
+					}
+					trace!(log, "saved {} successfully", audio.hash);
+				}
 
-		// Create the top-level cache entry directory, if it does not exist
-		let mut failed_root = false;
-		if entry.is_none() {
-			*entry = Some(AudioCacheEntry::default());
-			if let Err(err) = fs::create_dir_all(&full_cache_path) {
+				// Insert the data in the cache entry
+				let entries = entry.data_by_src.entry(source.id).or_insert(vec![]);
+				if !entries.iter().any(|cur| cur.hash == audio.hash) {
+					entries.push(audio);
+				}
+
+				// Make sure we have a metadata entry in the cache
+				entry
+					.info_by_src
+					.entry(source.id)
+					.or_insert_with(|| AudioSourceMetadata::new(source));
+			}
+			Err(err) => {
+				// Append the error to the source metadata entry
+				let metadata = entry
+					.info_by_src
+					.entry(source.id)
+					.or_insert_with(|| AudioSourceMetadata::new(source));
+				metadata.errors.push(format!("{}", err));
+			}
+		}
+	}
+
+	/// Merge metadata information into the cache and persists the metadata file.
+	pub fn merge_metadata(&self, log: &Logger, source: &SourceId, query_hash: &String, mut meta: AudioSourceMetadata) {
+		let log = log.new(o!("saving" => format!("{}/{}/{}", query_hash, source.id, CACHE_ENTRY_META_FILE)));
+		let entry = self.load(&log, &query_hash);
+		let mut entry = entry.lock().unwrap();
+		let meta_ref = &mut meta;
+		let metadata = entry
+			.info_by_src
+			.entry(source.id)
+			.and_modify(|e| {
+				e.errors.append(&mut meta_ref.errors);
+				e.elapsed = meta_ref.elapsed;
+				e.timestamp = meta_ref.timestamp.clone();
+			})
+			.or_insert(meta);
+
+		if let Some(cache_path) = self.get_entry_dir(&log, source.id, query_hash) {
+			let meta_path = cache_path.join(CACHE_ENTRY_META_FILE);
+			if let Err(err) = util::write_json(meta_path, metadata) {
+				error!(log, "writing metadata: {}", err);
+			}
+		}
+	}
+
+	fn get_entry_dir(&self, log: &Logger, src: &'static str, query_hash: &String) -> Option<PathBuf> {
+		let (_, cache_path) = self.cache_path(query_hash);
+		let cache_path = cache_path.join(src);
+		match fs::create_dir_all(&cache_path) {
+			Ok(_) => Some(cache_path),
+			Err(err) => {
 				error!(log, "creating entry directory: {}", err);
-				failed_root = true;
+				None
 			}
 		}
-
-		fn create_src_dir(log: &Logger, src: &'static str, base_path: &Path) -> (bool, PathBuf) {
-			let src_path = base_path.join(src);
-			if let Err(err) = fs::create_dir_all(&src_path) {
-				error!(log, "creating `{}` directory: {}", src, err);
-				(false, src_path)
-			} else {
-				(true, src_path)
-			}
-		}
-
-		let entry = entry.as_mut().unwrap();
-		let mut src_dir_status = HashMap::new();
-
-		for (src, mut val) in to_merge.info_by_src {
-			let val_ref = &mut val;
-			let meta = entry
-				.info_by_src
-				.entry(src)
-				.and_modify(|e| {
-					e.elapsed = val_ref.elapsed;
-					e.timestamp = val_ref.timestamp.clone();
-					e.errors.append(&mut val_ref.errors);
-				})
-				.or_insert(val);
-
-			// We only write to the disk if the root directory has been created
-			if !failed_root {
-				// Create the top level directory for this source
-				let (ok, src_path) = create_src_dir(&log, src, &full_cache_path);
-				if ok {
-					// Write the metadata
-					let meta_path = src_path.join(CACHE_ENTRY_META_FILE);
-					if let Err(err) = util::write_json(meta_path, meta) {
-						error!(log, "writing `{}` metadata: {}", src, err);
-					}
-				}
-				// Record the source directory creation status for the entries
-				// loop below.
-				src_dir_status.insert(src, (ok, src_path));
-			}
-		}
-
-		for (src, new_entries) in to_merge.data_by_src {
-			// Update the entry information in the cached entry
-			let (can_write, src_path) = match src_dir_status.get(src) {
-				Some(pair) => (pair.0, pair.1.clone()),
-				None => {
-					// The source was never created because `new_entry` did not
-					// specify a metadata for it
-					create_src_dir(&log, src, &full_cache_path)
-				}
-			};
-
-			let entries = entry.data_by_src.entry(src).or_insert(Vec::new());
-			for AudioData(new_data, new_hash) in new_entries {
-				// Write or re-write the cached entry
-				if can_write {
-					let entry_path = src_path.join(format!("{}.mp3", new_hash));
-					if let Err(err) = fs::write(&entry_path, &new_data) {
-						error!(log, "writing `{}` entry: {}", new_hash, err);
-					}
-				}
-
-				// Add a new AudioData to the cache entries
-				if !entries.iter().any(|AudioData(_data, hash)| hash == &new_hash) {
-					entries.push(AudioData(new_data, new_hash));
-				}
-			}
-		}
-
-		cache_entry
 	}
 
 	/// Loads the cached entry for a given query hash.
 	///
 	/// If the entry is not available in the cache, it will be loaded from disk
 	/// and cached in memory.
-	pub fn load(&self, log: &Logger, query_hash: &String) -> Arc<Mutex<Option<AudioCacheEntry>>> {
+	pub fn load(&self, log: &Logger, query_hash: &String) -> Arc<Mutex<AudioCacheEntry>> {
 		lazy_static! {
 			static ref ENTRY_RE: Regex = Regex::new(r"^(?P<hash>[0-9a-f]{64})\.mp3$").unwrap();
 		}
 
-		if let Some(res) = self.cache.get_and_renew(&query_hash, AUDIO_CACHE_ENTRY_TTL) {
+		if let Some(res) = self.cache.get_and_renew(query_hash, AUDIO_CACHE_ENTRY_TTL) {
 			trace!(log, "loaded {} from memory cache", query_hash);
 			res.clone()
 		} else {
@@ -632,12 +718,14 @@ impl AudioCache {
 			let (cache_path, full_cache_path) = self.cache_path(&query_hash);
 
 			let entry = if !full_cache_path.exists() {
-				None
+				AudioCacheEntry::new(cache_path)
 			} else {
-				let mut entry = AudioCacheEntry::default();
+				let mut entry = AudioCacheEntry::new(cache_path);
 
 				// Load available entries
-				for (id, _name) in self.sources.iter() {
+				for (index, (id, name)) in self.sources.iter().enumerate() {
+					let src = SourceId { id, name, index };
+
 					// Directory for this source in `full_cache_path`
 					let base_path = full_cache_path.join(id);
 
@@ -648,28 +736,20 @@ impl AudioCache {
 						Ok(None) => {
 							// We don't have an audio metadata, but still want
 							// to load any audio entries
-							AudioSourceMetadata {
-								source: id.to_string(),
-								..Default::default()
-							}
+							AudioSourceMetadata::new(&src)
 						}
-						Err(err) => AudioSourceMetadata {
-							source:    id.to_string(),
-							errors:    vec![format!("{}", err)],
-							elapsed:   0.0,
-							timestamp: util::DateTime::now(),
-						},
+						Err(err) => AudioSourceMetadata::new_with_error(&src, format!("{}", err)),
 					};
 
 					// Read all entries in the source's cache directory
 					let mut entries = Vec::new();
 					match fs::read_dir(&base_path) {
 						Ok(dir) => {
-							for entry in dir {
-								match entry {
-									Ok(entry) => {
+							for dir_entry in dir {
+								match dir_entry {
+									Ok(dir_entry) => {
 										let mut valid = false;
-										if let Some(name) = entry.file_name().to_str() {
+										if let Some(name) = dir_entry.file_name().to_str() {
 											if name == CACHE_ENTRY_META_FILE {
 												continue;
 											}
@@ -678,8 +758,12 @@ impl AudioCache {
 												valid = true;
 
 												let hash = caps.name("hash").unwrap().as_str();
-												let data = match std::fs::read(entry.path()) {
-													Ok(data) => AudioData(data, hash.to_string()),
+												let data = match std::fs::read(dir_entry.path()) {
+													Ok(data) => AudioData {
+														data:       data,
+														hash:       hash.to_string(),
+														from_cache: true,
+													},
 													Err(err) => {
 														meta.errors.push(format!("{}", err));
 														continue;
@@ -692,9 +776,9 @@ impl AudioCache {
 											warn!(
 												log,
 												"invalid cache entry: {}/{}/{}",
-												cache_path,
+												entry.base_path,
 												id,
-												entry.file_name().to_string_lossy()
+												dir_entry.file_name().to_string_lossy()
 											);
 										}
 									}
@@ -717,7 +801,7 @@ impl AudioCache {
 					t_cache
 				);
 
-				Some(entry)
+				entry
 			};
 
 			// Store the entry in the cache and return it

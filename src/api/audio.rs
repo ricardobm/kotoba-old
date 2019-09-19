@@ -4,6 +4,7 @@ use rocket::State;
 use rocket_contrib::json::Json;
 
 use app::App;
+use audio;
 use logging::RequestLog;
 
 /// Pronunciation API request arguments.
@@ -63,16 +64,41 @@ pub struct Response {
 	/// Metadata information about sources and the lookup loading.
 	pub sources: Vec<Source>,
 
-	/// Is `true` if the request has either of top level errors or source
-	/// specific errors.
+	/// Is `true` if any of the sources has errors.
 	pub has_errors: bool,
+}
 
-	/// List of top-level errors occurred during the request. Having errors
-	/// does not necessarily prevent the request from having results.
-	///
-	/// Note that source specific errors are returned in their respective
-	/// sources.
-	pub errors: Vec<String>,
+impl Response {
+	pub fn append_result(&mut self, mut result: audio::AudioResult) {
+		for it in result.sources {
+			let total = match result.items.get(it.name.as_str()) {
+				Some(items) => items.len(),
+				None => 0,
+			};
+			self.sources.push(Source {
+				source:        it.source,
+				name:          it.name,
+				total_results: total,
+				errors:        it.errors,
+				elapsed:       it.elapsed,
+			});
+		}
+
+		for it in self.sources.iter() {
+			if let Some(entries) = result.items.remove(it.source.as_str()) {
+				for it in entries {
+					self.results.push(Item::from_audio_info(it));
+				}
+			}
+		}
+
+		// if for some reason the result contains non-indexes sources, add those.
+		for (_, entries) in result.items {
+			for it in entries {
+				self.results.push(Item::from_audio_info(it));
+			}
+		}
+	}
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -93,14 +119,12 @@ pub struct Item {
 	pub cached: bool,
 }
 
-use audio;
-
 impl Item {
-	fn from_info(info: &audio::AudioInfo) -> Item {
+	fn from_audio_info(info: audio::AudioInfo) -> Item {
 		Item {
 			source: info.source.to_string(),
 			name:   info.file.split('/').rev().next().unwrap().to_string(),
-			hash:   info.hash.clone(),
+			hash:   info.hash,
 			url:    format!("{}/{}", AUDIO_LOAD_BASE_PATH, info.file),
 			cached: info.cached,
 		}
@@ -119,7 +143,7 @@ pub struct Source {
 	pub total_results: usize,
 
 	/// Total number of errors from this source in the response.
-	pub total_errors: usize,
+	pub errors: Vec<String>,
 
 	/// Number of seconds elapsed loading this source.
 	pub elapsed: f64,
@@ -169,7 +193,6 @@ pub fn query_audio(log: RequestLog, input: Json<Request>, app: State<&App>) -> J
 		results:    Vec::new(),
 		sources:    Vec::new(),
 		has_errors: false,
-		errors:     Vec::new(),
 	};
 
 	let loader = app.japanese_audio();
@@ -177,34 +200,15 @@ pub fn query_audio(log: RequestLog, input: Json<Request>, app: State<&App>) -> J
 
 	let mut loaded = false;
 	if input.quick_load {
-		if let Some(info) = worker.wait_any() {
-			response.results.push(Item::from_info(&info));
+		let result = worker.wait_any();
+		if !result.is_empty() {
+			response.append_result(result);
 			loaded = true;
 		}
 	}
 
 	if !loaded {
-		let result = worker.wait();
-		result.each(|it| {
-			match it {
-				Ok(info) => response.results.push(Item::from_info(info)),
-				Err(err) => {
-					response.has_errors = true;
-					response.errors.push(format!("{}", err));
-				}
-			}
-			true
-		});
-		result.each_source(|it| {
-			response.sources.push(Source {
-				source:        it.id.to_string(),
-				name:          it.name.to_string(),
-				total_results: it.total_results,
-				total_errors:  it.total_errors,
-				elapsed:       it.elapsed,
-			});
-			true
-		});
+		response.append_result(worker.wait());
 	}
 
 	Json(response)
