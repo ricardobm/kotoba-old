@@ -40,7 +40,7 @@ impl AudioResult {
 					source: src,
 					hash:   it.hash.clone(),
 					file:   format!("{}/{}/{}.mp3", base_path, src, it.hash),
-					cached: it.from_cache,
+					cached: it.cached,
 				});
 			}
 			result.items.insert(src, entries);
@@ -57,7 +57,7 @@ impl AudioResult {
 
 /// Single item returned by an [AudioSource]
 #[allow(dead_code)]
-pub type AudioResultData = util::Result<AudioData>;
+pub type AudioDataResult = util::Result<AudioData>;
 
 #[derive(Clone)]
 pub struct AudioInfo {
@@ -78,9 +78,9 @@ pub struct AudioInfo {
 
 /// Audio data.
 pub struct AudioData {
-	pub data:       Vec<u8>,
-	pub hash:       String,
-	pub from_cache: bool,
+	pub data:   Vec<u8>,
+	pub hash:   String,
+	pub cached: bool,
 }
 
 /// Trait for a type that can be used in an audio query.
@@ -107,7 +107,7 @@ pub trait AudioSource<Q: AudioQuery>: Send + Sync {
 	fn name(&self) -> &'static str;
 
 	/// Loads a query from this source.
-	fn load(&self, query: Q, log: Logger, id: SourceId, sink: mpsc::Sender<(SourceId, AudioResultData)>);
+	fn load(&self, query: Q, log: Logger, id: SourceId, sink: mpsc::Sender<(SourceId, AudioDataResult)>);
 }
 
 /// Provides loading of audio pronunciation data.
@@ -625,7 +625,7 @@ impl AudioCache {
 	/// Merge a single audio result into the cache.
 	///
 	/// NOTE: this does not persist metadata information.
-	pub fn merge_result(&self, log: &Logger, source: &SourceId, query_hash: &String, data: AudioResultData) {
+	pub fn merge_result(&self, log: &Logger, source: &SourceId, query_hash: &String, data: AudioDataResult) {
 		let log = log.new(o!("saving" => format!("{}/{}", query_hash, source.id)));
 		let entry = self.load(&log, query_hash);
 		let mut entry = entry.lock().unwrap();
@@ -761,9 +761,9 @@ impl AudioCache {
 												let hash = caps.name("hash").unwrap().as_str();
 												let data = match std::fs::read(dir_entry.path()) {
 													Ok(data) => AudioData {
-														data:       data,
-														hash:       hash.to_string(),
-														from_cache: true,
+														data:   data,
+														hash:   hash.to_string(),
+														cached: true,
 													},
 													Err(err) => {
 														meta.errors.push(format!("{}", err));

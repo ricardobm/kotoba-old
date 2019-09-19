@@ -14,7 +14,7 @@ use kana::{is_kanji, to_romaji};
 // Japanese pronunciation audio support
 //
 
-use audio::{AudioLoader, AudioQuery, AudioResultData, AudioSource, SourceId};
+use audio::{AudioLoader, AudioQuery, AudioDataResult, AudioSource, SourceId};
 
 pub fn new_audio_loader(base_path: &std::path::Path) -> AudioLoader<JapaneseAudioQuery> {
 	AudioLoader::new(
@@ -55,6 +55,13 @@ impl AudioQuery for JapaneseAudioQuery {
 // Japanese audio sources
 //
 
+mod audio_helper;
+mod japanese_pod;
+mod jisho;
+mod forvo;
+
+use self::audio_helper::AudioSink;
+
 struct JishoSource {}
 
 impl JapaneseAudioSource for JishoSource {}
@@ -72,8 +79,9 @@ impl AudioSource<JapaneseAudioQuery> for JishoSource {
 		"Jisho"
 	}
 
-	fn load(&self, query: JapaneseAudioQuery, log: Logger, id: SourceId, sink: Sender<(SourceId, AudioResultData)>) {
-		panic!()
+	fn load(&self, query: JapaneseAudioQuery, log: Logger, id: SourceId, sink: Sender<(SourceId, AudioDataResult)>) {
+		let sink = AudioSink::new(log, id, sink);
+		jisho::load_pronunciations(sink, &query.expression, &query.reading);
 	}
 }
 
@@ -96,8 +104,9 @@ impl AudioSource<JapaneseAudioQuery> for JapanesePodSource {
 		"JapanesePod101.com"
 	}
 
-	fn load(&self, query: JapaneseAudioQuery, log: Logger, id: SourceId, sink: Sender<(SourceId, AudioResultData)>) {
-		panic!()
+	fn load(&self, query: JapaneseAudioQuery, log: Logger, id: SourceId, sink: Sender<(SourceId, AudioDataResult)>) {
+		let sink = AudioSink::new(log, id, sink);
+		japanese_pod::load_dictionary_pronunciations(sink, &query.expression, &query.reading);
 	}
 }
 
@@ -120,8 +129,9 @@ impl AudioSource<JapaneseAudioQuery> for LanguagePodSource {
 		"LanguagePod101.com"
 	}
 
-	fn load(&self, query: JapaneseAudioQuery, log: Logger, id: SourceId, sink: Sender<(SourceId, AudioResultData)>) {
-		panic!()
+	fn load(&self, query: JapaneseAudioQuery, log: Logger, id: SourceId, sink: Sender<(SourceId, AudioDataResult)>) {
+		let sink = AudioSink::new(log, id, sink);
+		japanese_pod::load_pronunciation(sink, &query.expression, &query.reading);
 	}
 }
 
@@ -144,8 +154,9 @@ impl AudioSource<JapaneseAudioQuery> for ForvoSource {
 		"Forvo"
 	}
 
-	fn load(&self, query: JapaneseAudioQuery, log: Logger, id: SourceId, sink: Sender<(SourceId, AudioResultData)>) {
-		panic!()
+	fn load(&self, query: JapaneseAudioQuery, log: Logger, id: SourceId, sink: Sender<(SourceId, AudioDataResult)>) {
+		let sink = AudioSink::new(log, id, sink);
+		forvo::load_pronunciations(sink, &query.expression, &query.reading);
 	}
 }
 
