@@ -3,9 +3,8 @@ use rocket_contrib::json::Json;
 
 use app::App;
 
-use japanese;
 use logging;
-use logging::{RequestLog, ServerLogger};
+use logging::ServerLogger;
 
 #[get("/")]
 fn index() -> &'static str {
@@ -57,17 +56,6 @@ fn list() -> Json<Vec<Item>> {
 	Json(out)
 }
 
-#[post("/search", data = "<input>")]
-fn search(log: RequestLog, input: Json<japanese::SearchArgs>, app: State<&App>) -> Json<japanese::QueryResult> {
-	let dict = app.dictionary();
-	Json(dict.query(&log, &input))
-}
-
-#[get("/tags")]
-fn tags(dict: State<&japanese::Dictionary>) -> Json<japanese::DbMap> {
-	Json(dict.db_map())
-}
-
 use api;
 
 pub fn launch(app: &'static App) {
@@ -80,8 +68,8 @@ pub fn launch(app: &'static App) {
 			routes![
 				index,
 				list,
-				search,
-				tags,
+				api::dict::search,
+				api::dict::tags,
 				logs,
 				log_by_req,
 				api::audio::query_audio,

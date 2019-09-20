@@ -2,10 +2,7 @@ TODO next
 =========
 
 - Wiki
-- Work on dictionary API
-  - Wrapper type for dictionary returns
-  - Return all kanji from query results
-  - Improve sort ordering for results (match, all else...)
+- Improve sort ordering for dictionary results (match, all else...)
 
 Major features
 ==============
@@ -31,6 +28,7 @@ Backend
 - Fuzzy matching in sort
 - Reverse english search
 - Check panic handling in requests (including logging)
+- Sentence work analysis
 
 Client
 ======

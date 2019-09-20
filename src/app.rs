@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use slog::Logger;
 
@@ -20,6 +21,7 @@ pub struct App {
 
 	japanese_audio: audio::AudioLoader<japanese::JapaneseAudioQuery>,
 
+	database:  Arc<db::Root>,
 	ring_log:  logging::RingLogger,
 	dict:      japanese::Dictionary,
 	cache_map: CacheMap,
@@ -99,10 +101,12 @@ impl App {
 				let audio_cache_dir = App::data_dir().join("audio");
 
 				let db = App::load_db(&app_log.new(o!("op" => "database loading")));
+				let db = Arc::new(db);
 				let app = App {
 					log:      app_log,
 					ring_log: ring_log,
-					dict:     japanese::Dictionary::new(db),
+					database: db.clone(),
+					dict:     japanese::Dictionary::new(db.clone()),
 					cache_map: CacheMap::new(),
 
 					japanese_audio: japanese::new_audio_loader(&audio_cache_dir),
@@ -143,8 +147,8 @@ impl App {
 	}
 
 	/// The static [db::Root] instance.
-	pub fn db(&self) -> &db::Root {
-		self.dict.get_db()
+	pub fn db(&self) -> Arc<db::Root> {
+		self.database.clone()
 	}
 
 	pub fn dictionary(&self) -> &japanese::Dictionary {
