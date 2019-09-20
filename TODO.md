@@ -1,18 +1,10 @@
 TODO next
 =========
 
-- Implement prototyped pronunciation API
 
 Major features
 ==============
 
-- Proper pronunciation API
-  - Load from Forvo only as a last resort (too slow)
-    - Maybe have a first pass that loads only the main entries and a second
-      pass for only the other detailed entries.
-  - Properly time loading
-  - Keep metadata information
-  - Debounce requests
 - De-inflect words
 - Wiki
 - Favorite words and personal database
