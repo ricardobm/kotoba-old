@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use slog::Logger;
 
 use audio;
-use db;
 use japanese;
+use japanese::db;
 use logging;
 use util::{Cache, CacheKey, CacheMap, CacheVal};
 
@@ -213,7 +213,7 @@ impl App {
 			warn!(log, "not found in {}, importing from {}", dict_dir, import_dir);
 
 			let mut db = db::Root::new();
-			crate::import::from_yomichan(&mut db, import_path).unwrap();
+			japanese::import::from_yomichan(&mut db, import_path).unwrap();
 			info!(log, "imported{} files", if FROM_ZIP { " zip" } else { "" }; t_load);
 
 			time!(t_update);

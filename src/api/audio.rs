@@ -193,7 +193,7 @@ pub fn get_audio_file(
 #[post("/audio/query", data = "<input>")]
 pub fn query_audio(log: RequestLog, input: Json<Request>, app: State<&App>) -> Json<Response> {
 	use audio::AudioQuery;
-	use db::{Search, SearchMode, SearchOptions};
+	use japanese::{Search, SearchMode, SearchOptions};
 	use japanese::JapaneseAudioQuery;
 	use kana::normalize_search_string;
 

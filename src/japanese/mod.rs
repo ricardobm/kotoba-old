@@ -6,15 +6,18 @@ use std::sync::mpsc::Sender;
 use itertools::*;
 use slog::Logger;
 
-use super::db;
-use super::db::Search;
+pub mod db;
+pub mod import;
+
+pub use self::db::search::*;
+
 use kana::{is_kanji, to_romaji};
 
 //
 // Japanese pronunciation audio support
 //
 
-use audio::{AudioLoader, AudioQuery, AudioDataResult, AudioSource, SourceId};
+use audio::{AudioDataResult, AudioLoader, AudioQuery, AudioSource, SourceId};
 
 pub fn new_audio_loader(base_path: &std::path::Path) -> AudioLoader<JapaneseAudioQuery> {
 	AudioLoader::new(
@@ -56,9 +59,9 @@ impl AudioQuery for JapaneseAudioQuery {
 //
 
 mod audio_helper;
+mod forvo;
 mod japanese_pod;
 mod jisho;
-mod forvo;
 
 use self::audio_helper::AudioSink;
 
@@ -176,7 +179,7 @@ pub struct SearchArgs {
 
 	/// Search options.
 	#[serde(default)]
-	pub options: db::SearchOptions,
+	pub options: SearchOptions,
 }
 
 impl Default for SearchArgs {

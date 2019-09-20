@@ -62,8 +62,6 @@ mod base;
 mod api;
 mod app;
 mod audio;
-mod db;
-mod import;
 mod japanese;
 mod kana;
 mod logging;

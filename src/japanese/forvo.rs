@@ -12,7 +12,7 @@ use reqwest::{Client, Url};
 use scraper::{ElementRef, Html, Selector};
 
 use super::audio_helper::*;
-use crate::db::search_strings;
+use super::search_strings;
 use crate::util;
 use crate::util::check_response;
 
