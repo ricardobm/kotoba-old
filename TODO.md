@@ -1,12 +1,16 @@
 TODO next
 =========
 
+- Wiki
+- Work on dictionary API
+  - Wrapper type for dictionary returns
+  - Return all kanji from query results
+  - Improve sort ordering for results (match, all else...)
 
 Major features
 ==============
 
 - De-inflect words
-- Wiki
 - Favorite words and personal database
 - Media file support
 - Subtitles & Karaoke mode
@@ -24,9 +28,6 @@ Major features
 Backend
 =======
 
-- Wrapper type for dictionary returns
-- Return all kanji from query results
-- Improve sort ordering for results (match, all else...)
 - Fuzzy matching in sort
 - Reverse english search
 - Check panic handling in requests (including logging)
