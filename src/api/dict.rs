@@ -4,6 +4,7 @@ use rocket::State;
 use rocket_contrib::json::Json;
 
 use app::App;
+use japanese;
 use japanese::dictionary::{Response, SearchArgs, Source};
 use logging::RequestLog;
 
@@ -53,6 +54,8 @@ pub struct AnalysisToken {
 	pub inflection:       String,
 	pub reading:          String,
 	pub pronunciation:    String,
+
+	pub possible_inflections: Vec<japanese::Inflection>,
 }
 
 impl AnalysisToken {
@@ -61,10 +64,11 @@ impl AnalysisToken {
 
 		let (pos, end) = (token.start(), token.end());
 		let mut features = token.features();
+		let text = &input[pos..end];
 		AnalysisToken {
 			pos:     pos,
 			end:     end,
-			txt:     String::from(&input[pos..end]),
+			txt:     String::from(text),
 			surface: token.surface().to_string(),
 
 			// Feature fields are, in order¹:
@@ -87,6 +91,12 @@ impl AnalysisToken {
 			inflection:       Self::feature(&mut features),
 			reading:          kana::to_hiragana(Self::feature(&mut features)),
 			pronunciation:    kana::to_hiragana(Self::feature(&mut features)),
+
+			possible_inflections: if kana::is_japanese_text(text) {
+				japanese::deinflect(text)
+			} else {
+				Default::default()
+			}
 		}
 	}
 

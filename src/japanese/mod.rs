@@ -12,6 +12,10 @@ pub use self::dictionary::Dictionary;
 
 pub use self::db::search::*;
 
+mod deinflect;
+pub use self::deinflect::Inflection;
+pub use self::deinflect::deinflect;
+
 //
 // Japanese pronunciation audio support
 //
