@@ -67,6 +67,7 @@ mod kana;
 mod logging;
 mod server;
 mod util;
+mod wiki;
 
 //
 // Main

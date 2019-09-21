@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::RwLock;
 
 use slog::Logger;
 
@@ -8,6 +9,7 @@ use japanese;
 use japanese::db;
 use logging;
 use util::{Cache, CacheKey, CacheMap, CacheVal};
+use wiki::{WikiController};
 
 /// Name of the root data directory. Used when looking up the data directory.
 const DATA_DIR: &str = "hongo-data";
@@ -25,6 +27,8 @@ pub struct App {
 	ring_log:  logging::RingLogger,
 	dict:      japanese::Dictionary,
 	cache_map: CacheMap,
+
+	wiki: Arc<RwLock<WikiController>>,
 
 	_compat_log_guard: slog_scope::GlobalLoggerGuard,
 }
@@ -100,6 +104,8 @@ impl App {
 
 				let audio_cache_dir = App::data_dir().join("audio");
 
+				let wiki = WikiController::new(App::data_dir().join("wiki"));
+
 				let db = App::load_db(&app_log.new(o!("op" => "database loading")));
 				let db = Arc::new(db);
 				let app = App {
@@ -108,6 +114,8 @@ impl App {
 					database: db.clone(),
 					dict:     japanese::Dictionary::new(db.clone()),
 					cache_map: CacheMap::new(),
+
+					wiki: Arc::new(RwLock::new(wiki)),
 
 					japanese_audio: japanese::new_audio_loader(&audio_cache_dir),
 
@@ -158,6 +166,11 @@ impl App {
 	/// Returns a global cache instance for a given key and value types.
 	pub fn cache<K: CacheKey + 'static, V: CacheVal + 'static>(&self) -> Cache<K, V> {
 		self.cache_map.get()
+	}
+
+	/// Returns the global [WikiController] instance.
+	pub fn wiki(&self) -> Arc<RwLock<WikiController>> {
+		self.wiki.clone()
 	}
 
 	/// Root directory that contains static application data.

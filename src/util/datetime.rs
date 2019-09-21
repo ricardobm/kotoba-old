@@ -14,6 +14,10 @@ impl DateTime {
 	pub fn to_local(&self) -> LocalDateTime {
 		LocalDateTime(self.0.with_timezone(&Local))
 	}
+
+	pub fn format(&self, fmt: &str) -> String {
+		format!("{}", self.0.format(fmt))
+	}
 }
 
 impl LocalDateTime {

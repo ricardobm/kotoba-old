@@ -74,6 +74,8 @@ pub fn launch(app: &'static App) {
 				log_by_req,
 				api::audio::query_audio,
 				api::audio::get_audio_file,
+				api::wiki::get,
+				api::wiki::post,
 			],
 		)
 		.launch();
