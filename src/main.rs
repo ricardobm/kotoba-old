@@ -54,6 +54,10 @@ extern crate selectors;
 
 extern crate crossbeam;
 
+// Japanese specific
+
+extern crate yoin;
+
 // Application modules
 
 #[macro_use]
@@ -81,6 +85,7 @@ fn main() {
 	std::process::exit(run());
 }
 
+#[allow(dead_code)]
 fn run() -> i32 {
 	println!();
 

@@ -70,6 +70,7 @@ pub fn launch(app: &'static App) {
 				list,
 				api::dict::search,
 				api::dict::tags,
+				api::dict::analyze,
 				logs,
 				log_by_req,
 				api::audio::query_audio,

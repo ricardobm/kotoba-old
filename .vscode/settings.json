@@ -9,6 +9,7 @@
         "hongo",
         "ichidan",
         "interpunct",
+        "ipadic",
         "itertools",
         "jisho",
         "keiyoushi",
@@ -18,6 +19,7 @@
         "romaji",
         "suru",
         "wana",
+        "yoin",
         "yomichan",
         "zenkaku",
         "āēīōū"
