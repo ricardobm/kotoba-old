@@ -442,7 +442,7 @@ impl<Q: AudioQuery> AudioJobImpl for AudioJobInner<Q> {
 					// workers to load them:
 
 					let mut has_cached_entries = false;
-					let cached_entry = cached_entry.lock().unwrap();
+					let mut cached_entry = cached_entry.lock().unwrap();
 					let mut has_results = cached_entry.has_results();
 
 					let mut handles = Vec::new(); // Worker thread handles for joining
@@ -478,6 +478,12 @@ impl<Q: AudioQuery> AudioJobImpl for AudioJobInner<Q> {
 									}
 								}
 							}
+						}
+
+						// Clear any current error for the cached entry so we
+						// don't accumulate errors indefinitely.
+						if let Some(meta) = cached_entry.info_by_src.get_mut(&src.id) {
+							meta.errors.clear();
 						}
 
 						// Setup the metadata entry for this source
