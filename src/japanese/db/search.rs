@@ -4,7 +4,8 @@ use itertools::*;
 use slog::Logger;
 
 use super::tables::*;
-use crate::kana::*;
+use japanese;
+use kana::*;
 
 /// Available search modes for terms.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -70,6 +71,17 @@ impl Default for SearchOptions {
 	}
 }
 
+pub struct WordSearch {
+	/// Matched text.
+	pub text: String,
+	/// De-inflected term that matched the text.
+	pub term: String,
+	/// Terms for the match.
+	pub list: Vec<TermRow>,
+	/// De-inflection transformations.
+	pub info: Vec<&'static str>,
+}
+
 /// Trait for doing database searches.
 pub trait Search {
 	fn search_terms<S>(&self, log: &Logger, query: S, options: &SearchOptions) -> (Vec<TermRow>, usize)
@@ -79,6 +91,22 @@ pub trait Search {
 	fn search_kanji<T>(&self, log: &Logger, query: T) -> Vec<KanjiRow>
 	where
 		T: IntoIterator<Item = char>;
+
+	/// Best attempt to match the longest possible prefix of `query` to a single
+	/// word in the database.
+	///
+	/// The best attempt includes matching de-inflected forms of the word.
+	fn match_prefix<S>(&self, query: S) -> Option<WordSearch>
+	where
+		S: AsRef<str>;
+
+	/// Search a single word in the database.
+	///
+	/// This is similar to [search_terms] with a [SearchMode::Is] without fuzzy
+	/// mode, but supports searching for de-inflected forms.
+	fn search_word<S>(&self, word: S, deinflect: bool) -> Option<WordSearch>
+	where
+		S: AsRef<str>;
 }
 
 /// Normalize the input, split it and filter out unsearchable characters.
@@ -383,6 +411,67 @@ impl Search for Root {
 			}
 		}
 		out
+	}
+
+	fn match_prefix<S>(&self, query: S) -> Option<WordSearch>
+	where
+		S: AsRef<str>,
+	{
+		let query = query.as_ref();
+		if query.len() == 0 {
+			None
+		} else if let Some(result) = self.search_word(query, true) {
+			Some(result)
+		} else {
+			let chars = query.char_indices().map(|(i, _)| i).collect::<Vec<_>>();
+			let mut chars = &chars[1..];
+			while let Some(&index) = chars.last() {
+				let query = &query[0..index];
+				if let Some(result) = self.search_word(query, true) {
+					return Some(result);
+				}
+				chars = &chars[0..chars.len() - 1];
+			}
+			None
+		}
+	}
+
+	fn search_word<S>(&self, word: S, deinflect: bool) -> Option<WordSearch>
+	where
+		S: AsRef<str>,
+	{
+		let original = word.as_ref().to_string();
+		let word = to_hiragana(&original);
+		if word.len() == 0 {
+			None
+		} else if deinflect && japanese::can_deinflect(&word) {
+			for form in japanese::deinflect(&word) {
+				let set = self.index.search_term_word_by_prefix(&form.term, true);
+				if set.len() > 0 {
+					let indexes = set.into_iter().sorted();
+					return Some(WordSearch {
+						text: original,
+						term: form.term,
+						list: indexes.map(|x| self.terms[x].clone()).collect(),
+						info: form.from,
+					});
+				}
+			}
+			None
+		} else {
+			let set = self.index.search_term_word_by_prefix(&word, true);
+			if set.len() > 0 {
+				let indexes = set.into_iter().sorted();
+				Some(WordSearch {
+					text: original,
+					term: word,
+					list: indexes.map(|x| self.terms[x].clone()).collect(),
+					info: vec![],
+				})
+			} else {
+				None
+			}
+		}
 	}
 }
 

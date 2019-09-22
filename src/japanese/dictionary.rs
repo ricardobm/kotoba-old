@@ -243,6 +243,17 @@ pub struct Dictionary {
 	db: Arc<db::Root>,
 }
 
+pub struct WordSearch {
+	/// Matched text.
+	pub text: String,
+	/// De-inflected term that matched the text.
+	pub term: String,
+	/// Terms for the match.
+	pub list: Vec<Term>,
+	/// De-inflection transformations.
+	pub info: Vec<&'static str>,
+}
+
 impl Dictionary {
 	pub fn new(db: Arc<db::Root>) -> Dictionary {
 		Dictionary { db }
@@ -313,14 +324,8 @@ impl Dictionary {
 		};
 
 		for it in &terms {
-			for &id in &it.tags {
+			for id in it.tag_ids() {
 				push_tag(id);
-			}
-
-			for definition in &it.definition {
-				for &id in &definition.tags {
-					push_tag(id);
-				}
 			}
 		}
 
@@ -384,5 +389,95 @@ impl Dictionary {
 			response.push(Source::from_row(src));
 		}
 		response
+	}
+
+	/// Best attempt to match the longest possible prefix of `query` to a single
+	/// word in the database.
+	///
+	/// The best attempt includes matching de-inflected forms of the word.
+	pub fn match_prefix<S>(&self, query: S, out_tags: Option<&mut HashMap<String, Tag>>) -> Option<WordSearch>
+	where
+		S: AsRef<str>
+	{
+		let sources = &self.db.sources;
+		let mut tag_map = HashMap::new();
+
+		let mut push_tag = |id: db::TagId| {
+			if !tag_map.contains_key(&id) {
+				let tag = self.db.get_tag(id);
+				tag_map.insert(id, tag);
+			}
+		};
+
+		if let Some(result) = self.db.match_prefix(query) {
+
+			for it in result.list.iter() {
+				for tag in it.tag_ids() {
+					push_tag(tag);
+				}
+			}
+
+			if let Some(out_tags) = out_tags {
+				for tag in tag_map.values() {
+					if !out_tags.contains_key(&tag.name) {
+						out_tags.insert(tag.name.clone(), Tag::from_row(tag.clone(), sources));
+					}
+				}
+			}
+
+			Some(WordSearch{
+				text: result.text,
+				term: result.term,
+				list: result.list.into_iter().map(|x| Term::from_row(x, &tag_map, sources)).collect(),
+				info: result.info,
+			})
+		} else {
+			None
+		}
+	}
+
+	/// Search a single word in the database.
+	///
+	/// This is similar to [query] with a [SearchMode::Is] without fuzzy
+	/// mode, but supports searching for de-inflected forms.
+	pub fn search_word<S>(&self, word: S, deinflect: bool, out_tags: Option<&mut HashMap<String, Tag>>) -> Option<WordSearch>
+	where
+		S: AsRef<str>
+	{
+		let sources = &self.db.sources;
+		let mut tag_map = HashMap::new();
+
+		let mut push_tag = |id: db::TagId| {
+			if !tag_map.contains_key(&id) {
+				let tag = self.db.get_tag(id);
+				tag_map.insert(id, tag);
+			}
+		};
+
+		if let Some(result) = self.db.search_word(word, deinflect) {
+
+			for it in result.list.iter() {
+				for tag in it.tag_ids() {
+					push_tag(tag);
+				}
+			}
+
+			if let Some(out_tags) = out_tags {
+				for tag in tag_map.values() {
+					if !out_tags.contains_key(&tag.name) {
+						out_tags.insert(tag.name.clone(), Tag::from_row(tag.clone(), sources));
+					}
+				}
+			}
+
+			Some(WordSearch{
+				text: result.text,
+				term: result.term,
+				list: result.list.into_iter().map(|x| Term::from_row(x, &tag_map, sources)).collect(),
+				info: result.info,
+			})
+		} else {
+			None
+		}
 	}
 }

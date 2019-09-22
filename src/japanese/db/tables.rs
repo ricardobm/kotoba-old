@@ -539,6 +539,13 @@ impl TermRow {
 			None
 		}
 	}
+
+	/// Iterator over all [TagId] for the term and definitions.
+	pub fn tag_ids<'a>(&'a self) -> impl Iterator<Item = TagId> + 'a {
+		self.tags.iter().chain(
+			self.definition.iter().map(|x| x.tags.iter()).flatten()
+		).unique().cloned()
+	}
 }
 
 /// English definition for a [TermRow].

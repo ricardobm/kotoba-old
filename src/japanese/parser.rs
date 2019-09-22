@@ -1,33 +1,40 @@
 //! Japanese sentence parsing
 
+use std::collections::HashMap;
+
 use regex::Regex;
 
-use super::dictionary::Form;
+use super::dictionary::{Tag, Term};
+use japanese;
 use kana;
 
-pub struct ParsedResult {
+#[derive(Serialize)]
+pub struct ParseResult {
 	pub sentence: Vec<SentenceItem>,
 	pub analysis: Vec<Token>,
+	pub tags:     HashMap<String, Tag>,
 }
 
+#[derive(Serialize)]
 pub enum SentenceItem {
 	Text(String),
 	Word(Meaning),
 }
 
+#[derive(Serialize)]
 pub struct Meaning {
 	/// Source text.
-	text: String,
+	pub text: String,
 	/// De-inflected form for the text.
-	dict: String,
+	pub term: String,
 	/// Meanings found for the text.
-	list: Vec<Form>,
+	pub list: Vec<Term>,
 	/// Provide de-inflection information for this part.
-	info: Vec<String>,
+	pub info: Vec<&'static str>,
 }
 
 /// Kind of elements in a sentence.
-#[derive(PartialEq, Eq)]
+#[derive(Serialize, PartialEq, Eq)]
 pub enum Kind {
 	/// Punctuation, spaces, and any other unsupported text.
 	Text,
@@ -41,6 +48,15 @@ pub enum Kind {
 	Kanji,
 	/// Mixed kana and kanji text.
 	Mixed,
+}
+
+impl Kind {
+	fn is_word(&self) -> bool {
+		match self {
+			Kind::Kana | Kind::Kanji | Kind::Mixed => true,
+			_ => false,
+		}
+	}
 }
 
 impl std::fmt::Display for Kind {
@@ -58,6 +74,7 @@ impl std::fmt::Display for Kind {
 }
 
 /// Token is the smallest unit for a parsed text element.
+#[derive(Serialize)]
 pub struct Token {
 	/// Kind of token.
 	pub kind: Kind,
@@ -148,8 +165,150 @@ impl std::fmt::Display for Token {
 	}
 }
 
-#[allow(dead_code)]
-pub fn parse_tokens(sentence: &str) -> Vec<Token> {
+/// Parse a japanese sentence into tokens and words.
+pub fn parse_sentence(dict: &japanese::Dictionary, sentence: &str) -> ParseResult {
+	let tokens = parse_tokens(sentence);
+
+	// Number of tokens to merge ahead when looking for word meanings. This
+	// allows for words spanning across tokens.
+	//
+	// This is necessary because the morphological analysis sometimes splits
+	// words that would be perceived as a single one.
+	const MERGE_AHEAD: usize = 3;
+
+	// Consume all tokens and build the sentence:
+	let mut tags = HashMap::new();
+	let mut sentence = Vec::new();
+	let mut next_index = 0;
+	while next_index < tokens.len() {
+		let mut token = &tokens[next_index];
+		next_index += 1;
+		match token.kind {
+			Kind::Number | Kind::Text => {
+				sentence.push(SentenceItem::Text(token.text.clone()));
+			}
+
+			Kind::Romaji => {
+				// TODO: search words in romaji
+				sentence.push(SentenceItem::Text(token.text.clone()));
+			}
+
+			Kind::Kana | Kind::Kanji | Kind::Mixed => {
+				let mut merged_text = token.text.clone();
+				let mut next_to_merge = next_index;
+
+				// Merge the text of all merge ahead tokens.
+				for i in 0..MERGE_AHEAD {
+					let index = next_index + i;
+					if index < tokens.len() && tokens[index].kind.is_word() {
+						merged_text.push_str(&tokens[index].text);
+						next_to_merge = index + 1;
+					} else {
+						break;
+					}
+				}
+
+				// Match words until we consume all of the token's text.
+				//
+				// It is possible that we match a word accross token boundaries
+				// in which case we advance to the next token transparently
+				// inside the while loop.
+
+				let mut text = &merged_text[..];
+				let mut text_pos = 0; // current text position
+				let mut skip_pos = 0; // start position of skipped text
+
+				// we match until we reach the token boundary
+				while text_pos < token.text.len() {
+					let (word, word_len) = if let Some(word) = dict.match_prefix(&text[text_pos..], Some(&mut tags)) {
+						let word_len = word.text.len();
+						(Some(word), word_len)
+					} else if text_pos == 0 {
+						// if we failed to match at the start of the token, then
+						// try to match any of the alternative forms returned by
+						// the morphological analysis:
+						let mut word = None;
+						if token.dict != token.text {
+							word = dict.search_word(&token.dict, true, Some(&mut tags));
+						}
+
+						if word.is_none() && token.surface != token.text {
+							word = dict.search_word(&token.surface, true, Some(&mut tags));
+						}
+
+						(word, token.text.len())
+					} else {
+						(None, 0)
+					};
+
+					match word {
+						None => {
+							// if we failed to match, skip one character and try
+							// again
+							let skip = {
+								let text = &text[text_pos..];
+								text.char_indices().skip(1).map(|x| x.0).next().unwrap_or(text.len())
+							};
+							text_pos += skip;
+						}
+
+						Some(word) => {
+							if text_pos > skip_pos {
+								// append the skipped text
+								let skipped = &text[skip_pos..text_pos];
+								sentence.push(SentenceItem::Text(skipped.to_string()));
+							}
+
+							// append the match
+							let matched_text = &text[text_pos..text_pos + word_len];
+							sentence.push(SentenceItem::Word(Meaning {
+								text: matched_text.to_string(),
+								term: word.term,
+								list: word.list,
+								info: word.info,
+							}));
+
+							text_pos += word_len;
+
+							// it is possible that we skipped accross tokens,
+							// so we fix the loop variables to point to the
+							// next token as if nothing had happened
+							while text_pos > token.text.len() {
+								let last_len = token.text.len();
+
+								// add another token to the merge ahead buffer,
+								// since we just consumed one token
+								if next_to_merge < tokens.len() && tokens[next_to_merge].kind.is_word() {
+									merged_text.push_str(&tokens[next_to_merge].text);
+									next_to_merge += 1;
+									text = &merged_text[..];
+								}
+
+								// move to the next token
+								token = &tokens[next_index];
+								next_index += 1;
+
+								// reset loop variables
+								text = &text[last_len..];
+								text_pos -= last_len;
+							}
+
+							skip_pos = text_pos;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	ParseResult {
+		analysis: tokens,
+		sentence: sentence,
+		tags:     tags,
+	}
+}
+
+fn parse_tokens(sentence: &str) -> Vec<Token> {
 	let mut tokens = Vec::new();
 
 	// Perform a morphological analysis on the sentence:

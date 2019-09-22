@@ -24,6 +24,53 @@ pub struct Rule {
 	pub kana_dst: &'static str,
 }
 
+/// Check if the suffix of the input can possibly be de-inflected.
+pub fn can_deinflect(input: &str) -> bool {
+	struct M {
+		suffixes: HashMap<char, Vec<&'static str>>,
+	}
+
+	lazy_static! {
+		static ref MAP: M = {
+			let mut map = M {
+				suffixes: Default::default(),
+			};
+
+			for (_, entries) in get_rules().iter() {
+				for rule in entries.iter() {
+					let suffix: &'static str = rule.kana_src;
+					let last = suffix.chars().last().unwrap();
+					map.suffixes
+						.entry(last)
+						.and_modify(|e| e.push(suffix))
+						.or_insert(vec![suffix]);
+				}
+			}
+
+			for (_, entries) in map.suffixes.iter_mut() {
+				entries.sort_by_key(|x| x.len());
+			}
+
+			map
+		};
+	}
+
+	let m: &M = &MAP;
+	if let Some(chr) = input.chars().last() {
+		if let Some(entries) = m.suffixes.get(&chr) {
+			for it in entries.iter() {
+				if input.ends_with(it) {
+					return true;
+				}
+			}
+		}
+	}
+
+	false
+}
+
+/// Attempts to de-inflect the input term and return all possible inflected
+/// forms.
 pub fn deinflect(input: &str) -> Vec<Inflection> {
 	let rules = get_rules();
 
@@ -375,9 +422,9 @@ fn get_rules() -> &'static HashMap<&'static str, Vec<Rule>> {
 					r!("しろ" => "する")
 					r!("せよ" => "する")
 				}
-				"imperative negative" => {
-					r!("な" => "")
-				}
+				// "imperative negative" => {
+				// 	r!("な" => "") // too common after any word
+				// }
 				"masu stem" => {
 					r!("い" => "いる")
 					r!("い" => "う")
@@ -627,5 +674,13 @@ mod tests {
 		assert!(check("食べていませんでした", "食べている"));
 		assert!(check("食べていません", "食べている"));
 		assert!(check("食べて", "食べる"));
+	}
+
+	#[test]
+	fn test_can_deinflect() {
+		assert!(!can_deinflect("食"));
+		assert!(!can_deinflect(""));
+		assert!(can_deinflect("いじゃう"));
+		assert!(can_deinflect("食べて"));
 	}
 }
