@@ -92,7 +92,7 @@ impl AnalysisToken {
 			reading:          kana::to_hiragana(Self::feature(&mut features)),
 			pronunciation:    kana::to_hiragana(Self::feature(&mut features)),
 
-			possible_inflections: if kana::is_japanese_text(text) {
+			possible_inflections: if kana::has_japanese_text(text) {
 				japanese::deinflect(text)
 			} else {
 				Default::default()

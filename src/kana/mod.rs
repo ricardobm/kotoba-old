@@ -10,21 +10,20 @@ mod is;
 pub use self::is::*;
 
 /// Return `true` if all characters in the string are kanji.
-#[allow(dead_code)]
 pub fn is_kanji_str<S: AsRef<str>>(s: S) -> bool {
 	s.as_ref().chars().all(|chr| is_kanji(chr))
 }
 
 /// Return `true` if all characters in the string are either hiragana or katakana.
-#[allow(dead_code)]
 pub fn is_kana_str<S: AsRef<str>>(s: S) -> bool {
 	s.as_ref().chars().all(|chr| is_kana(chr))
 }
 
-/// Return `true` if all characters in the string are either kana or kanji.
-#[allow(dead_code)]
-pub fn is_japanese_text<S: AsRef<str>>(s: S) -> bool {
-	s.as_ref().chars().all(|chr| is_kana(chr) || is_kanji(chr))
+/// Return `true` if any of the characters in the string are either kana or kanji.
+pub fn has_japanese_text<S: AsRef<str>>(s: S) -> bool {
+	s.as_ref()
+		.chars()
+		.any(|chr| is_kana(chr) || is_kanji(chr))
 }
 
 /// Performs normalization for a search string.
