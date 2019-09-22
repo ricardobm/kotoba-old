@@ -2,12 +2,15 @@ TODO next
 =========
 
 - Wiki
+  - Markdown rendering
+  - Sentence intellisense
+  - Word information
+  - Cross-document table of contents
 - Improve sort ordering for dictionary results (match, all else...)
 
 Major features
 ==============
 
-- De-inflect words
 - Favorite words and personal database
 - Media file support
 - Subtitles & Karaoke mode
@@ -18,7 +21,6 @@ Major features
 - Anki integration
 - Spaced repetition system
 - Flash cards
-- Sentences
 - TTS system
 - Word inflector (verbs, adj, ...)
 
@@ -28,7 +30,7 @@ Backend
 - Fuzzy matching in sort
 - Reverse english search
 - Check panic handling in requests (including logging)
-- Sentence work analysis
+- Wiki search
 
 Client
 ======
@@ -40,3 +42,4 @@ Client
 - UI persistence
 - History navigation
 - Debounce calls
+- Wiki quick navigation
