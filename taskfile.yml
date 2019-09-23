@@ -64,5 +64,7 @@ tasks:
   test:
     desc:   Runs tests
     silent: true
+    env:
+      RUST_BACKTRACE: 1
     cmds:
       - cargo test --all

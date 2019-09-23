@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 
 use regex::Regex;
 
+#[allow(dead_code)]
+mod markdown;
+
 use util;
 
 pub struct WikiFile {
