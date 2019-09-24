@@ -114,6 +114,7 @@ error_from!(reqwest::UrlError);
 error_from!(std::io::Error);
 error_from!(uuid::parser::ParseError);
 error_from!(serde_json::Error);
+error_from!(std::fmt::Error);
 
 #[cfg(test)]
 mod tests {
