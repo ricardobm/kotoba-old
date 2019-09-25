@@ -377,7 +377,7 @@ impl<'a> MarkdownIterator<'a> {
 		}
 
 		let mut empty_line = text.trim().len() == 0;
-		let next_block = parse_block_start(text, buffer);
+		let next_block = self.parse_block_start(text, buffer);
 
 		// close all unmatched blocks when opening a new block or if the line
 		// is empty
@@ -394,17 +394,21 @@ impl<'a> MarkdownIterator<'a> {
 			text = next_text;
 			empty_line = false;
 
-			if !elem.is_leaf() {
-				self.queued.push_back(elem.clone());
-			}
-			self.blocks.push_back(elem);
-
-			while let Some((next_text, elem)) = parse_block_start(text, buffer) {
-				text = next_text;
+			if let Some(elem) = elem {
 				if !elem.is_leaf() {
 					self.queued.push_back(elem.clone());
 				}
 				self.blocks.push_back(elem);
+			}
+
+			while let Some((next_text, elem)) = self.parse_block_start(text, buffer) {
+				text = next_text;
+				if let Some(elem) = elem {
+					if !elem.is_leaf() {
+						self.queued.push_back(elem.clone());
+					}
+					self.blocks.push_back(elem);
+				}
 			}
 		}
 
@@ -474,6 +478,50 @@ impl<'a> MarkdownIterator<'a> {
 
 		self.offset = pos_eol;
 		&self.buffer[offset..pos_eol]
+	}
+
+	fn parse_block_start(&mut self, line: &'a str, buffer: &'a str) -> Option<(&'a str, Option<Element<'a>>)> {
+		lazy_static! {
+			static ref RE_BREAK: Regex = Regex::new(r"^[ ]{0,3}([-_*]\s*){3,}\s*$").unwrap();
+			static ref RE_HEADER: Regex =
+				Regex::new(r"^(?P<s>[ ]{0,3}(?P<h>[#]{1,6}))(\s.*?)??(?P<e>(\s#+)?\s*)$").unwrap();
+			static ref RE_SETEXT_HEADER: Regex = Regex::new(r"^[ ]{0,3}([-]{3,}|[=]{3,})\s*$").unwrap();
+		}
+
+		let trim_line = line.trim_end();
+		let is_paragraph = if let Some(Element::Paragraph(..)) = self.blocks.iter().last() {
+			true
+		} else {
+			false
+		};
+		if trim_line.len() == 0 {
+			None
+		} else if is_paragraph && RE_SETEXT_HEADER.is_match(trim_line) {
+			let level = if line.trim().chars().next().unwrap() == '=' {
+				1
+			} else {
+				2
+			};
+			if let Some(Element::Paragraph(span)) = self.blocks.pop_back() {
+				self.blocks.push_back(Element::Header(level, span));
+			} else {
+				unreachable!();
+			}
+			Some(("", None))
+		} else if RE_BREAK.is_match(trim_line) {
+			// Semantic break
+			Some(("", Some(Element::Break)))
+		} else if let Some(caps) = RE_HEADER.captures(trim_line) {
+			// ATX Heading
+			let lvl = caps.name("h").unwrap().as_str().len() as u8;
+			let sta = caps.name("s").unwrap().end();
+			let end = caps.name("e").unwrap().start();
+			let txt = &trim_line[sta..end];
+			let elem = Element::Header(lvl, Span::new(txt.trim(), buffer));
+			Some(("", Some(elem)))
+		} else {
+			None
+		}
 	}
 }
 
@@ -573,34 +621,12 @@ impl<'a> Element<'a> {
 				span.source = span.source.trim();
 				Element::Paragraph(span)
 			}
+			Element::Header(level, mut span) => {
+				span.source = span.source.trim();
+				Element::Header(level, span)
+			}
 			_ => panic!("invalid close_elem: {:?}", self),
 		}
-	}
-}
-
-fn parse_block_start<'a>(line: &'a str, buffer: &'a str) -> Option<(&'a str, Element<'a>)> {
-	lazy_static! {
-		static ref RE_BREAK: Regex = Regex::new(r"^[ ]{0,3}([-_*]\s*){3,}\s*$").unwrap();
-		static ref RE_HEADER: Regex =
-			Regex::new(r"^(?P<s>[ ]{0,3}(?P<h>[#]{1,6}))(\s.*?)??(?P<e>(\s#+)?\s*)$").unwrap();
-	}
-
-	let trim_line = line.trim_end();
-	if trim_line.len() == 0 {
-		None
-	} else if RE_BREAK.is_match(trim_line) {
-		// Semantic break
-		Some(("", Element::Break))
-	} else if let Some(caps) = RE_HEADER.captures(trim_line) {
-		// ATX Heading
-		let lvl = caps.name("h").unwrap().as_str().len() as u8;
-		let sta = caps.name("s").unwrap().end();
-		let end = caps.name("e").unwrap().start();
-		let txt = &trim_line[sta..end];
-		let elem = Element::Header(lvl, Span::new(txt.trim(), buffer));
-		Some(("", elem))
-	} else {
-		None
 	}
 }
 
@@ -760,6 +786,7 @@ mod tests {
 			___
 
 			P1
+
 			   ---
 			   ***
 			   ___
@@ -817,6 +844,39 @@ mod tests {
 				"<p>P2\n####### H7</p>",
 			],
 		)
+	}
+
+	#[test]
+	fn test_markdown_setext_headings() {
+		test(
+			r"
+			Title 1
+			=======
+
+			Title 2
+			-------
+
+			Multi-line
+			   Title 2
+			   ---
+
+			L1
+			L2
+			==
+			===
+			L3
+			--
+			---
+
+			",
+			vec![
+				"<h1>Title 1</h1>",
+				"<h2>Title 2</h2>",
+				"<h2>Multi-line\n   Title 2</h2>",
+				"<h1>L1\nL2\n==</h1>",
+				"<h2>L3\n--</h2>",
+			],
+		);
 	}
 
 	fn test(input: &str, expected: Vec<&'static str>) {
