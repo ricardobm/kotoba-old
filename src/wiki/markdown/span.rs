@@ -40,6 +40,23 @@ impl<'a> Span<'a> {
 		}
 	}
 
+	pub fn trim(&mut self) {
+		let text = self.text();
+		if text.len() > 0 {
+			let text = text.trim();
+			if let Some(range) = self.text_range(text) {
+				if range.start > self.offset_sta {
+					let sta = self.offset_sta;
+					let end = range.start;
+					let column = common::text_column(&self.buffer[sta..end], self.column);
+					self.column = column;
+				}
+				self.offset_sta = range.start;
+				self.offset_end = range.end;
+			}
+		}
+	}
+
 	#[inline(always)]
 	pub fn text(&self) -> &'a str {
 		&self.buffer[self.offset_sta..self.offset_end]

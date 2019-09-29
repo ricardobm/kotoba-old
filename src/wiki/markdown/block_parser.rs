@@ -346,6 +346,27 @@ pub struct BlockIterator<'a> {
 	next_line: Option<(usize, usize)>,
 }
 
+lazy_static! {
+	static ref RE_BREAK: Regex = Regex::new(r"^\s*([-_*]\s*){3,}\s*$").unwrap();
+	static ref RE_ATX_HEADER: Regex = Regex::new(r"^(?P<s>\s*(?P<h>[#]{1,6}))(\s.*?)??(?P<e>(\s#+)?\s*)$").unwrap();
+	static ref RE_CODE_FENCE: Regex = Regex::new(
+		r"(?x)
+		^\s*
+		(
+			### Delimiter: ~~~ ###
+			(?P<d0>~{3,})            # Main delimiter
+			(\s*(?P<w0>\w+)(\s|$))?  # Optional language
+			(?P<i0>.*)               # Additional info
+			|
+			### Delimiter: ``` ###
+			(?P<d1>`{3,})            # Main delimiter
+			(\s*(?P<w1>\w+)(\s|$))?  # Optional language
+			(?P<i1>[^`]*)            # Additional info
+		)$"
+	)
+	.unwrap();
+}
+
 impl<'a> BlockIterator<'a> {
 	pub fn new(input: &'a str) -> BlockIterator<'a> {
 		BlockIterator {
@@ -480,7 +501,7 @@ impl<'a> BlockIterator<'a> {
 							indent:     indent,
 							quotes:     self.cur_quotes(),
 						};
-						match self.parse_leaf(span) {
+						match Self::parse_leaf(span, false).unwrap() {
 							LeafState::Open(leaf) => {
 								self.inline = Some(leaf);
 								(IteratorState::None, None)
@@ -542,6 +563,18 @@ impl<'a> BlockIterator<'a> {
 			.count()
 	}
 
+	fn is_list_start(&mut self) -> bool {
+		if self.text().starts_with(|ch| ch == '-' || ch == '+' || ch == '*') {
+			if !RE_BREAK.is_match(self.cur_line()) {
+				true
+			} else {
+				false
+			}
+		} else {
+			false
+		}
+	}
+
 	/// Parse opening block markers at the current position.
 	fn parse_container_start(&mut self) -> Option<Container> {
 		// Save current state in case we fail.
@@ -566,7 +599,7 @@ impl<'a> BlockIterator<'a> {
 				// ----------
 				self.skip_if(' ');
 				Some(Container::BlockQuote)
-			} else if self.text().starts_with(|ch| ch == '-' || ch == '+' || ch == '*') {
+			} else if self.is_list_start() {
 				// -----------------------
 				// List marker (unordered)
 				// -----------------------
@@ -686,59 +719,53 @@ impl<'a> BlockIterator<'a> {
 		result
 	}
 
-	fn parse_leaf(&mut self, mut span: Span<'a>) -> LeafState<'a> {
-		lazy_static! {
-			static ref RE_BREAK: Regex = Regex::new(r"^\s*([-_*]\s*){3,}\s*$").unwrap();
-			static ref RE_ATX_HEADER: Regex =
-				Regex::new(r"^(?P<s>\s*(?P<h>[#]{1,6}))(\s.*?)??(?P<e>(\s#+)?\s*)$").unwrap();
-			static ref RE_CODE_FENCE: Regex = Regex::new(
-				r"(?x)
-				^\s*
-				(
-					### Delimiter: ~~~ ###
-					(?P<d0>~{3,})            # Main delimiter
-					(\s*(?P<w0>\w+)(\s|$))?  # Optional language
-					(?P<i0>.*)               # Additional info
-					|
-					### Delimiter: ``` ###
-					(?P<d1>`{3,})            # Main delimiter
-					(\s*(?P<w1>\w+)(\s|$))?  # Optional language
-					(?P<i1>[^`]*)            # Additional info
-				)$"
-			)
-			.unwrap();
-		}
-
+	/// Parse a leaf block at the given [Span].
+	///
+	/// If `is_inline` is true, this will parse as the continuation of a
+	/// paragraph.
+	///
+	/// Returns a [LeafState] for the leaf block, or `None` if `is_inline` is
+	/// true and the [Span] just continues the paragraph.
+	///
+	/// ## NOTE
+	/// This will never return `None` if `is_inline` is false.
+	fn parse_leaf(mut span: Span<'a>, is_inline: bool) -> Option<LeafState<'a>> {
 		let text = span.text();
 		let (indent, _) = common::indent_width(text, span.column);
 		if indent >= 4 {
 			// ===================
 			// Indented code block
 			// ===================
-			span.indent += 4;
-			let code_block = Leaf::IndentedCode { code: span };
-			LeafState::Open(code_block)
+			if !is_inline {
+				span.indent += 4;
+				let code_block = Leaf::IndentedCode { code: span };
+				Some(LeafState::Open(code_block))
+			} else {
+				None
+			}
 		} else if RE_BREAK.is_match(text) {
 			// ===================
 			// Semantic break
 			// ===================
-			LeafState::ClosedAndConsumed(Leaf::Break)
+			Some(LeafState::ClosedAndConsumed(Leaf::Break))
 		} else if let Some(caps) = RE_ATX_HEADER.captures(text) {
 			// ===================
 			// ATX Heading
 			// ===================
 			let lvl = caps.name("h").unwrap().as_str().len() as u8;
-			let sta = span.offset_sta + caps.name("s").unwrap().end();
-			let end = span.offset_sta + caps.name("e").unwrap().start();
-			span.offset_sta = sta;
-			span.offset_end = end;
+			let off = span.offset_sta;
+			let sta = caps.name("s").unwrap().end();
+			let end = caps.name("e").unwrap().start();
+			span.offset_sta = off + sta;
+			span.offset_end = off + end;
 			span.indent = 0;
 			span.column = common::text_column(&text[..sta], span.column);
+			span.trim();
 			let leaf = Leaf::Header {
 				level: lvl,
 				text:  span,
 			};
-			LeafState::ClosedAndConsumed(leaf)
+			Some(LeafState::ClosedAndConsumed(leaf))
 		} else if let Some(caps) = RE_CODE_FENCE.captures(text) {
 			// ===================
 			// Fenced code block
@@ -753,20 +780,20 @@ impl<'a> BlockIterator<'a> {
 			let info = if let Some(x) = info { x.as_str().trim() } else { "" };
 			let info = if info.len() > 0 { Some(info) } else { None };
 			span.indent = indent;
-			LeafState::Open(Leaf::FencedCode {
+			Some(LeafState::Open(Leaf::FencedCode {
 				fence,
 				lang,
 				info,
 				code: span,
-			})
-		} else if let Some(end) = Self::match_html_start(text, false) {
+			}))
+		} else if let Some(end) = Self::match_html_start(text, is_inline) {
 			// ===================
 			// HTML block
 			// ===================
-			LeafState::Open(Leaf::HTML {
+			Some(LeafState::Open(Leaf::HTML {
 				end:  if end.len() == 0 { None } else { Some(end) },
 				code: span,
-			})
+			}))
 		} else if let Some(row) = parse_table_row(text, true) {
 			// ===================
 			// HTML block
@@ -785,9 +812,13 @@ impl<'a> BlockIterator<'a> {
 					cols: None,
 				},
 			};
-			LeafState::Open(table)
+			Some(LeafState::Open(table))
 		} else {
-			LeafState::Open(Leaf::Paragraph { text: span })
+			if !is_inline {
+				Some(LeafState::Open(Leaf::Paragraph { text: span }))
+			} else {
+				None
+			}
 		}
 	}
 
@@ -813,13 +844,11 @@ impl<'a> BlockIterator<'a> {
 					let header = Leaf::Header { level, text };
 					LeafState::ClosedAndConsumed(header)
 				} else {
-					// An HTML tag block can close a paragraph.
-					let html = if indent <= 3 {
-						Self::match_html_start(line, true)
-					} else {
-						None
-					};
-					if let Some(_) = html {
+					let mut new_span = text.clone();
+					new_span.offset_sta = line_start;
+					new_span.offset_end = line_end;
+					new_span.column = column;
+					if let Some(_) = Self::parse_leaf(new_span, true) {
 						LeafState::Closed(Leaf::Paragraph { text })
 					} else {
 						text.offset_end = line_end;
@@ -1230,162 +1259,5 @@ impl<'a> Iterator for BlockIterator<'a> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		self.get_next()
-	}
-}
-
-//
-// TESTS
-//
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn test_markdown_simple() {
-		// Simple paragraphs
-		test(
-			r"
-			Paragraph 1
-
-			Paragraph 2
-
-			3.1
-			3.2
-			",
-			r"
-			<p>Paragraph 1</p>
-			<p>Paragraph 2</p>
-			<p>3.1
-			3.2</p>
-			",
-		);
-	}
-
-	#[test]
-	fn test_markdown_breaks() {
-		// Thematic breaks
-		test(
-			r"
-				***
-
-				---
-				___
-
-				P1
-
-				---
-				***
-				___
-				P2
-
-				+++
-				--
-				**
-				__
-
-				 ***
-				  * * *
-				   *  *  *
-			",
-			r"
-				<hr/>
-				<hr/>
-				<hr/>
-				<p>P1</p>
-				<hr/>
-				<hr/>
-				<hr/>
-				<p>P2</p>
-				<p>+++
-				--
-				**
-				__</p>
-				<hr/>
-				<hr/>
-				<hr/>
-			",
-		);
-	}
-
-	#[test]
-	fn test_markdown_atx_headings() {
-		test(
-			r"
-				# H 1
-				## H 2
-				### H 3
-				#### H 4
-				##### H 5
-				###### H 6
-
-				P1
-				# H1 # ##############
-				## H2##
-				### H3 # # #
-				P2
-				####### H7
-			",
-			r"
-				<h1>H 1</h1>
-				<h2>H 2</h2>
-				<h3>H 3</h3>
-				<h4>H 4</h4>
-				<h5>H 5</h5>
-				<h6>H 6</h6>
-				<p>P1</p>
-				<h1>H1 #</h1>
-				<h2>H2##</h2>
-				<h3>H3 # #</h3>
-				<p>P2
-				####### H7</p>
-			",
-		)
-	}
-
-	#[test]
-	fn test_markdown_setext_headings() {
-		test(
-			r"
-				Title 1
-				=======
-
-				Title 2
-				-------
-
-				Multi-line
-				Title 2
-				---
-
-				L1
-				L2
-				==
-				===
-				L3
-				--
-				---
-			",
-			r"
-				<h1>Title 1</h1>
-				<h2>Title 2</h2>
-				<h2>Multi-line
-				   Title 2</h2>
-				<h1>L1
-				L2
-				==</h1>
-				<h2>L3
-				--</h2>
-			",
-		)
-	}
-
-	fn test(input: &str, expected: &str) {
-		let input = common::text(input);
-		let expected = common::text(expected);
-
-		let items: Vec<_> = parse_blocks(&input).map(|x| format!("{:?}", x)).collect();
-		let result = items.join("\n");
-
-		assert_eq!(result, expected);
 	}
 }

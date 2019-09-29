@@ -29,10 +29,17 @@ pub fn parse_markdown<'a>(input: &'a str) -> MarkdownIterator<'a> {
 /// Generate HTML code from the iterator returned by [parse_markdown].
 pub fn to_html<'a>(iter: MarkdownIterator<'a>) -> util::Result<String> {
 	let mut output = String::new();
+	let mut first = true;
 	for it in iter {
 		match it {
 			Event::Output(markup) => {
+				if !first {
+					if let MarkupEvent::Open(..) = markup {
+						write!(output, "\n")?;
+					}
+				}
 				write!(output, "{}", markup)?;
+				first = false;
 			}
 			Event::Reference(_) => {
 				// TODO: implement references
