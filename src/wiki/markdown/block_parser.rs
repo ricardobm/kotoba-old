@@ -347,7 +347,17 @@ pub struct BlockIterator<'a> {
 }
 
 lazy_static! {
-	static ref RE_BREAK: Regex = Regex::new(r"^\s*([-_*]\s*){3,}\s*$").unwrap();
+	static ref RE_BREAK: Regex = Regex::new(
+		r"(?x)
+			^\s*
+			(
+				([-]\s*){3,} |
+				([_]\s*){3,} |
+				([*]\s*){3,}
+			)
+			\s*$"
+	)
+	.unwrap();
 	static ref RE_ATX_HEADER: Regex = Regex::new(r"^(?P<s>\s*(?P<h>[#]{1,6}))(\s.*?)??(?P<e>(\s#+)?\s*)$").unwrap();
 	static ref RE_CODE_FENCE: Regex = Regex::new(
 		r"(?x)
