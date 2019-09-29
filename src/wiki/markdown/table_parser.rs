@@ -29,21 +29,21 @@ impl TableAlign {
 #[derive(Clone)]
 pub struct TableRow<'a> {
 	length: usize,
-	source: &'a str,
+	source: Span<'a>,
 }
 
-pub fn parse_table_row<'a>(line: &'a str, check_delimiter: bool) -> Option<Row<'a>> {
-	let mut source = line.trim();
+pub fn parse_table_row<'a>(line: Span<'a>, check_delimiter: bool) -> Option<Row<'a>> {
+	let mut source = line.trimmed();
 
-	let sta_delim = if source.starts_with("|") {
-		source = &source[1..];
+	let sta_delim = if source.text().starts_with("|") {
+		source = source.sub(1..);
 		true
 	} else {
 		false
 	};
 
-	let end_delim = if source.ends_with("|") && !source.ends_with("\\|") {
-		source = &source[..source.len() - 1];
+	let end_delim = if source.text().ends_with("|") && !source.text().ends_with("\\|") {
+		source = source.sub(..source.len() - 1);
 		true
 	} else {
 		false
@@ -53,21 +53,8 @@ pub fn parse_table_row<'a>(line: &'a str, check_delimiter: bool) -> Option<Row<'
 		return None;
 	}
 
-	let buffer = Span {
-		buffer:     line,
-		column:     0,
-		offset_sta: 0,
-		offset_end: line.len(),
-		indent:     0,
-		quotes:     0,
-	};
-
 	let mut is_delim = check_delimiter;
-	let iter = RowIterator {
-		buffer: buffer.clone(),
-		source: line,
-		offset: 0,
-	};
+	let iter = RowIterator { cursor: source.clone() };
 	let mut count = 0;
 	for (text, _) in iter {
 		count += 1;
@@ -93,11 +80,9 @@ pub fn parse_table_row<'a>(line: &'a str, check_delimiter: bool) -> Option<Row<'
 }
 
 impl<'a> TableRow<'a> {
-	pub fn iter(&self, span: Span<'a>) -> RowIterator<'a> {
+	pub fn iter(&self) -> RowIterator<'a> {
 		RowIterator {
-			buffer: span,
-			source: self.source,
-			offset: 0,
+			cursor: self.source.clone(),
 		}
 	}
 
@@ -108,53 +93,50 @@ impl<'a> TableRow<'a> {
 
 #[derive(Clone)]
 pub struct RowIterator<'a> {
-	buffer: Span<'a>,
-	source: &'a str,
-	offset: usize,
+	cursor: Span<'a>,
 }
 
 impl<'a> Iterator for RowIterator<'a> {
 	type Item = (Span<'a>, TableAlign);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if self.offset >= self.source.len() {
+		if self.cursor.len() == 0 {
 			None
 		} else {
-			let mut cursor = self.offset;
 			let cell = loop {
-				let text = &self.source[cursor..];
+				let text = self.cursor.text();
 				if let Some(index) = text.find("\\|") {
-					cursor += index + 2;
+					self.cursor = self.cursor.sub(index + 2..);
 				} else if let Some(index) = text.find('|') {
-					let cell = &self.source[self.offset..index];
-					self.offset = cursor + index + 1;
+					let cell = self.cursor.sub(..index);
+					self.cursor = self.cursor.sub(index + 1..);
 					break cell;
 				} else {
-					let cell = &self.source[self.offset..];
-					self.offset = self.source.len();
+					let cell = self.cursor.sub(..);
+					self.cursor = self.cursor.end();
 					break cell;
 				}
 			};
 
 			let mut align = TableAlign::Normal;
-			let mut cell = cell.trim();
-			if cell != ":" {
-				if cell.starts_with(":") {
+			let mut cell = cell.trimmed();
+			let text = cell.text();
+			if text != ":" {
+				if text.starts_with(":") {
 					align = TableAlign::Left;
-					cell = cell[1..].trim_start();
+					cell = cell.sub_text(text[1..].trim_start());
 				}
 
-				if cell.ends_with(":") && !cell.ends_with("\\:") {
+				if text.ends_with(":") && !text.ends_with("\\:") {
 					align = match align {
 						TableAlign::Normal => TableAlign::Right,
 						TableAlign::Left => TableAlign::Center,
 						_ => unreachable!(),
 					};
-					cell = cell[..cell.len() - 1].trim_end();
+					cell = cell.sub_text(text[..text.len() - 1].trim_end());
 				}
 			}
 
-			let cell = self.buffer.sub_range(self.buffer.text_range(cell).unwrap());
 			Some((cell, align))
 		}
 	}

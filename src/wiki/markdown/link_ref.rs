@@ -45,8 +45,8 @@ pub fn parse_link_ref<'a>(span: Span<'a>) -> Leaf<'a> {
 					let buffer = span.buffer;
 					return Leaf::LinkReference {
 						url:   &buffer[url.start..url.end],
-						label: span.sub_range(label),
-						title: span.sub_range(title),
+						label: span.sub(label),
+						title: span.sub(title),
 					};
 				}
 			}

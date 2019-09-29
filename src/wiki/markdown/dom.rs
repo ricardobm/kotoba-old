@@ -70,6 +70,36 @@ pub enum Event<'a> {
 	Reference(LinkReference<'a>),
 }
 
+impl<'a> Event<'a> {
+	pub fn is_list_open(&self) -> bool {
+		match self {
+			Event::Output(MarkupEvent::Open(Block::List(..))) => true,
+			_ => false,
+		}
+	}
+
+	pub fn is_list_close(&self) -> bool {
+		match self {
+			Event::Output(MarkupEvent::Close(Block::List(..))) => true,
+			_ => false,
+		}
+	}
+
+	fn is_open(&self) -> bool {
+		match self {
+			Event::Output(markup) => markup.is_open(),
+			_ => false,
+		}
+	}
+
+	fn is_close(&self) -> bool {
+		match self {
+			Event::Output(markup) => markup.is_close(),
+			_ => false,
+		}
+	}
+}
+
 /// Events generated when iterating markdown text that directly generate
 /// some markup.
 #[derive(Clone)]
@@ -87,6 +117,24 @@ pub enum MarkupEvent<'a> {
 	///
 	/// Always corresponds to an [Open] event.
 	Close(Block<'a>),
+}
+
+impl<'a> MarkupEvent<'a> {
+	fn is_open(&self) -> bool {
+		if let MarkupEvent::Open(..) = self {
+			true
+		} else {
+			false
+		}
+	}
+
+	fn is_close(&self) -> bool {
+		if let MarkupEvent::Close(..) = self {
+			true
+		} else {
+			false
+		}
+	}
 }
 
 impl<'a> fmt::Display for MarkupEvent<'a> {
@@ -336,7 +384,7 @@ impl<'a> TableInfo<'a> {
 		self.inner.head.as_ref().map(|x| TableRow {
 			table: self.clone(),
 			cols:  self.inner.cols,
-			iter:  x.iter(self.inner.span.clone()),
+			iter:  x.iter(),
 		})
 	}
 
@@ -403,7 +451,7 @@ impl<'a> Iterator for TableRow<'a> {
 				.map(|(text, align)| TableCell { text, align })
 				.or_else(|| {
 					Some(TableCell {
-						text:  Span::empty(),
+						text:  Span::default(),
 						align: TableAlign::Normal,
 					})
 				})
@@ -433,7 +481,7 @@ impl<'a> TableBody<'a> {
 		TableRow {
 			table: self.table.clone(),
 			cols:  self.table.inner.cols,
-			iter:  self.table.inner.body[index].iter(self.table.inner.span.clone()),
+			iter:  self.table.inner.body[index].iter(),
 		}
 	}
 
@@ -467,7 +515,7 @@ impl<'a> Iterator for TableBodyIter<'a> {
 			Some(TableRow {
 				table: self.table.clone(),
 				cols:  self.table.inner.cols,
-				iter:  self.table.inner.body[next].iter(self.table.inner.span.clone()),
+				iter:  self.table.inner.body[next].iter(),
 			})
 		} else {
 			None
@@ -495,4 +543,12 @@ pub struct LinkReference<'a> {
 	pub title: Span<'a>,
 	/// Link destination URL.
 	pub url: RawStr<'a>,
+}
+
+use std::collections::VecDeque;
+
+type EventList<'a> = VecDeque<Event<'a>>;
+
+pub fn compute_looseness<'a>(ls: &mut EventList<'a>) {
+	assert!(ls.len() > 0 && ls[0].is_list_open());
 }

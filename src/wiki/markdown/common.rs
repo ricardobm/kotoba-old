@@ -35,7 +35,7 @@ fn calc_text_column(s: &str, column: usize, spaces_only: bool) -> (usize, usize)
 	for (index, chr) in s.char_indices() {
 		if chr == '\t' {
 			new_column = tab(new_column);
-		} else if !spaces_only || chr.is_whitespace() {
+		} else if !spaces_only || (chr.is_whitespace() && chr != '\r' && chr != '\n') {
 			new_column += 1;
 		} else {
 			bytes = Some(index);

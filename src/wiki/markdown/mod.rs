@@ -9,6 +9,9 @@ mod common;
 mod span;
 pub use self::span::{Range, Span, SpanIter};
 
+mod text;
+pub use self::text::{Pos, TextBuffer};
+
 mod link_ref;
 use self::link_ref::parse_link_ref;
 
@@ -55,6 +58,16 @@ pub struct MarkdownIterator<'a> {
 	loose_lists: bool,
 	parents:     VecDeque<ParentContainer>,
 	state:       IteratorState<'a>,
+
+	//=============================
+	// Parsing of loose lists
+	//=============================
+
+	// Next events to generate.
+	queue: VecDeque<Event<'a>>,
+
+	// Number of pending opened lists.
+	pending: usize,
 }
 
 enum ParentContainer {
@@ -124,11 +137,61 @@ impl<'a> MarkdownIterator<'a> {
 			loose_lists: loose_lists, // TODO: support this
 			parents:     Default::default(),
 			state:       IteratorState::Start,
+
+			queue:   Default::default(),
+			pending: 0,
 		}
 	}
 
 	fn get_next(&mut self) -> Option<Event<'a>> {
+		if !self.loose_lists {
+			return self.read_next();
+		}
+
+		// For loose list processing we need to wait until a list has been
+		// defined as loose or not before generating
+
+		loop {
+			if self.pending == 0 {
+				let result = if let Some(event) = self.queue.pop_front() {
+					Some(event)
+				} else if let Some(event) = self.read_next() {
+					if event.is_list_open() {
+						// After opening a list we start queueing events until
+						// we find the end of the list.
+						self.pending = 1;
+						self.queue.push_back(event);
+						continue;
+					}
+					Some(event)
+				} else {
+					None
+				};
+				break result;
+			} else {
+				if let Some(event) = self.read_next() {
+					if event.is_list_open() {
+						self.pending += 1;
+					} else if event.is_list_close() {
+						self.pending -= 1;
+					}
+					self.queue.push_back(event);
+				} else {
+					// Should not happen, but just in case, we reset the
+					// pending to zero at the end of the input.
+					self.pending = 0;
+				}
+
+				if self.pending == 0 {
+					compute_looseness(&mut self.queue);
+				}
+			}
+		}
+	}
+
+	fn read_next(&mut self) -> Option<Event<'a>> {
 		let (next_state, result) = loop {
+			println!("> STATE: {:?}", self.state);
 			self.state = match std::mem::take(&mut self.state) {
 				IteratorState::End => {
 					break (IteratorState::End, None);
@@ -138,6 +201,7 @@ impl<'a> MarkdownIterator<'a> {
 					// Consume next block event and dispatch to one of the
 					// handlers
 					if let Some(next) = self.blocks.next() {
+						println!("\n{:?}\n", next);
 						match next {
 							BlockEvent::Start(container) => IteratorState::HandleStart(container),
 							BlockEvent::End(container) => IteratorState::HandleEnd(container),
@@ -454,7 +518,7 @@ impl<'a> MarkdownIterator<'a> {
 				LeafOrReference::Leaf(Block::FencedCode(info), iter, SpanMode::Code)
 			}
 			Leaf::Break => {
-				let iter = Span::empty().iter();
+				let iter = Span::default().iter();
 				LeafOrReference::Leaf(Block::Break, iter, SpanMode::Code)
 			}
 			Leaf::Header { level, text } => {

@@ -23,13 +23,19 @@ fn write_html_char(f: &mut fmt::Formatter, c: char) -> fmt::Result {
 		'\'' => write!(f, "&apos;"),
 		'<' => write!(f, "&lt;"),
 		'>' => write!(f, "&gt;"),
-		_ => {
-			f.write_str(c.encode_utf8(&mut [0; 4]))
-		},
+		_ => f.write_str(c.encode_utf8(&mut [0; 4])),
 	}
 }
 
 fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> fmt::Result {
+	if let Block::Paragraph(text) = block {
+		if !text.loose {
+			return if open { write!(f, "<p>") } else { write!(f, "</p>") };
+		} else {
+			return Ok(());
+		}
+	}
+
 	let is_single_tag = match block {
 		Block::Break => true,
 		_ => false,
@@ -89,9 +95,7 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 			write!(f, "{}", header(*level))?;
 		}
 
-		Block::Paragraph(_text) => {
-			write!(f, "p")?;
-		}
+		Block::Paragraph(..) => unreachable!(),
 
 		Block::HTML(_) => {}
 

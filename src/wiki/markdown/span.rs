@@ -1,6 +1,7 @@
 use std::fmt;
 
 use super::common;
+use super::Pos;
 
 /// Span of text from the Markdown source, representing an inline block of
 /// text.
@@ -14,63 +15,92 @@ use super::common;
 pub struct Span<'a> {
 	/// Full raw source text.
 	pub buffer: &'a str,
-	/// Column for this span's text start.
-	pub column: usize,
-	/// Start offset for the span's text.
-	pub offset_sta: usize,
-	/// End offset for the span's text.
-	pub offset_end: usize,
+	/// Start position for the Span.
+	pub start: Pos,
+	/// End position for the Span.
+	pub end: Pos,
 	/// Maximum base indentation to be removed from raw text.
 	pub indent: usize,
 	/// Number of quotation levels (e.g. `>`) to remove from text.
 	pub quotes: usize,
+	/// Is this block of text inside a loose paragraph?
+	pub loose: bool,
 }
 
 pub type Range = std::ops::Range<usize>;
 
-impl<'a> Span<'a> {
-	pub fn empty() -> Span<'static> {
+impl<'a> Default for Span<'a> {
+	fn default() -> Span<'static> {
 		Span {
-			buffer:     "",
-			column:     0,
-			offset_sta: 0,
-			offset_end: 0,
-			indent:     0,
-			quotes:     0,
+			buffer: "",
+			start:  Default::default(),
+			end:    Default::default(),
+			indent: 0,
+			quotes: 0,
+			loose:  false,
+		}
+	}
+}
+
+impl<'a> Span<'a> {
+	pub fn new(buffer: &'a str, start: Pos, end: Pos) -> Span<'a> {
+		Span {
+			buffer,
+			start,
+			end,
+			..Default::default()
 		}
 	}
 
-	pub fn trim(&mut self) {
-		let text = self.text();
-		if text.len() > 0 {
-			let text = text.trim();
+	pub fn len(&self) -> usize {
+		self.end.offset - self.start.offset
+	}
+
+	pub fn trimmed(&self) -> Span<'a> {
+		if self.buffer != "" {
+			let text = self.text().trim();
 			if let Some(range) = self.text_range(text) {
-				if range.start > self.offset_sta {
-					let sta = self.offset_sta;
-					let end = range.start;
-					let column = common::text_column(&self.buffer[sta..end], self.column);
-					self.column = column;
-				}
-				self.offset_sta = range.start;
-				self.offset_end = range.end;
+				self.sub(range)
+			} else {
+				unreachable!()
 			}
+		} else {
+			Span::default()
 		}
 	}
 
 	#[inline(always)]
 	pub fn text(&self) -> &'a str {
-		&self.buffer[self.offset_sta..self.offset_end]
+		&self.buffer[self.start.offset..self.end.offset]
 	}
 
-	pub fn sub_range(&self, range: Range) -> Span<'a> {
-		let prefix = &self.buffer[self.offset_sta..range.start];
+	pub fn end(&self) -> Span<'a> {
+		self.sub(self.len()..)
+	}
+
+	pub fn sub_text(&self, s: &str) -> Span<'a> {
+		self.sub(self.text_range(s).unwrap())
+	}
+
+	pub fn sub<T: std::ops::RangeBounds<usize>>(&self, range: T) -> Span<'a> {
+		let start = match range.start_bound() {
+			std::ops::Bound::Unbounded => 0,
+			std::ops::Bound::Included(index) => *index,
+			std::ops::Bound::Excluded(index) => *index + 1,
+		};
+		let end = match range.end_bound() {
+			std::ops::Bound::Unbounded => self.len(),
+			std::ops::Bound::Included(index) => *index + 1,
+			std::ops::Bound::Excluded(index) => *index,
+		};
+
 		Span {
-			buffer:     self.buffer,
-			column:     self.column + common::text_column(prefix, self.column),
-			offset_sta: range.start,
-			offset_end: range.end,
-			indent:     self.indent,
-			quotes:     self.quotes,
+			buffer: self.buffer,
+			start:  self.start.advance(self.buffer, start),
+			end:    self.start.advance(self.buffer, end),
+			indent: self.indent,
+			quotes: self.quotes,
+			loose:  false,
 		}
 	}
 
@@ -79,8 +109,13 @@ impl<'a> Span<'a> {
 	/// Returns `None` if the text does not belong to the buffer. Note that
 	/// this can happen for spaces returned by [SpanIter] to pad tab-width.
 	pub fn text_range(&self, text: &'a str) -> Option<Range> {
-		let buf_sta = self.buffer.as_ptr() as usize;
-		let buf_end = buf_sta + self.buffer.len();
+		let buffer = self.text();
+		if buffer == "" && text == "" {
+			return Some(Range { start: 0, end: 0 });
+		}
+
+		let buf_sta = buffer.as_ptr() as usize;
+		let buf_end = buf_sta + buffer.len();
 		let txt_len = text.len();
 		let txt_sta = text.as_ptr() as usize;
 		let txt_end = txt_sta + txt_len;

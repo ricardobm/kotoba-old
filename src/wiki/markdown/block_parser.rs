@@ -13,6 +13,8 @@ use super::Span;
 
 use super::table_parser::{parse_table_row, Row, TableRow};
 
+use super::{Pos, TextBuffer};
+
 pub fn parse_blocks<'a>(input: &'a str) -> BlockIterator<'a> {
 	BlockIterator::new(input)
 }
@@ -125,11 +127,7 @@ impl fmt::Debug for Container {
 
 enum CanContinue {
 	No,
-	Yes {
-		length: usize,
-		column: Option<usize>,
-		indent: usize,
-	},
+	Yes { position: Pos, indent: usize },
 }
 
 impl Container {
@@ -172,23 +170,26 @@ impl Container {
 	///
 	/// Returns `true` if the container is continued, the number of bytes
 	/// to skip and an optional target column.
-	fn can_continue(&self, line: &str, column: usize) -> CanContinue {
+	fn can_continue<'a>(&self, line: Span<'a>) -> CanContinue {
 		match self {
 			&Container::BlockQuote => {
-				let (indent, bytes) = common::indent_width(line, column);
+				let (indent, bytes) = common::indent_width(line.text(), line.start.column);
+				let mut next = line.start;
+				let line = line.text();
+				next.skip(&line[..bytes]);
 				if indent > 3 {
 					CanContinue::No
 				} else if line.starts_with("> ") {
+					next.skip("> ");
 					CanContinue::Yes {
-						length: 2 + bytes,
-						column: None,
-						indent: 0,
+						position: next,
+						indent:   0,
 					}
 				} else if line.starts_with(">") {
+					next.skip(">");
 					CanContinue::Yes {
-						length: 1 + bytes,
-						column: None,
-						indent: 0,
+						position: next,
+						indent:   0,
 					}
 				} else {
 					CanContinue::No
@@ -199,20 +200,20 @@ impl Container {
 				text_indent,
 				..
 			}) => {
-				if line.trim().len() == 0 {
+				if line.text().trim().len() == 0 {
 					// List item can continue through empty lines
 					CanContinue::Yes {
-						length: 0,
-						column: None,
-						indent: 0,
+						position: line.start,
+						indent:   0,
 					}
 				} else {
 					// We consider the list item continued if we can skip all
 					// of its indentation.
 					let target_indent = base_indent + text_indent;
-					let mut line = line;
+					let start = line.start;
+					let column = start.column;
 					let mut new_column = column;
-					let mut skip = 0;
+					let mut line = line.text();
 					let mut do_continue = true;
 					while do_continue {
 						do_continue = false;
@@ -222,7 +223,6 @@ impl Container {
 								if col - column <= target_indent {
 									new_column = col;
 									line = &line[1..];
-									skip += 1;
 									do_continue = new_column - column < target_indent;
 								} else {
 									if ch == '\t' {
@@ -237,10 +237,11 @@ impl Container {
 					}
 
 					if new_column - column == target_indent {
+						let mut next = start;
+						next.column = new_column;
 						CanContinue::Yes {
-							length: skip,
-							column: Some(new_column),
-							indent: new_column - column,
+							position: next,
+							indent:   new_column - column,
 						}
 					} else {
 						CanContinue::No
@@ -323,11 +324,11 @@ impl<'a> fmt::Debug for Leaf<'a> {
 			}
 			Leaf::Break => write!(f, "<hr/>"),
 			Leaf::Header { level, text } => write!(f, "<h{0}>{1}</h{0}>", level, text),
-			Leaf::Table { span, head, body, .. } => {
+			Leaf::Table { head, body, .. } => {
 				write!(f, "<table>")?;
 				if let Some(head) = head {
 					write!(f, "\n  <tr>")?;
-					for (th, align) in head.iter(span.clone()) {
+					for (th, align) in head.iter() {
 						write!(f, "<th")?;
 						align.fmt_attr(f)?;
 						write!(f, ">{}</th>", th)?;
@@ -336,7 +337,7 @@ impl<'a> fmt::Debug for Leaf<'a> {
 				}
 				for row in body.iter() {
 					write!(f, "\n  <tr>")?;
-					for (td, align) in row.iter(span.clone()) {
+					for (td, align) in row.iter() {
 						write!(f, "<td")?;
 						align.fmt_attr(f)?;
 						write!(f, ">{}</td>", td)?;
@@ -374,13 +375,12 @@ enum LeafState<'a> {
 /// Iterates over [Event]s in a markdown text.
 pub struct BlockIterator<'a> {
 	state:  IteratorState,
-	buffer: &'a str,
-	offset: usize,
-	column: usize,
+	buffer: TextBuffer<'a>,
 	inline: Option<Leaf<'a>>,
 	blocks: VecDeque<Container>,
 
 	next_line: Option<(usize, usize)>,
+	line_num:  usize,
 }
 
 lazy_static! {
@@ -418,13 +418,12 @@ impl<'a> BlockIterator<'a> {
 	pub fn new(input: &'a str) -> BlockIterator<'a> {
 		BlockIterator {
 			state:  IteratorState::None,
-			buffer: input,
-			offset: 0,
-			column: 0,
+			buffer: TextBuffer::new(input),
 			inline: None,
 			blocks: Default::default(),
 
 			next_line: Default::default(),
+			line_num:  0,
 		}
 	}
 
@@ -442,7 +441,7 @@ impl<'a> BlockIterator<'a> {
 				// This is the state at the start of the input or at the start
 				// of a new line.
 				IteratorState::None => {
-					if self.at_end() {
+					if self.buffer.at_end() {
 						if let Some(inline) = std::mem::take(&mut self.inline) {
 							let inline = self.close_leaf(inline);
 							break (IteratorState::None, Some(BlockEvent::Leaf(inline)));
@@ -508,17 +507,13 @@ impl<'a> BlockIterator<'a> {
 
 				// State when matching the text content of a line
 				IteratorState::Text(opened, indent) => {
-					let (offset, column) = (self.offset, self.column);
-
-					// Find the end of the line.
-					let (next_line, eol) = self.line_end();
-					let cur_line = &self.buffer[self.offset..next_line];
+					let cur_line = self.buffer.cur_line();
 
 					let mut do_skip = true;
 					let (next_state, elem) = if let Some(inline) = std::mem::take(&mut self.inline) {
 						// If there is a current leaf block open, append text
 						// to it...
-						match self.append_leaf(inline, offset, next_line - eol, column) {
+						match self.append_leaf(inline, cur_line) {
 							LeafState::Open(leaf) => {
 								self.inline = Some(leaf);
 								(IteratorState::None, None)
@@ -534,21 +529,12 @@ impl<'a> BlockIterator<'a> {
 								(IteratorState::None, Some(BlockEvent::Leaf(leaf)))
 							}
 						}
-					} else if cur_line.trim().len() == 0 {
+					} else if cur_line.text().trim().len() == 0 {
 						// If the line is empty, handle it
 						(IteratorState::Empty(opened, indent), None)
 					} else {
-						// Create a new span of text and parse it as a leaf
-						// block.
-						let span = Span {
-							buffer:     self.buffer,
-							column:     column,
-							offset_sta: offset,
-							offset_end: next_line - eol,
-							indent:     indent,
-							quotes:     self.cur_quotes(),
-						};
-						match Self::parse_leaf(span, false).unwrap() {
+						// Parse the line as a leaf block.
+						match Self::parse_leaf(cur_line, false).unwrap() {
 							LeafState::Open(leaf) => {
 								self.inline = Some(leaf);
 								(IteratorState::None, None)
@@ -562,8 +548,7 @@ impl<'a> BlockIterator<'a> {
 					};
 
 					if do_skip {
-						self.offset = next_line;
-						self.column = 0;
+						self.buffer.skip_line();
 					}
 
 					if let Some(elem) = elem {
@@ -586,15 +571,10 @@ impl<'a> BlockIterator<'a> {
 	fn skip_opened(&mut self) -> (usize, usize) {
 		let mut last_indent = 0;
 		for i in 0..self.blocks.len() {
-			let line = self.cur_line();
-			if let CanContinue::Yes { length, column, indent } = self.blocks[i].can_continue(line, self.column) {
+			let line = self.buffer.cur_line();
+			if let CanContinue::Yes { position, indent } = self.blocks[i].can_continue(line) {
 				last_indent = indent;
-				if let Some(column) = column {
-					self.offset += length;
-					self.column = column;
-				} else {
-					self.skip(length);
-				}
+				self.buffer.skip_to(position);
 			} else {
 				return (i, last_indent);
 			}
@@ -611,8 +591,9 @@ impl<'a> BlockIterator<'a> {
 	}
 
 	fn is_list_start(&mut self) -> bool {
-		if self.text().starts_with(|ch| ch == '-' || ch == '+' || ch == '*') {
-			if !RE_BREAK.is_match(self.cur_line()) {
+		let line = self.buffer.cur_line().text();
+		if line.starts_with(|ch| ch == '-' || ch == '+' || ch == '*') {
+			if !RE_BREAK.is_match(line) {
 				true
 			} else {
 				false
@@ -625,46 +606,37 @@ impl<'a> BlockIterator<'a> {
 	/// Parse opening block markers at the current position.
 	fn parse_container_start(&mut self) -> Option<Container> {
 		// Save current state in case we fail.
-		let (offset, column) = (self.offset, self.column);
+		let start_pos = self.buffer.save();
 
 		// Parse next block.
 		let result = {
 			// Skip optional indentation before the element
-			let start_col = self.column;
-			let (indent, bytes) = common::indent_width(self.cur_line(), self.column);
-			self.column += indent;
-			self.offset += bytes;
-			let base_indent = self.column - start_col;
-			let base_column = self.column;
+			let base_indent = self.buffer.skip_indent();
+			let base_column = self.buffer.column();
 			if base_indent > 3 {
 				// We can have at most 3 spaces before becoming an indented
 				// code block.
 				None
-			} else if self.skip_if('>') {
+			} else if self.buffer.skip_if('>') {
 				// ----------
 				// Blockquote
 				// ----------
-				self.skip_if(' ');
+				self.buffer.skip_if(' ');
 				Some(Container::BlockQuote)
 			} else if self.is_list_start() {
 				// -----------------------
 				// List marker (unordered)
 				// -----------------------
 
-				let marker = self.next_char();
-				self.skip_chars(1);
-				let start_col = self.column;
-				while self.text().starts_with(|ch| ch == ' ' || ch == '\t') {
-					self.skip_chars(1);
-				}
-				let text_indent = self.column - start_col;
-
+				let marker = self.buffer.next_char();
+				self.buffer.skip_chars(1);
+				let text_indent = self.buffer.skip_indent();
 				if text_indent == 0 {
 					// At least one space is needed after the list marker
 					None
 				} else {
 					// The actual indent also considers the list item itself.
-					let text_indent = self.column - base_column;
+					let text_indent = self.buffer.column() - base_column;
 					let task = self.parse_list_task();
 					let list_info = ListInfo {
 						marker,
@@ -676,42 +648,37 @@ impl<'a> BlockIterator<'a> {
 					};
 					Some(Container::ListItem(list_info))
 				}
-			} else if self.text().starts_with(|ch: char| ch.is_ascii_digit()) {
+			} else if self.buffer.cur_text().starts_with(|ch: char| ch.is_ascii_digit()) {
 				// ---------------------
 				// List marker (ordered)
 				// ---------------------
 
 				// Note that the spec limits the list index to 9 digits to
 				// prevent overflow in browsers.
-				let mut index = self.next_char().to_digit(10).unwrap() as usize;
-				self.skip_chars(1);
+				let mut index = self.buffer.next_char().to_digit(10).unwrap() as usize;
+				self.buffer.skip_chars(1);
 				for _ in 0..8 {
-					if !self.at_end() {
-						let next = self.next_char();
+					if !self.buffer.at_end() {
+						let next = self.buffer.next_char();
 						if let Some(digit) = next.to_digit(10) {
 							index = index * 10 + (digit as usize);
-							self.skip_chars(1);
+							self.buffer.skip_chars(1);
 						} else {
 							break;
 						}
 					}
 				}
-				if self.text().starts_with(|ch| ch == '.' || ch == ')') {
+				if self.buffer.cur_text().starts_with(|ch| ch == '.' || ch == ')') {
 					// From here, the parsing is the same as for the unordered
 					// case.
-					let marker = self.next_char();
-					self.skip_chars(1);
+					let marker = self.buffer.next_char();
+					self.buffer.skip_chars(1);
 
-					let start_col = self.column;
-					while self.text().starts_with(|ch| ch == ' ' || ch == '\t') {
-						self.skip_chars(1);
-					}
-					let text_indent = self.column - start_col;
-
+					let text_indent = self.buffer.skip_indent();
 					if text_indent == 0 {
 						None
 					} else {
-						let text_indent = self.column - base_column;
+						let text_indent = self.buffer.column() - base_column;
 						let task = self.parse_list_task();
 						let list_info = ListInfo {
 							marker,
@@ -732,27 +699,25 @@ impl<'a> BlockIterator<'a> {
 
 		// Restore parser state if we failed to match.
 		if result.is_none() {
-			self.offset = offset;
-			self.column = column;
+			self.buffer.restore(start_pos);
 		}
 		result
 	}
 
 	fn parse_list_task(&mut self) -> Option<bool> {
-		let result = if self.text().starts_with("[x]") || self.text().starts_with("[X]") {
+		let result = if self.buffer.cur_text().starts_with("[x]") || self.buffer.cur_text().starts_with("[X]") {
 			Some(true)
-		} else if self.text().starts_with("[ ]") {
+		} else if self.buffer.cur_text().starts_with("[ ]") {
 			Some(false)
 		} else {
 			None
 		};
 		let result = if let Some(checked) = result {
-			let (offset, column) = (self.offset, self.column);
-			self.skip_chars(3);
-			if !self.skip_if(' ') && !self.skip_if('\t') {
-				if self.cur_line().trim().len() > 0 {
-					self.offset = offset;
-					self.column = column;
+			let start_pos = self.buffer.save();
+			self.buffer.skip_chars(3);
+			if !self.buffer.skip_if(' ') && !self.buffer.skip_if('\t') {
+				if self.buffer.cur_line().text().trim().len() > 0 {
+					self.buffer.restore(start_pos);
 					None
 				} else {
 					Some(checked)
@@ -778,7 +743,7 @@ impl<'a> BlockIterator<'a> {
 	/// This will never return `None` if `is_inline` is false.
 	fn parse_leaf(mut span: Span<'a>, is_inline: bool) -> Option<LeafState<'a>> {
 		let text = span.text();
-		let (indent, _) = common::indent_width(text, span.column);
+		let (indent, _) = common::indent_width(text, span.start.column);
 		if indent >= 4 {
 			// ===================
 			// Indented code block
@@ -800,14 +765,13 @@ impl<'a> BlockIterator<'a> {
 			// ATX Heading
 			// ===================
 			let lvl = caps.name("h").unwrap().as_str().len() as u8;
-			let off = span.offset_sta;
 			let sta = caps.name("s").unwrap().end();
 			let end = caps.name("e").unwrap().start();
-			span.offset_sta = off + sta;
-			span.offset_end = off + end;
+			span.start.skip(&text[..sta]);
+			span.end = span.start;
+			span.end.skip(&text[sta..end]);
 			span.indent = 0;
-			span.column = common::text_column(&text[..sta], span.column);
-			span.trim();
+			span = span.trimmed();
 			let leaf = Leaf::Header {
 				level: lvl,
 				text:  span,
@@ -841,7 +805,7 @@ impl<'a> BlockIterator<'a> {
 				end:  if end.len() == 0 { None } else { Some(end) },
 				code: span,
 			}))
-		} else if let Some(row) = parse_table_row(text, true) {
+		} else if let Some(row) = parse_table_row(span.clone(), true) {
 			// ===================
 			// HTML block
 			// ===================
@@ -869,21 +833,20 @@ impl<'a> BlockIterator<'a> {
 		}
 	}
 
-	fn append_leaf(&mut self, mut leaf: Leaf<'a>, line_start: usize, line_end: usize, column: usize) -> LeafState<'a> {
+	fn append_leaf(&mut self, mut leaf: Leaf<'a>, line: Span<'a>) -> LeafState<'a> {
 		lazy_static! {
 			static ref RE_SETEXT_HEADER: Regex = Regex::new(r"^[ ]{0,3}([-]{3,}|[=]{3,})\s*$").unwrap();
 		}
 
-		let line = &self.buffer[line_start..line_end];
-		let line_trim = line.trim();
-		let empty = line_trim.len() == 0;
-		let (indent, _) = common::indent_width(line, column);
+		let line_trim = line.trimmed();
+		let empty = line_trim.text().len() == 0;
+		let (indent, _) = common::indent_width(line.text(), line.start.column);
 		match leaf {
 			Leaf::Paragraph { mut text } => {
 				if empty {
 					LeafState::Closed(Leaf::Paragraph { text })
-				} else if RE_SETEXT_HEADER.is_match(line) {
-					let level = if line.trim().chars().next().unwrap() == '=' {
+				} else if RE_SETEXT_HEADER.is_match(line.text()) {
+					let level = if line.text().trim().chars().next().unwrap() == '=' {
 						1
 					} else {
 						2
@@ -891,14 +854,10 @@ impl<'a> BlockIterator<'a> {
 					let header = Leaf::Header { level, text };
 					LeafState::ClosedAndConsumed(header)
 				} else {
-					let mut new_span = text.clone();
-					new_span.offset_sta = line_start;
-					new_span.offset_end = line_end;
-					new_span.column = column;
-					if let Some(_) = Self::parse_leaf(new_span, true) {
+					if let Some(_) = Self::parse_leaf(line.clone(), true) {
 						LeafState::Closed(Leaf::Paragraph { text })
 					} else {
-						text.offset_end = line_end;
+						text.end = line.end;
 						LeafState::Open(Leaf::Paragraph { text })
 					}
 				}
@@ -908,7 +867,7 @@ impl<'a> BlockIterator<'a> {
 					LeafState::Closed(leaf)
 				} else {
 					if indent >= 4 {
-						code.offset_end = line_end;
+						code.end = line.end;
 					}
 					LeafState::Open(leaf)
 				}
@@ -921,10 +880,10 @@ impl<'a> BlockIterator<'a> {
 			} => {
 				if indent < 4 {
 					let delim = fence.chars().next().unwrap();
-					let is_close = line_trim.starts_with(fence);
-					let is_close = is_close && line_trim.chars().all(|ch| ch == delim);
+					let is_close = line_trim.text().starts_with(fence);
+					let is_close = is_close && line_trim.text().chars().all(|ch| ch == delim);
 					if is_close {
-						code.offset_end = line_start;
+						code.end = line.start;
 						LeafState::ClosedAndConsumed(Leaf::FencedCode {
 							fence,
 							code,
@@ -932,7 +891,7 @@ impl<'a> BlockIterator<'a> {
 							info,
 						})
 					} else {
-						code.offset_end = line_end;
+						code.end = line.end;
 						LeafState::Open(Leaf::FencedCode {
 							fence,
 							code,
@@ -941,7 +900,7 @@ impl<'a> BlockIterator<'a> {
 						})
 					}
 				} else {
-					code.offset_end = line_end;
+					code.end = line.end;
 					LeafState::Open(Leaf::FencedCode {
 						fence,
 						code,
@@ -952,9 +911,9 @@ impl<'a> BlockIterator<'a> {
 			}
 			Leaf::HTML { end, mut code } => {
 				if let Some(end) = end {
-					code.offset_end = line_end;
+					code.end = line.end;
 					let html = Leaf::HTML { end: Some(end), code };
-					if line_trim.contains(end) {
+					if line_trim.text().contains(end) {
 						LeafState::ClosedAndConsumed(html)
 					} else {
 						LeafState::Open(html)
@@ -999,13 +958,13 @@ impl<'a> BlockIterator<'a> {
 					}
 
 					if is_valid {
-						span.offset_end = line_end;
+						span.end = line.end;
 						LeafState::Open(Leaf::Table { span, head, body, cols })
 					} else {
 						if empty {
 							LeafState::Closed(Leaf::Paragraph { text: span })
 						} else {
-							span.offset_end = line_end;
+							span.end = line.end;
 							LeafState::Open(Leaf::Paragraph { text: span })
 						}
 					}
@@ -1015,7 +974,7 @@ impl<'a> BlockIterator<'a> {
 					} else if empty {
 						LeafState::Closed(Leaf::Paragraph { text: span })
 					} else {
-						span.offset_end = line_end;
+						span.end = line.end;
 						LeafState::Open(Leaf::Paragraph { text: span })
 					}
 				}
@@ -1194,110 +1153,6 @@ impl<'a> BlockIterator<'a> {
 			}
 		}
 		None
-	}
-
-	//
-	// Helper methods for text parsing
-	//
-
-	/// Return the buffer text at the current offset.
-	#[inline(always)]
-	fn text(&self) -> &'a str {
-		&self.buffer[self.offset..]
-	}
-
-	/// Return the next charater at the current offset. Panics at the end of
-	/// the input.
-	#[inline(always)]
-	fn next_char(&self) -> char {
-		self.text().chars().next().unwrap()
-	}
-
-	/// Skip the next char, only if it is equal to the given one.
-	#[inline(always)]
-	fn skip_if(&mut self, chr: char) -> bool {
-		if self.text().starts_with(chr) {
-			self.skip_chars(1);
-			true
-		} else {
-			false
-		}
-	}
-
-	/// Skip entire chars from the input.
-	#[inline(always)]
-	fn skip_chars(&mut self, n: usize) {
-		let text_len = self.buffer.len() - self.offset;
-		let skip_len = self
-			.text()
-			.char_indices()
-			.skip(n)
-			.map(|x| x.0)
-			.next()
-			.unwrap_or(text_len);
-		self.skip(skip_len);
-	}
-
-	/// Skip [offset] by the given number of bytes, updating [column].
-	fn skip(&mut self, len: usize) {
-		for ch in (&self.buffer[self.offset..self.offset + len]).chars() {
-			match ch {
-				'\r' | '\n' => self.column = 0,
-				'\t' => self.column = common::tab(self.column),
-				_ => self.column += 1,
-			}
-		}
-		self.offset += len;
-	}
-
-	/// `true` if the current offset is at the end of the input.
-	#[inline]
-	fn at_end(&mut self) -> bool {
-		self.offset >= self.buffer.len()
-	}
-
-	/// Returns the text for the current line, excluding the EOL marker.
-	fn cur_line(&mut self) -> &'a str {
-		let (next_line, eol_length) = self.line_end();
-		&self.buffer[self.offset..next_line - eol_length]
-	}
-
-	/// Find the position of the next line and the size of the EOL sequence.
-	///
-	/// Returns `(next_line, eol_length)` where
-	/// - `next_line` is the byte offset for the start of the next line;
-	/// - `eol_length` is the size in bytes of the EOL sequence.
-	fn line_end(&mut self) -> (usize, usize) {
-		if let Some((next_line, eol_length)) = self.next_line {
-			if next_line > self.offset {
-				return (next_line, eol_length);
-			}
-		}
-
-		let mut iter = (&self.buffer[self.offset..]).char_indices();
-		let mut eol_pos = None;
-		let mut eol_len = 0;
-		while let Some((pos, chr)) = iter.next() {
-			if chr == '\r' || chr == '\n' {
-				eol_pos = Some(pos + self.offset);
-				eol_len = 1;
-				if chr == '\r' {
-					if let Some((_, '\n')) = iter.next() {
-						eol_len = 2;
-					}
-				}
-				break;
-			}
-		}
-
-		let eol_pos = match eol_pos {
-			Some(pos) => pos,
-			None => self.buffer.len(),
-		};
-
-		let out = (eol_pos + eol_len, eol_len);
-		self.next_line = Some(out);
-		out
 	}
 }
 
