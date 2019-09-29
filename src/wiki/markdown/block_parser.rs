@@ -213,7 +213,9 @@ impl Container {
 					let mut line = line;
 					let mut new_column = column;
 					let mut skip = 0;
-					loop {
+					let mut do_continue = true;
+					while do_continue {
+						do_continue = false;
 						if let Some(ch) = line.chars().next() {
 							if ch == ' ' || ch == '\t' {
 								let col = common::col(ch, new_column);
@@ -221,6 +223,7 @@ impl Container {
 									new_column = col;
 									line = &line[1..];
 									skip += 1;
+									do_continue = new_column - column < target_indent;
 								} else {
 									if ch == '\t' {
 										// advance column without really
@@ -228,7 +231,6 @@ impl Container {
 										// partially consuming it
 										new_column = column + target_indent;
 									}
-									break;
 								}
 							}
 						}
@@ -348,6 +350,7 @@ impl<'a> fmt::Debug for Leaf<'a> {
 }
 
 /// States used by [BlockIterator].
+#[derive(Debug)]
 enum IteratorState {
 	None,
 	Open(usize, usize, Option<Container>),
