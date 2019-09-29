@@ -2,6 +2,9 @@
 #![feature(duration_float)]
 #![feature(mem_take)]
 
+#[cfg(test)]
+extern crate speculate;
+
 // Logging
 
 #[macro_use]
