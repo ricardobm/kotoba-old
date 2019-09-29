@@ -78,14 +78,17 @@ pub fn text(input: &str) -> String {
 	use regex::Regex;
 
 	lazy_static! {
+		static ref RE_EMPTY_LINE: Regex = Regex::new(r#"^[\s&&[^\n\r]]*(\n|\r\n?)"#).unwrap();
 		static ref RE_INDENT: Regex = Regex::new(r"^\s*").unwrap();
 	}
 
 	let mut base_indent = "";
 	let mut text = String::new();
 	let mut has_indent = false;
-	for (i, line) in input.trim().lines().enumerate() {
-		if !has_indent && i > 0 && line.trim().len() > 0 {
+	let input = input.trim_end();
+	let input = RE_EMPTY_LINE.replace(input, "");
+	for (i, line) in input.lines().enumerate() {
+		if !has_indent && line.trim().len() > 0 {
 			base_indent = RE_INDENT.find(line).unwrap().as_str();
 			has_indent = true;
 		}
@@ -95,6 +98,7 @@ pub fn text(input: &str) -> String {
 		} else {
 			line
 		};
+		let line = line.trim_end();
 		if i > 0 {
 			text.push('\n');
 		}
