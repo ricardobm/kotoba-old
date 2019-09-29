@@ -198,7 +198,7 @@ impl<'a> Iterator for SpanIter<'a> {
 							indent = 0;
 						}
 					} else if let Some(chr) = source.chars().next() {
-						if chr.is_whitespace() {
+						if chr.is_whitespace() && chr != '\n' && chr != '\r' {
 							source = common::skip_chars(source, 1);
 							column += 1;
 							indent -= 1;
@@ -263,6 +263,14 @@ mod tests {
 			1,
 			"ABC\nDEF\r123\r\n456\n",
 			vec!["ABC\n", "DEF\r", "123\r\n", "456\n"],
+		);
+
+		// Multi-line iteration:
+		check(
+			1,
+			1,
+			"ABC\n\nDEF\r\r123\r\n\r\n456\n\n",
+			vec!["ABC\n", "\n", "DEF\r", "\r", "123\r\n", "\r\n", "456\n", "\n"],
 		);
 
 		// Strip indent:
