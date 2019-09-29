@@ -66,6 +66,31 @@ pub struct ListInfo {
 	pub task: Option<bool>,
 }
 
+impl fmt::Debug for ListInfo {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "(`")?;
+		if let Some(start) = self.ordered {
+			write!(f, "{}", start)?;
+		}
+		write!(
+			f,
+			"{}`{} text={} base={})",
+			self.marker,
+			if let Some(task) = self.task {
+				if task {
+					" task=true"
+				} else {
+					" task=false"
+				}
+			} else {
+				""
+			},
+			self.text_indent,
+			self.base_indent,
+		)
+	}
+}
+
 impl ListInfo {
 	pub fn is_next_same_list(&self, next: &ListInfo) -> bool {
 		if self.ordered.is_some() != next.ordered.is_some() {
@@ -87,6 +112,15 @@ pub enum Container {
 	BlockQuote,
 	/// List item.
 	ListItem(ListInfo),
+}
+
+impl fmt::Debug for Container {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		match self {
+			Container::BlockQuote => write!(f, "BlockQuote"),
+			Container::ListItem(info) => write!(f, "ListItem{:?}", info),
+		}
+	}
 }
 
 enum CanContinue {

@@ -121,6 +121,28 @@ pub enum Block<'a> {
 	TableCell(TableCell<'a>),
 }
 
+impl<'a> fmt::Debug for Block<'a> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		match self {
+			Block::BlockQuote => write!(f, "BlockQuote"),
+			Block::List(info) => write!(f, "List{:?}", info),
+			Block::ListItem(info) => write!(f, "ListItem{:?}", info),
+			Block::Break => write!(f, "Break"),
+			Block::Header(h, s) => write!(f, "Header({}, {:?})", *h as u8, s),
+			Block::Paragraph(s) => write!(f, "Paragraph({:?})", s),
+			Block::HTML(s) => write!(f, "HTML({:?})", s),
+			Block::Code(s) => write!(f, "Code({:?})", s),
+			Block::FencedCode(info) => write!(f, "FencedCode{:?}", info),
+			Block::Table(info) => write!(f, "Table({:?})", info),
+			Block::TableHead(info) => write!(f, "TableHead({:?})", info.head()),
+			Block::TableHeadCell(cell) => write!(f, "TableHeadCell({:?})", cell),
+			Block::TableBody(info) => write!(f, "TableBody({:?})", info.body()),
+			Block::TableRow(row) => write!(f, "TableRow({:?})", row),
+			Block::TableCell(cell) => write!(f, "TableCell({:?})", cell),
+		}
+	}
+}
+
 /// Data for a [Block::List].
 #[derive(Clone, Default)]
 pub struct ListInfo {
@@ -137,6 +159,29 @@ pub struct ListInfo {
 	///
 	/// This will only be available if loose list processing is enabled.
 	pub loose: Option<bool>,
+}
+
+impl fmt::Debug for ListInfo {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "(`")?;
+		if let Some(start) = self.ordered {
+			write!(f, "{}", start)?;
+		}
+		write!(
+			f,
+			"{}`{})",
+			self.marker,
+			if let Some(loose) = self.loose {
+				if loose {
+					" loose"
+				} else {
+					" not-loose"
+				}
+			} else {
+				""
+			},
+		)
+	}
 }
 
 impl ListInfo {
@@ -156,6 +201,38 @@ pub struct ListItemInfo {
 	pub task: Option<bool>,
 
 	loose: Cell<Option<bool>>,
+}
+
+impl fmt::Debug for ListItemInfo {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "(#{} `", self.index)?;
+		if let Some(start) = self.list.ordered {
+			write!(f, "{}", start)?;
+		}
+		write!(
+			f,
+			"{}`{}{})",
+			self.list.marker,
+			if let Some(task) = self.task {
+				if task {
+					" task=true"
+				} else {
+					" task=false"
+				}
+			} else {
+				""
+			},
+			if let Some(loose) = self.loose.get() {
+				if loose {
+					" loose"
+				} else {
+					" not-loose"
+				}
+			} else {
+				""
+			},
+		)
+	}
 }
 
 impl ListItemInfo {
@@ -201,6 +278,20 @@ pub struct FencedCodeInfo<'a> {
 	/// This contains any text after the opening fence, except for the
 	/// language tag.
 	pub info: Option<&'a str>,
+}
+
+impl<'a> fmt::Debug for FencedCodeInfo<'a> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "(")?;
+		if let Some(language) = self.language {
+			write!(f, "{} ", language)?;
+		}
+		if let Some(info) = self.info {
+			write!(f, "{:?}", info)?;
+		}
+		write!(f, "{:?}", self.code)?;
+		write!(f, ")")
+	}
 }
 
 /// Data for a [Block::Table].
@@ -255,11 +346,30 @@ impl<'a> TableInfo<'a> {
 	}
 }
 
+impl<'a> fmt::Debug for TableInfo<'a> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "<table>")?;
+		if let Some(head) = self.head() {
+			write!(f, "<h>{:?}</h>", head)?;
+		}
+		write!(f, "{:?}", self.body())?;
+		write!(f, "</table>")
+	}
+}
+
 /// A single cell in a [TableRow].
 #[derive(Clone)]
 pub struct TableCell<'a> {
 	pub text:  Span<'a>,
 	pub align: TableAlign,
+}
+
+impl<'a> fmt::Debug for TableCell<'a> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "<c")?;
+		self.align.fmt_attr(f)?;
+		write!(f, ">{:?}</c>", self.text)
+	}
 }
 
 /// Iterator for a row in a [TableInfo].
@@ -268,6 +378,16 @@ pub struct TableRow<'a> {
 	table: TableInfo<'a>,
 	iter:  table_parser::RowIterator<'a>,
 	cols:  usize,
+}
+
+impl<'a> fmt::Debug for TableRow<'a> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "<row>")?;
+		for cell in self.clone() {
+			write!(f, "{:?}", cell)?;
+		}
+		write!(f, "</row>")
+	}
 }
 
 impl<'a> Iterator for TableRow<'a> {
@@ -325,6 +445,13 @@ impl<'a> TableBody<'a> {
 	}
 }
 
+impl<'a> fmt::Debug for TableBody<'a> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "{:?}", self.iter())
+	}
+}
+
+#[derive(Clone)]
 pub struct TableBodyIter<'a> {
 	next:  usize,
 	table: TableInfo<'a>,
@@ -345,6 +472,16 @@ impl<'a> Iterator for TableBodyIter<'a> {
 		} else {
 			None
 		}
+	}
+}
+
+impl<'a> fmt::Debug for TableBodyIter<'a> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "<b>")?;
+		for row in self.clone() {
+			write!(f, "{:?}", row)?;
+		}
+		write!(f, "</b>")
 	}
 }
 

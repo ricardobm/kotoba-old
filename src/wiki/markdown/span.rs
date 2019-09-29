@@ -145,6 +145,20 @@ pub struct SpanIter<'a> {
 	quotes: usize,
 }
 
+impl<'a> fmt::Debug for SpanIter<'a> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		const MAX_TEXT_LEN: usize = 5;
+		let text = self.source;
+		write!(f, "Iter({} {} {}", self.column, self.indent, self.quotes)?;
+		if text.len() <= MAX_TEXT_LEN {
+			write!(f, "{:?}", text)?;
+		} else {
+			write!(f, "{:?}…", &text[..MAX_TEXT_LEN])?;
+		}
+		write!(f, ")")
+	}
+}
+
 impl<'a> Iterator for SpanIter<'a> {
 	type Item = &'a str;
 

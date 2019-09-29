@@ -63,6 +63,7 @@ enum ParentContainer {
 	ListItem(block_parser::ListInfo),
 }
 
+#[derive(Debug)]
 enum IteratorState<'a> {
 	Start,
 	HandleStart(Container),
@@ -97,11 +98,13 @@ enum IteratorState<'a> {
 	End,
 }
 
+#[derive(Debug)]
 enum TableSection {
 	Head,
 	Body,
 }
 
+#[derive(Debug)]
 enum TagMode {
 	Start,
 	Content,
@@ -495,6 +498,7 @@ impl<'a> MarkdownIterator<'a> {
 	}
 }
 
+#[derive(Debug)]
 enum SpanMode {
 	Text,
 	Code,
