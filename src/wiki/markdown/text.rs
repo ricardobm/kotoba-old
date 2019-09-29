@@ -162,11 +162,6 @@ impl<'a> TextBuffer<'a> {
 		Span::new(self.src, self.pos, self.eol_pos(false))
 	}
 
-	/// Return the span for the whole text.
-	fn text__(&mut self) -> Span<'a> {
-		Span::new(self.src, Default::default(), self.eof_pos())
-	}
-
 	fn eof_pos(&mut self) -> Pos {
 		if let Some(pos) = self.eof {
 			pos

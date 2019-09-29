@@ -191,7 +191,6 @@ impl<'a> MarkdownIterator<'a> {
 
 	fn read_next(&mut self) -> Option<Event<'a>> {
 		let (next_state, result) = loop {
-			println!("> STATE: {:?}", self.state);
 			self.state = match std::mem::take(&mut self.state) {
 				IteratorState::End => {
 					break (IteratorState::End, None);
@@ -201,7 +200,6 @@ impl<'a> MarkdownIterator<'a> {
 					// Consume next block event and dispatch to one of the
 					// handlers
 					if let Some(next) = self.blocks.next() {
-						println!("\n{:?}\n", next);
 						match next {
 							BlockEvent::Start(container) => IteratorState::HandleStart(container),
 							BlockEvent::End(container) => IteratorState::HandleEnd(container),
