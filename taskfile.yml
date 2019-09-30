@@ -61,6 +61,11 @@ tasks:
     cmds:
       - npm start
 
+  loc:
+    desc: Count the number of lines of source code
+    cmds:
+      - cloc . --exclude-dir=node_modules,target,.vscode --exclude-lang=JSON
+
   test:
     desc:   Runs tests
     silent: true
