@@ -4,6 +4,7 @@ mod basics;
 
 mod spec_atx_headings;
 mod spec_breaks;
+mod spec_escapes;
 
 fn test(input: &str, expected: &str) {
 	let input = common::text(input);

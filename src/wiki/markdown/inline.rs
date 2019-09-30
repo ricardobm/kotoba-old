@@ -1,5 +1,8 @@
-use super::{RawStr, Span, SpanIter};
 use std::collections::VecDeque;
+
+use regex::Regex;
+
+use super::{RawStr, Span, SpanIter};
 
 #[derive(Clone, Debug)]
 pub enum InlineEvent<'a> {
@@ -66,7 +69,7 @@ pub struct InlineIterator<'a, T: Iterator<Item = &'a str>> {
 	inner: T,
 	chunk: &'a str,
 	queue: VecDeque<char>,
-	state: State,
+	state: State<'a>,
 }
 
 impl<'a, T: Iterator<Item = &'a str>> Iterator for InlineIterator<'a, T> {
@@ -77,10 +80,17 @@ impl<'a, T: Iterator<Item = &'a str>> Iterator for InlineIterator<'a, T> {
 	}
 }
 
-#[derive(Copy, Clone, Debug)]
-enum State {
+#[derive(Clone, Debug)]
+enum State<'a> {
 	Start,
+	OutputNext(InlineEvent<'a>),
 	End,
+}
+
+impl<'a> Default for State<'a> {
+	fn default() -> Self {
+		State::Start
+	}
 }
 
 impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
@@ -95,8 +105,12 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 
 	fn get_next(&mut self) -> Option<InlineEvent<'a>> {
 		let (next_state, result) = loop {
-			self.state = match self.state {
+			self.state = match std::mem::take(&mut self.state) {
 				State::End => break (State::End, None),
+
+				State::OutputNext(event) => {
+					break (State::Start, Some(event));
+				}
 
 				State::Start => {
 					if !self.assert_chunk() {
@@ -107,9 +121,14 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 							let event = InlineEvent::Text(text);
 							break (State::Start, Some(event));
 						}
-						panic!("panicked at next char '{:?}'", self.chunk.chars().next());
+						match self.next_char() {
+							'\\' => {
+								break self.parse_escape();
+							}
+							_ => panic!("panicked at next char '{:?}'", self.next_char()),
+						};
 					} else {
-						let text = self.consume_chunk(0);
+						let text = self.consume_chunk(self.chunk.len());
 						let event = InlineEvent::Text(text);
 						break (State::Start, Some(event));
 					}
@@ -122,8 +141,34 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 	}
 
 	//
+	// Parsing helpers
+	//
+
+	/// Parse an escape sequence at the backslash.
+	fn parse_escape(&mut self) -> (State<'a>, Option<InlineEvent<'a>>) {
+		if let (len, Some(escape)) = parse_escape(self.chunk) {
+			debug_assert!(len > 0);
+			self.consume_chunk(len);
+			(State::Start, Some(escape))
+		} else {
+			// non-recognized escape sequences are just generated literally
+			let backslash = InlineEvent::Text(self.consume_chunk(1));
+			if let (len, Some(next_char)) = next_char_escaped(self.chunk) {
+				self.consume_chunk(len);
+				(State::OutputNext(next_char), Some(backslash))
+			} else {
+				(State::Start, Some(backslash))
+			}
+		}
+	}
+
+	//
 	// Buffer reading
 	//
+
+	fn next_char(&mut self) -> char {
+		self.chunk.chars().next().unwrap()
+	}
 
 	fn peek(&mut self, n: usize) -> Option<char> {
 		while n >= self.queue.len() {
@@ -153,11 +198,26 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 
 	#[inline]
 	fn consume_chunk(&mut self, len: usize) -> &'a str {
-		debug_assert!(self.chunk.len() > 0 && len < self.chunk.len());
-		let len = if len > 0 { len } else { self.chunk.len() };
+		debug_assert!(self.chunk.len() > 0 && len <= self.chunk.len() && len > 0);
 		let chunk = &self.chunk[..len];
 		self.chunk = &self.chunk[len..];
 		chunk
+	}
+
+	#[inline]
+	fn consume_chars(&mut self, count: usize) -> &'a str {
+		let len = self
+			.chunk
+			.char_indices()
+			.skip(count)
+			.next()
+			.map(|x| x.0)
+			.unwrap_or(self.chunk.len());
+		if len > 0 {
+			self.consume_chunk(len)
+		} else {
+			&self.chunk[..0]
+		}
 	}
 
 	#[inline]
@@ -171,13 +231,70 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 	}
 }
 
+//=====================================
+// Helper functions
+//=====================================
+
+fn parse_escape<'a>(text: &'a str) -> (usize, Option<InlineEvent<'a>>) {
+	lazy_static! {
+		static ref RE_VALID_ESCAPE: Regex = Regex::new(
+			r#"(?x)
+				^\\[\-\\\{\}\[\]\(\)\^\|\~\&\$\#/:<>"!%'*+,.;=?@_`]
+			"#
+		)
+		.unwrap();
+		static ref RE_HARD_BREAK: Regex = Regex::new(
+			r#"(?x)
+				^\\[\s&&[^\n\r]]*(\n|\r\n?)
+			"#
+		)
+		.unwrap();
+	}
+
+	if RE_VALID_ESCAPE.is_match(text) {
+		let text = &text[1..];
+		let (len, event) = next_char_escaped(text);
+		debug_assert!(len > 0);
+		(len + 1, event)
+	} else if let Some(m) = RE_HARD_BREAK.find(text) {
+		(m.end(), Some(InlineEvent::LineBreak))
+	} else {
+		(0, None)
+	}
+}
+
+fn next_char_escaped<'a>(text: &'a str) -> (usize, Option<InlineEvent<'a>>) {
+	let mut chars = text.char_indices();
+	if let Some((_, chr)) = chars.next() {
+		let len = chars.next().map(|x| x.0).unwrap_or(text.len());
+		let txt = &text[0..len];
+		let entity = match chr {
+			'"' => "&quot;",
+			'&' => "&amp;",
+			'<' => "&lt;",
+			'>' => "&gt;",
+			'\'' => "&apos;",
+			_ => {
+				return (len, Some(InlineEvent::Text(txt)));
+			}
+		};
+		let event = InlineEvent::Entity {
+			source: txt,
+			entity: entity,
+			output: chr,
+		};
+		(len, Some(event))
+	} else {
+		(0, None)
+	}
+}
+
 /// Check if a character needs special handling as an inline.
 #[inline]
 fn is_special_char(chr: char) -> bool {
-	// TODO: enable handling of those
 	match chr {
 		// escapes
-		'\\' => false,
+		'\\' => true,
 		// HTML entities
 		'&' | '<' | '>' | '\'' | '"' => false,
 		// code spans
