@@ -183,6 +183,19 @@ pub enum Block<'a> {
 }
 
 impl<'a> Block<'a> {
+	pub fn is_container(&self) -> bool {
+		match self {
+			Block::BlockQuote(..) => true,
+			Block::List(..) => true,
+			Block::ListItem(..) => true,
+			Block::Table(..) => true,
+			Block::TableHead(..) => true,
+			Block::TableBody(..) => true,
+			Block::TableRow(..) => true,
+			_ => false,
+		}
+	}
+
 	pub fn line_range(&self) -> (usize, usize) {
 		match self {
 			Block::BlockQuote(pos) => (pos.line, pos.line),

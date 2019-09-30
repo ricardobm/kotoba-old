@@ -29,10 +29,10 @@ fn write_html_char(f: &mut fmt::Formatter, c: char) -> fmt::Result {
 
 fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> fmt::Result {
 	if let Block::Paragraph(text) = block {
-		if let Some(true) = text.loose {
-			return if open { write!(f, "<p>") } else { write!(f, "</p>") };
-		} else {
+		if let Some(false) = text.loose {
 			return Ok(());
+		} else {
+			return if open { write!(f, "<p>") } else { write!(f, "</p>") };
 		}
 	}
 

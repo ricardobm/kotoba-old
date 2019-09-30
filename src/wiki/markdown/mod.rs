@@ -38,11 +38,11 @@ pub fn to_html<'a>(iter: MarkdownIterator<'a>) -> util::Result<String> {
 			Event::Output(markup) => {
 				if !first {
 					let break_line = match &markup {
-						MarkupEvent::Open(Block::Paragraph(span)) => span.loose == Some(true),
-						MarkupEvent::Close(Block::Paragraph(span)) => span.loose == Some(true),
+						MarkupEvent::Open(Block::Paragraph(span)) => !(span.loose == Some(false)),
+						MarkupEvent::Close(Block::Paragraph(_)) => false,
 						MarkupEvent::Close(Block::ListItem(info)) => info.list.loose == Some(true),
 						MarkupEvent::Open(..) => true,
-						MarkupEvent::Close(..) => true,
+						MarkupEvent::Close(block) => block.is_container(),
 						_ => false,
 					};
 					if break_line {
