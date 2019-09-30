@@ -9,7 +9,9 @@ pub struct PerfTimer {
 impl PerfTimer {
 	#[inline]
 	pub fn now() -> PerfTimer {
-		PerfTimer{ t0: std::time::Instant::now() }
+		PerfTimer {
+			t0: std::time::Instant::now(),
+		}
 	}
 
 	#[inline]
@@ -36,4 +38,40 @@ macro_rules! time {
 	($id:ident) => {
 		let $id = $crate::base::PerfTimer::now();
 	};
+}
+
+/// Generates the module-level flag to enable/disable debugging output
+/// from [dbg_print] and [dbg_val].
+#[allow(unused_macros)]
+macro_rules! dbg_flag {
+	($arg:literal) => {
+		const DEBUG_ENABLED: bool = $arg;
+	};
+}
+
+#[allow(unused_macros)]
+macro_rules! dbg_print {
+	($($arg:tt)*) => (
+		if cfg!(debug_assertions) {
+			if DEBUG_ENABLED {
+				use ::std::io::Write;
+				let stderr = ::std::io::stderr();
+				let mut err = ::std::io::BufWriter::new(stderr.lock());
+				write!(&mut err, "[{}:{:03}]\t", file!(), line!()).unwrap();
+				write!(&mut err, $($arg)*).unwrap();
+				write!(&mut err, "\n").unwrap();
+			}
+		}
+	)
+}
+
+#[allow(unused_macros)]
+macro_rules! dbg_val {
+	($($arg:tt)*) => (
+		if cfg!(debug_assertions) {
+			if DEBUG_ENABLED {
+				dbg!($($arg)*);
+			}
+		}
+	)
 }
