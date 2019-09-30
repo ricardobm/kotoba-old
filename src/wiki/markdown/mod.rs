@@ -24,6 +24,8 @@ mod html;
 
 use util;
 
+dbg_flag!(false);
+
 /// Parse the input string as markdown, returning an iterator of [Element].
 pub fn parse_markdown<'a>(input: &'a str) -> MarkdownIterator<'a> {
 	MarkdownIterator::new(input, true)
@@ -97,6 +99,7 @@ enum IteratorState<'a> {
 	Start,
 	HandleStart(Container),
 	HandleEnd(Container),
+	HandleLeafOrBreak(Leaf<'a>),
 	HandleLeaf(Leaf<'a>),
 	LeafText(Block<'a>, SpanIter<'a>, SpanMode),
 	LeafEnd(Block<'a>),
@@ -407,6 +410,7 @@ impl<'a> MarkdownIterator<'a> {
 
 	fn read_next(&mut self) -> Option<Event<'a>> {
 		let (next_state, result) = loop {
+			dbg_print!(" STATE : {:?}", self.state);
 			self.state = match std::mem::take(&mut self.state) {
 				IteratorState::End => {
 					break (IteratorState::End, None);
@@ -416,10 +420,11 @@ impl<'a> MarkdownIterator<'a> {
 					// Consume next block event and dispatch to one of the
 					// handlers
 					if let Some(next) = self.blocks.next() {
+						dbg_print!(" BLOCK : {:?}", next);
 						match next {
 							BlockEvent::Start(container) => IteratorState::HandleStart(container),
 							BlockEvent::End(container) => IteratorState::HandleEnd(container),
-							BlockEvent::Leaf(leaf) => IteratorState::HandleLeaf(leaf),
+							BlockEvent::Leaf(leaf) => IteratorState::HandleLeafOrBreak(leaf),
 						}
 					} else {
 						IteratorState::BeforeEnd
@@ -437,7 +442,11 @@ impl<'a> MarkdownIterator<'a> {
 				IteratorState::HandleStart(block) => {
 					// close a pending open list before continuing
 					if let Some(ParentContainer::List(_)) = self.parents.back() {
-						let is_item = if let Container::ListItem(_) = &block { true } else { false };
+						let is_item = if let Container::ListItem(_) = &block {
+							true
+						} else {
+							false
+						};
 						if !is_item {
 							break self.close_list(IteratorState::HandleStart(block));
 						}
@@ -541,6 +550,16 @@ impl<'a> MarkdownIterator<'a> {
 
 					break (IteratorState::Start, event);
 				}
+
+				// Handles semantic break blocks specially since they can close
+				// block level items, such as list items:
+				IteratorState::HandleLeafOrBreak(Leaf::Break(pos)) => {
+					if let Some(ParentContainer::List(_)) = self.parents.back() {
+						break self.close_list(IteratorState::HandleLeaf(Leaf::Break(pos)));
+					}
+					IteratorState::HandleLeaf(Leaf::Break(pos))
+				}
+				IteratorState::HandleLeafOrBreak(leaf) => IteratorState::HandleLeaf(leaf),
 
 				// Start handling of a `BlockEvent::Leaf(leaf)` event
 				IteratorState::HandleLeaf(leaf) => match Self::parse_leaf(leaf) {
@@ -706,6 +725,7 @@ impl<'a> MarkdownIterator<'a> {
 			}
 		};
 
+		dbg_print!("OUTPUT : {:?}", result);
 		self.state = next_state;
 		result
 	}
