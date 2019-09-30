@@ -20,6 +20,8 @@ mod table_parser;
 mod dom;
 use self::dom::*;
 
+mod inline;
+
 mod html;
 
 use util;
@@ -109,7 +111,7 @@ enum IteratorState<'a> {
 	HandleEnd(Container),
 	HandleLeafOrBreak(Leaf<'a>),
 	HandleLeaf(Leaf<'a>),
-	LeafText(Block<'a>, SpanIter<'a>, SpanMode),
+	LeafInline(Block<'a>, Span<'a>, SpanMode),
 	LeafEnd(Block<'a>),
 	GenerateOpen(Block<'a>),
 	CloseListAndOpenNew(block_parser::ListInfo),
@@ -132,7 +134,6 @@ enum IteratorState<'a> {
 		TableRow<'a>,
 		TableCell<'a>,
 		TagMode,
-		Option<SpanIter<'a>>,
 	),
 	BeforeEnd,
 	End,
@@ -345,7 +346,7 @@ impl<'a> MarkdownIterator<'a> {
 					// we should never reach the end of events with a pending
 					// list open, assuming that we flush all pending close
 					// events at the end of the input.
-					assert!(self.pending.len() == 0);
+					debug_assert!(self.pending.len() == 0);
 				}
 
 				if self.pending.len() == 0 {
@@ -405,7 +406,7 @@ impl<'a> MarkdownIterator<'a> {
 										}
 									}
 								}
-								MarkupEvent::Text(_) => {
+								MarkupEvent::Code(_) | MarkupEvent::Inline(_) => {
 									// don't care about text
 								}
 							}
@@ -573,7 +574,7 @@ impl<'a> MarkdownIterator<'a> {
 				IteratorState::HandleLeaf(leaf) => match Self::parse_leaf(leaf) {
 					LeafOrReference::Leaf(block, text, mode) => {
 						let event = Event::Output(MarkupEvent::Open(block.clone()));
-						break (IteratorState::LeafText(block, text, mode), Some(event));
+						break (IteratorState::LeafInline(block, text, mode), Some(event));
 					}
 					LeafOrReference::Reference(link_ref) => {
 						let event = Event::Reference(link_ref);
@@ -583,14 +584,13 @@ impl<'a> MarkdownIterator<'a> {
 				},
 
 				// Generates the text of a leaf block.
-				IteratorState::LeafText(block, mut text, mode) => {
-					if let Some(s) = text.next() {
-						// TODO: parse inlines
-						let event = Event::Output(MarkupEvent::Text(s));
-						break (IteratorState::LeafText(block, text, mode), Some(event));
-					} else {
-						IteratorState::LeafEnd(block)
-					}
+				IteratorState::LeafInline(block, span, mode) => {
+					// TODO: parse inlines
+					let event = match mode {
+						SpanMode::Text => Event::Output(MarkupEvent::Inline(span)),
+						SpanMode::Code => Event::Output(MarkupEvent::Code(span)),
+					};
+					break (IteratorState::LeafEnd(block), Some(event));
 				}
 
 				// Handles closing a leaf block.
@@ -672,7 +672,7 @@ impl<'a> MarkdownIterator<'a> {
 					}
 					TagMode::Content => {
 						if let Some(cell) = row.next() {
-							IteratorState::TableCell(table, section, body, row, cell, TagMode::Start, None)
+							IteratorState::TableCell(table, section, body, row, cell, TagMode::Start)
 						} else {
 							IteratorState::TableRow(table, section, body, row, TagMode::End)
 						}
@@ -688,48 +688,35 @@ impl<'a> MarkdownIterator<'a> {
 					}
 				},
 
-				IteratorState::TableCell(table, section, body, row, cell, tag, text) => {
-					match tag {
-						TagMode::Start => {
-							let block = match section {
-								TableSection::Head => Block::TableHeadCell(cell.clone()),
-								TableSection::Body => Block::TableCell(cell.clone()),
-							};
-							let event = Event::Output(MarkupEvent::Open(block));
-							break (
-								IteratorState::TableRow(table, section, body, row, TagMode::Content),
-								Some(event),
-							);
-						}
-						TagMode::Content => {
-							if let Some(mut text) = text {
-								if let Some(s) = text.next() {
-									// TODO: parse inlines
-									let event = Event::Output(MarkupEvent::Text(s));
-									let state =
-										IteratorState::TableCell(table, section, body, row, cell, tag, Some(text));
-									break (state, Some(event));
-								} else {
-									IteratorState::TableCell(table, section, body, row, cell, TagMode::End, None)
-								}
-							} else {
-								let iter = Some(cell.text.iter());
-								IteratorState::TableCell(table, section, body, row, cell, tag, iter)
-							}
-						}
-						TagMode::End => {
-							let block = match section {
-								TableSection::Head => Block::TableHeadCell(cell.clone()),
-								TableSection::Body => Block::TableCell(cell.clone()),
-							};
-							let event = Event::Output(MarkupEvent::Close(block));
-							break (
-								IteratorState::TableRow(table, section, body, row, TagMode::Content),
-								Some(event),
-							);
-						}
+				IteratorState::TableCell(table, section, body, row, cell, tag) => match tag {
+					TagMode::Start => {
+						let block = match section {
+							TableSection::Head => Block::TableHeadCell(cell.clone()),
+							TableSection::Body => Block::TableCell(cell.clone()),
+						};
+						let event = Event::Output(MarkupEvent::Open(block));
+						break (
+							IteratorState::TableRow(table, section, body, row, TagMode::Content),
+							Some(event),
+						);
 					}
-				}
+					TagMode::Content => {
+						let event = Event::Output(MarkupEvent::Inline(cell.text.clone()));
+						let state = IteratorState::TableCell(table, section, body, row, cell, TagMode::End);
+						break (state, Some(event));
+					}
+					TagMode::End => {
+						let block = match section {
+							TableSection::Head => Block::TableHeadCell(cell.clone()),
+							TableSection::Body => Block::TableCell(cell.clone()),
+						};
+						let event = Event::Output(MarkupEvent::Close(block));
+						break (
+							IteratorState::TableRow(table, section, body, row, TagMode::Content),
+							Some(event),
+						);
+					}
+				},
 			}
 		};
 
@@ -740,38 +727,24 @@ impl<'a> MarkdownIterator<'a> {
 
 	fn parse_leaf(leaf: Leaf<'a>) -> LeafOrReference {
 		match leaf {
-			Leaf::Paragraph { text } => {
-				let iter = text.iter();
-				LeafOrReference::Leaf(Block::Paragraph(text), iter, SpanMode::Text)
-			}
-			Leaf::HTML { code, .. } => {
-				let iter = code.iter();
-				LeafOrReference::Leaf(Block::HTML(code), iter, SpanMode::Code)
-			}
+			Leaf::Paragraph { text } => LeafOrReference::Leaf(Block::Paragraph(text.clone()), text, SpanMode::Text),
+			Leaf::HTML { code, .. } => LeafOrReference::Leaf(Block::HTML(code.clone()), code, SpanMode::Code),
 			Leaf::LinkReference { url, label, title } => LeafOrReference::Reference(LinkReference {
 				label: label,
 				title: title,
 				url:   RawStr(url),
 			}),
-			Leaf::IndentedCode { code } => {
-				let iter = code.iter();
-				LeafOrReference::Leaf(Block::Code(code), iter, SpanMode::Code)
-			}
+			Leaf::IndentedCode { code } => LeafOrReference::Leaf(Block::Code(code.clone()), code, SpanMode::Code),
 			Leaf::FencedCode { code, lang, info, .. } => {
-				let iter = code.iter();
 				let info = FencedCodeInfo {
-					code:     code,
+					code:     code.clone(),
 					info:     info,
 					language: lang,
 				};
-				LeafOrReference::Leaf(Block::FencedCode(info), iter, SpanMode::Code)
+				LeafOrReference::Leaf(Block::FencedCode(info), code, SpanMode::Code)
 			}
-			Leaf::Break(pos) => {
-				let iter = Span::default().iter();
-				LeafOrReference::Leaf(Block::Break(pos), iter, SpanMode::Code)
-			}
+			Leaf::Break(pos) => LeafOrReference::Leaf(Block::Break(pos), Span::default(), SpanMode::Code),
 			Leaf::Header { level, text } => {
-				let iter = text.iter();
 				let level = match level {
 					1 => HeaderLevel::H1,
 					2 => HeaderLevel::H2,
@@ -781,7 +754,7 @@ impl<'a> MarkdownIterator<'a> {
 					6 => HeaderLevel::H6,
 					_ => unreachable!(),
 				};
-				LeafOrReference::Leaf(Block::Header(level, text), iter, SpanMode::Text)
+				LeafOrReference::Leaf(Block::Header(level, text.clone()), text, SpanMode::Text)
 			}
 			Leaf::Table { span, head, body, cols } => {
 				let info = TableInfo::new(span, head, body, cols.unwrap());
@@ -818,7 +791,7 @@ enum SpanMode {
 }
 
 enum LeafOrReference<'a> {
-	Leaf(Block<'a>, SpanIter<'a>, SpanMode),
+	Leaf(Block<'a>, Span<'a>, SpanMode),
 	Reference(LinkReference<'a>),
 	Table(TableInfo<'a>),
 }

@@ -146,6 +146,8 @@ impl<'a> fmt::Debug for Span<'a> {
 	}
 }
 
+use super::inline::InlineIterator;
+
 impl<'a> Span<'a> {
 	/// Returns an iterator over the blocks of inline text in the [Span].
 	///
@@ -169,6 +171,11 @@ impl<'a> Span<'a> {
 			indent: self.indent,
 			quotes: self.quotes,
 		}
+	}
+
+	/// Returns an iterator over the inline elements of this span.
+	pub fn iter_inline(&self) -> InlineIterator<'a, SpanIter<'a>> {
+		InlineIterator::<'a, SpanIter<'a>>::new(self)
 	}
 }
 

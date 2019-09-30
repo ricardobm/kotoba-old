@@ -123,10 +123,10 @@ impl<'a> Event<'a> {
 /// some markup.
 #[derive(Clone, Debug)]
 pub enum MarkupEvent<'a> {
-	/// Generated any text in the output.
-	///
-	/// Note that this is NOT encoded as HTML.
-	Text(&'a str),
+	/// Generated for inline blocks in the output.
+	Inline(Span<'a>),
+	/// Generated for raw text in the output.
+	Code(Span<'a>),
 	/// Generated at the beginning of a block element.
 	///
 	/// For each `Open(block)` event there will always be a
