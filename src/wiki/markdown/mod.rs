@@ -35,6 +35,7 @@ pub fn parse_markdown<'a>(input: &'a str) -> MarkdownIterator<'a> {
 pub fn to_html<'a>(iter: MarkdownIterator<'a>) -> util::Result<String> {
 	let mut output = String::new();
 	let mut first = true;
+	let mut last_was_paragraph = false;
 	for it in iter {
 		match it {
 			Event::Output(markup) => {
@@ -42,7 +43,9 @@ pub fn to_html<'a>(iter: MarkdownIterator<'a>) -> util::Result<String> {
 					let break_line = match &markup {
 						MarkupEvent::Open(Block::Paragraph(span)) => !(span.loose == Some(false)),
 						MarkupEvent::Close(Block::Paragraph(_)) => false,
-						MarkupEvent::Close(Block::ListItem(info)) => info.list.loose == Some(true),
+						MarkupEvent::Close(Block::ListItem(info)) => {
+							!last_was_paragraph || info.list.loose == Some(true)
+						}
 						MarkupEvent::Open(..) => true,
 						MarkupEvent::Close(block) => block.is_container(),
 						_ => false,
@@ -53,6 +56,11 @@ pub fn to_html<'a>(iter: MarkdownIterator<'a>) -> util::Result<String> {
 				}
 				write!(output, "{}", markup)?;
 				first = false;
+				last_was_paragraph = if let MarkupEvent::Close(Block::Paragraph(_)) = markup {
+					true
+				} else {
+					false
+				};
 			}
 			Event::Reference(_) => {
 				// TODO: implement references

@@ -495,6 +495,7 @@ impl<'a> BlockIterator<'a> {
 						// ...finally generate the new block and go back to the
 						// empty open state to continue checking for new blocks.
 						self.blocks.push_back(elem.clone());
+						let opened = self.blocks.len();
 						break (IteratorState::Open(opened, indent, None), Some(BlockEvent::Start(elem)));
 					}
 				}
