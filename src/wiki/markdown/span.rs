@@ -24,7 +24,7 @@ pub struct Span<'a> {
 	/// Number of quotation levels (e.g. `>`) to remove from text.
 	pub quotes: usize,
 	/// Is this block of text inside a loose paragraph?
-	pub loose: bool,
+	pub loose: Option<bool>,
 }
 
 pub type Range = std::ops::Range<usize>;
@@ -37,7 +37,7 @@ impl<'a> Default for Span<'a> {
 			end:    Default::default(),
 			indent: 0,
 			quotes: 0,
-			loose:  false,
+			loose:  None,
 		}
 	}
 }
@@ -100,7 +100,7 @@ impl<'a> Span<'a> {
 			end:    self.start.advance(self.buffer, end),
 			indent: self.indent,
 			quotes: self.quotes,
-			loose:  false,
+			loose:  None,
 		}
 	}
 

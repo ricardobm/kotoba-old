@@ -96,6 +96,12 @@ pub struct RowIterator<'a> {
 	cursor: Span<'a>,
 }
 
+impl<'a> RowIterator<'a> {
+	pub fn line_range(&self) -> (usize, usize) {
+		(self.cursor.start.line, self.cursor.end.line)
+	}
+}
+
 impl<'a> Iterator for RowIterator<'a> {
 	type Item = (Span<'a>, TableAlign);
 

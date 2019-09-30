@@ -66,6 +66,8 @@ pub struct ListInfo {
 	pub base_indent: usize,
 	/// Contains the task state if this is a task item.
 	pub task: Option<bool>,
+	/// Position of the marker.
+	pub marker_pos: Pos,
 }
 
 impl fmt::Debug for ListInfo {
@@ -111,7 +113,7 @@ impl ListInfo {
 #[derive(Clone)]
 pub enum Container {
 	/// Markdown blockquote block.
-	BlockQuote,
+	BlockQuote(Pos),
 	/// List item.
 	ListItem(ListInfo),
 }
@@ -119,7 +121,7 @@ pub enum Container {
 impl fmt::Debug for Container {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
-			Container::BlockQuote => write!(f, "BlockQuote"),
+			Container::BlockQuote(..) => write!(f, "BlockQuote"),
 			Container::ListItem(info) => write!(f, "ListItem{:?}", info),
 		}
 	}
@@ -134,7 +136,7 @@ impl Container {
 	/// HTML tag name for this container.
 	fn tag(&self) -> &'static str {
 		match self {
-			Container::BlockQuote => "blockquote",
+			Container::BlockQuote(..) => "blockquote",
 			Container::ListItem(..) => "li",
 		}
 	}
@@ -142,7 +144,7 @@ impl Container {
 	/// Output this container's tag attributes.
 	fn fmt_attrs(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
-			&Container::BlockQuote => Ok(()),
+			&Container::BlockQuote(..) => Ok(()),
 			&Container::ListItem(ListInfo {
 				base_indent,
 				ordered,
@@ -172,7 +174,7 @@ impl Container {
 	/// to skip and an optional target column.
 	fn can_continue<'a>(&self, line: Span<'a>) -> CanContinue {
 		match self {
-			&Container::BlockQuote => {
+			&Container::BlockQuote(..) => {
 				let (indent, bytes) = common::indent_width(line.text(), line.start.column);
 				let mut next = line.start;
 				let line = line.text();
@@ -291,7 +293,7 @@ pub enum Leaf<'a> {
 		info: Option<&'a str>,
 	},
 	/// Thematic break.
-	Break,
+	Break(Pos),
 	/// Setext or ATX header event.
 	///
 	/// - For a Setext header, this will be generated right after the
@@ -322,7 +324,7 @@ impl<'a> fmt::Debug for Leaf<'a> {
 			Leaf::FencedCode { code, lang, info, .. } => {
 				write!(f, "<code lang={:?} info={:?}>\n{}\n</code>", lang, info, code)
 			}
-			Leaf::Break => write!(f, "<hr/>"),
+			Leaf::Break(..) => write!(f, "<hr/>"),
 			Leaf::Header { level, text } => write!(f, "<h{0}>{1}</h{0}>", level, text),
 			Leaf::Table { head, body, .. } => {
 				write!(f, "<table>")?;
@@ -586,7 +588,7 @@ impl<'a> BlockIterator<'a> {
 	fn cur_quotes(&self) -> usize {
 		(self.blocks)
 			.iter()
-			.filter(|x| if let Container::BlockQuote = x { true } else { false })
+			.filter(|x| if let Container::BlockQuote(..) = x { true } else { false })
 			.count()
 	}
 
@@ -613,6 +615,7 @@ impl<'a> BlockIterator<'a> {
 			// Skip optional indentation before the element
 			let base_indent = self.buffer.skip_indent();
 			let base_column = self.buffer.column();
+			let base_pos = self.buffer.position();
 			if base_indent > 3 {
 				// We can have at most 3 spaces before becoming an indented
 				// code block.
@@ -622,7 +625,7 @@ impl<'a> BlockIterator<'a> {
 				// Blockquote
 				// ----------
 				self.buffer.skip_if(' ');
-				Some(Container::BlockQuote)
+				Some(Container::BlockQuote(base_pos))
 			} else if self.is_list_start() {
 				// -----------------------
 				// List marker (unordered)
@@ -644,6 +647,7 @@ impl<'a> BlockIterator<'a> {
 						base_indent,
 						task,
 
+						marker_pos: base_pos,
 						ordered: None,
 					};
 					Some(Container::ListItem(list_info))
@@ -685,6 +689,8 @@ impl<'a> BlockIterator<'a> {
 							text_indent,
 							base_indent,
 							task,
+
+							marker_pos: base_pos,
 							ordered: Some(index),
 						};
 						Some(Container::ListItem(list_info))
@@ -759,7 +765,7 @@ impl<'a> BlockIterator<'a> {
 			// ===================
 			// Semantic break
 			// ===================
-			Some(LeafState::ClosedAndConsumed(Leaf::Break))
+			Some(LeafState::ClosedAndConsumed(Leaf::Break(span.start)))
 		} else if let Some(caps) = RE_ATX_HEADER.captures(text) {
 			// ===================
 			// ATX Heading
@@ -982,7 +988,7 @@ impl<'a> BlockIterator<'a> {
 
 			// Those are closed as soon as they are parsed, so they will never
 			// be appended to:
-			Leaf::Break | Leaf::Header { .. } => unreachable!(),
+			Leaf::Break(..) | Leaf::Header { .. } => unreachable!(),
 
 			// Those are parsed when closing, so they would not occur either.
 			Leaf::LinkReference { .. } => unreachable!(),

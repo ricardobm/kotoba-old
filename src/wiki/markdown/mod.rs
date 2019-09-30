@@ -37,7 +37,15 @@ pub fn to_html<'a>(iter: MarkdownIterator<'a>) -> util::Result<String> {
 		match it {
 			Event::Output(markup) => {
 				if !first {
-					if let MarkupEvent::Open(..) = markup {
+					let break_line = match &markup {
+						MarkupEvent::Open(Block::Paragraph(span)) => span.loose == Some(true),
+						MarkupEvent::Close(Block::Paragraph(span)) => span.loose == Some(true),
+						MarkupEvent::Close(Block::ListItem(info)) => info.list.loose == Some(true),
+						MarkupEvent::Open(..) => true,
+						MarkupEvent::Close(..) => true,
+						_ => false,
+					};
+					if break_line {
 						write!(output, "\n")?;
 					}
 				}
@@ -67,11 +75,17 @@ pub struct MarkdownIterator<'a> {
 	queue: VecDeque<Event<'a>>,
 
 	// Number of pending opened lists.
-	pending: usize,
+	pending: VecDeque<LooseItem>,
+}
+
+enum LooseItem {
+	List { loose: bool, index: usize },
+	ListItem { index: usize },
+	Child { level: usize, line: usize, loose: bool },
 }
 
 enum ParentContainer {
-	BlockQuote,
+	BlockQuote(Pos),
 	List(block_parser::ListInfo),
 	ListItem(block_parser::ListInfo),
 }
@@ -134,12 +148,12 @@ impl<'a> MarkdownIterator<'a> {
 	fn new(input: &'a str, loose_lists: bool) -> MarkdownIterator<'a> {
 		MarkdownIterator {
 			blocks:      BlockIterator::new(input),
-			loose_lists: loose_lists, // TODO: support this
+			loose_lists: loose_lists,
 			parents:     Default::default(),
 			state:       IteratorState::Start,
 
 			queue:   Default::default(),
-			pending: 0,
+			pending: Default::default(),
 		}
 	}
 
@@ -149,17 +163,22 @@ impl<'a> MarkdownIterator<'a> {
 		}
 
 		// For loose list processing we need to wait until a list has been
-		// defined as loose or not before generating
+		// completely defined to determined if it is loose or not
 
 		loop {
-			if self.pending == 0 {
+			if self.pending.len() == 0 {
+				// Process events normally until we find a list open.
 				let result = if let Some(event) = self.queue.pop_front() {
+					// drain the queue of pending events from a previous list
 					Some(event)
 				} else if let Some(event) = self.read_next() {
 					if event.is_list_open() {
-						// After opening a list we start queueing events until
-						// we find the end of the list.
-						self.pending = 1;
+						// from this point on we start queueing events until
+						// the end of the list
+						self.pending.push_back(LooseItem::List {
+							loose: false,
+							index: self.queue.len(),
+						});
 						self.queue.push_back(event);
 						continue;
 					}
@@ -169,21 +188,216 @@ impl<'a> MarkdownIterator<'a> {
 				};
 				break result;
 			} else {
-				if let Some(event) = self.read_next() {
+				// Parse the next event in the input looking for the
+				// "loose list" criteria:
+
+				if let Some(mut event) = self.read_next() {
 					if event.is_list_open() {
-						self.pending += 1;
-					} else if event.is_list_close() {
-						self.pending -= 1;
+						// We have a new list, process this independently than
+						// parent lists.
+						self.pending.push_back(LooseItem::List {
+							loose: false,
+							index: self.queue.len(),
+						});
+					} else if event.is_list_item_open() {
+						// Found a list item
+						self.pending.push_back(LooseItem::ListItem {
+							index: self.queue.len(),
+						});
+					} else if let Event::Output(MarkupEvent::Open(block)) = &event {
+						// For each list item's child block we need to check if
+						// there is a blank line between the start of the block
+						// and the end of the previous one.
+
+						// Get the range. The end range is not reliable because
+						// we haven't reach the end of the block yet, but we'll
+						// use it for now and update later at the `Close` event.
+						let (sta, end) = block.line_range();
+
+						match self.pending.back_mut() {
+							Some(LooseItem::Child {
+								ref mut level,
+								ref mut line,
+								ref mut loose,
+							}) => {
+								// We already encountered children for this
+								// list item.
+								//
+								// The level will be zero if we just closed a
+								// previous child block. Non-zero means we are
+								// inside the hierarchy (the loose concept
+								// applies only to direct children).
+								if *level == 0 {
+									if sta > *line + 1 {
+										// we consume this when closing the
+										// parent list item
+										*loose = true;
+									}
+									// we probably could not even bother to
+									// save the end here
+									*line = end;
+								}
+								*level += 1;
+							}
+							_ => {
+								// This is the first child of the list item.
+								self.pending.push_back(LooseItem::Child {
+									level: 1,
+									line:  end,
+									loose: false,
+								});
+							}
+						}
+					} else if let Event::Output(MarkupEvent::Close(Block::List(ref mut close_info))) = &mut event {
+						// Close a list and update its loose information, at
+						// this point we already processed all items and their
+						// children.
+						match self.pending.pop_back() {
+							// remove pending List
+							Some(LooseItem::List { loose, index }) => match self.queue[index] {
+								Event::Output(MarkupEvent::Open(ref mut block)) => match block {
+									Block::List(ref mut info) => {
+										// update the loose information on the opening event
+										info.loose = Some(loose);
+										// also update the close event info
+										close_info.loose = Some(loose);
+									}
+									_ => unreachable!("block in queue event for pending List is not a List"),
+								},
+								_ => unreachable!("queue event in pending List is not an open"),
+							},
+							_ => unreachable!("pending List and close event did not match"),
+						}
+					} else if let Event::Output(MarkupEvent::Close(Block::ListItem(ref mut info))) = &mut event {
+						// Close a list item and update its loose information
+
+						// We store the "loose" status on the child item.
+						//
+						// It is not impossible to not have a child item in
+						// case the list item is empty, so we do that
+						// conditionally.
+						let loose = if let Some(LooseItem::Child { loose, .. }) = self.pending.back() {
+							let loose = *loose;
+							self.pending.pop_back();
+							loose
+						} else {
+							false
+						};
+
+						// Update the close event
+						info.loose = Some(loose);
+
+						// Remove the pending ListItem and update its open event
+						match self.pending.pop_back() {
+							Some(LooseItem::ListItem { index }) => match self.queue[index] {
+								Event::Output(MarkupEvent::Open(ref mut block)) => match block {
+									Block::ListItem(ref mut info) => {
+										info.loose = Some(loose);
+
+										// If the item is loose, then the parent list is
+										// also loose.
+										if loose {
+											match self.pending.back_mut() {
+												Some(LooseItem::List { ref mut loose, .. }) => {
+													*loose = true;
+												}
+												_ => unreachable!("ListItem's pending parent is not a List"),
+											}
+										}
+									}
+									_ => unreachable!("block in queue event for pending ListItem is not ListItem"),
+								},
+								_ => unreachable!("queue event in pending ListItem is not an Open"),
+							},
+							_ => unreachable!("pending ListItem and close event did not match"),
+						}
+					} else if let Event::Output(MarkupEvent::Close(block)) = &event {
+						// When closing a block, we just update the child's item
+						// last line number.
+						let (_, end) = block.line_range();
+						match self.pending.back_mut() {
+							Some(LooseItem::Child {
+								ref mut level,
+								ref mut line,
+								..
+							}) => {
+								*level -= 1;
+								*line = end;
+							}
+							_ => unreachable!("close event with no pending Child item"),
+						}
 					}
 					self.queue.push_back(event);
 				} else {
-					// Should not happen, but just in case, we reset the
-					// pending to zero at the end of the input.
-					self.pending = 0;
+					// we should never reach the end of events with a pending
+					// list open, assuming that we flush all pending close
+					// events at the end of the input.
+					assert!(self.pending.len() == 0);
 				}
 
-				if self.pending == 0 {
-					compute_looseness(&mut self.queue);
+				if self.pending.len() == 0 {
+					// When we close the last pending item we still need to
+					// update child Paragraph blocks with the loose
+					// information:
+					let mut loose = VecDeque::new();
+
+					fn get_loose(stack: &VecDeque<Option<bool>>) -> Option<bool> {
+						if let Some(value) = stack.back() {
+							*value
+						} else {
+							None
+						}
+					}
+
+					for it in self.queue.iter_mut() {
+						if let Event::Output(ref mut markup) = it {
+							match markup {
+								MarkupEvent::Open(ref mut block) => {
+									match block {
+										Block::List(info) => {
+											// Push the loose information on the
+											// list.
+											loose.push_back(info.loose);
+										}
+										Block::ListItem(ref mut info) => {
+											// Update the list level information
+											// for the item
+											info.list.loose = get_loose(&loose);
+										}
+										Block::Paragraph(ref mut text) => {
+											text.loose = get_loose(&loose);
+										}
+										_ => {
+											// push a None onto to stack to
+											// stop the "loose" propagating to
+											// children
+											loose.push_back(None);
+										}
+									}
+								}
+								MarkupEvent::Close(ref mut block) => {
+									// `Close` event mirrors the `Open` above.
+									match block {
+										Block::List(_) => {
+											loose.pop_back();
+										}
+										Block::ListItem(ref mut info) => {
+											info.list.loose = get_loose(&loose);
+										}
+										Block::Paragraph(ref mut text) => {
+											text.loose = get_loose(&loose);
+										}
+										_ => {
+											loose.pop_back();
+										}
+									}
+								}
+								MarkupEvent::Text(_) => {
+									// don't care about text
+								}
+							}
+						}
+					}
 				}
 			}
 		}
@@ -220,9 +434,9 @@ impl<'a> MarkdownIterator<'a> {
 				// Start handling of a `BlockEvent::Start(container)` event
 				IteratorState::HandleStart(block) => {
 					match block {
-						Container::BlockQuote => {
-							self.parents.push_back(ParentContainer::BlockQuote);
-							IteratorState::GenerateOpen(Block::BlockQuote)
+						Container::BlockQuote(pos) => {
+							self.parents.push_back(ParentContainer::BlockQuote(pos));
+							IteratorState::GenerateOpen(Block::BlockQuote(pos))
 						}
 
 						Container::ListItem(item_info) => {
@@ -236,8 +450,8 @@ impl<'a> MarkdownIterator<'a> {
 							//
 							let (is_new_list, has_list) = match self.parents.iter().last() {
 								None => (true, false),
-								Some(ParentContainer::BlockQuote) => (true, false),
-								Some(ParentContainer::ListItem(_)) => (true, false),
+								Some(ParentContainer::BlockQuote(..)) => (true, false),
+								Some(ParentContainer::ListItem(..)) => (true, false),
 								Some(ParentContainer::List(info)) => (!info.is_next_same_list(&item_info), true),
 							};
 
@@ -302,9 +516,9 @@ impl<'a> MarkdownIterator<'a> {
 					}
 
 					let event = match block {
-						Container::BlockQuote => match self.parents.pop_back() {
-							Some(ParentContainer::BlockQuote) => {
-								Self::close_container_event(ParentContainer::BlockQuote)
+						Container::BlockQuote(..) => match self.parents.pop_back() {
+							Some(ParentContainer::BlockQuote(pos)) => {
+								Self::close_container_event(ParentContainer::BlockQuote(pos))
 							}
 							_ => unreachable!(),
 						},
@@ -515,9 +729,9 @@ impl<'a> MarkdownIterator<'a> {
 				};
 				LeafOrReference::Leaf(Block::FencedCode(info), iter, SpanMode::Code)
 			}
-			Leaf::Break => {
+			Leaf::Break(pos) => {
 				let iter = Span::default().iter();
-				LeafOrReference::Leaf(Block::Break, iter, SpanMode::Code)
+				LeafOrReference::Leaf(Block::Break(pos), iter, SpanMode::Code)
 			}
 			Leaf::Header { level, text } => {
 				let iter = text.iter();
@@ -552,7 +766,7 @@ impl<'a> MarkdownIterator<'a> {
 
 	fn close_container_event(container: ParentContainer) -> Option<Event<'a>> {
 		let block = match container {
-			ParentContainer::BlockQuote => Block::BlockQuote,
+			ParentContainer::BlockQuote(pos) => Block::BlockQuote(pos),
 			ParentContainer::ListItem(info) => Block::ListItem(ListItemInfo::from_block_info(info)),
 			ParentContainer::List(info) => Block::List(ListInfo::from_block_info(info)),
 		};

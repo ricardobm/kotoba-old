@@ -29,7 +29,7 @@ fn write_html_char(f: &mut fmt::Formatter, c: char) -> fmt::Result {
 
 fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> fmt::Result {
 	if let Block::Paragraph(text) = block {
-		if !text.loose {
+		if let Some(true) = text.loose {
 			return if open { write!(f, "<p>") } else { write!(f, "</p>") };
 		} else {
 			return Ok(());
@@ -37,7 +37,7 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 	}
 
 	let is_single_tag = match block {
-		Block::Break => true,
+		Block::Break(..) => true,
 		_ => false,
 	};
 
@@ -48,7 +48,7 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 	}
 
 	match block {
-		Block::BlockQuote => {
+		Block::BlockQuote(..) => {
 			write!(f, "blockquote")?;
 		}
 
@@ -64,28 +64,21 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 		}
 
 		Block::ListItem(item) => {
-			let loose = item.is_list_loose();
 			if open {
 				write!(f, "li")?;
-				if loose {
-					write!(f, "><p")?;
-				}
 				if let Some(task) = item.task {
 					write!(f, "><input type='checkbox'")?;
 					if task {
 						write!(f, " checked")?;
 					}
+					write!(f, "/")?;
 				}
 			} else {
-				if loose {
-					write!(f, "p></li")?;
-				} else {
-					write!(f, "li")?;
-				}
+				write!(f, "li")?;
 			}
 		}
 
-		Block::Break => {
+		Block::Break(..) => {
 			if open {
 				write!(f, "hr")?;
 			}

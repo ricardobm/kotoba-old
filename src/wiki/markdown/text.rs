@@ -85,6 +85,10 @@ impl<'a> TextBuffer<'a> {
 		self.pos.column
 	}
 
+	pub fn position(&self) -> Pos {
+		self.pos
+	}
+
 	/// Return the text at the current position in the buffer.
 	pub fn cur_text(&self) -> &'a str {
 		&self.src[self.pos.offset..]

@@ -1,10 +1,9 @@
-use std::cell::Cell;
 use std::fmt;
 use std::rc::Rc;
 
 use super::block_parser;
 use super::table_parser;
-use super::Span;
+use super::{Pos, Span};
 
 pub use self::table_parser::TableAlign;
 
@@ -85,14 +84,28 @@ impl<'a> Event<'a> {
 		}
 	}
 
-	fn is_open(&self) -> bool {
+	pub fn is_list_item_open(&self) -> bool {
+		match self {
+			Event::Output(MarkupEvent::Open(Block::ListItem(..))) => true,
+			_ => false,
+		}
+	}
+
+	pub fn is_list_item_close(&self) -> bool {
+		match self {
+			Event::Output(MarkupEvent::Close(Block::ListItem(..))) => true,
+			_ => false,
+		}
+	}
+
+	pub fn is_open(&self) -> bool {
 		match self {
 			Event::Output(markup) => markup.is_open(),
 			_ => false,
 		}
 	}
 
-	fn is_close(&self) -> bool {
+	pub fn is_close(&self) -> bool {
 		match self {
 			Event::Output(markup) => markup.is_close(),
 			_ => false,
@@ -149,13 +162,13 @@ pub enum Block<'a> {
 	// ========================
 	// Containers
 	// ========================
-	BlockQuote,
+	BlockQuote(Pos),
 	List(ListInfo),
 	ListItem(ListItemInfo),
 	// ========================
 	// Leaf elements
 	// ========================
-	Break,
+	Break(Pos),
 	Header(HeaderLevel, Span<'a>),
 	Paragraph(Span<'a>),
 	HTML(Span<'a>),
@@ -169,13 +182,48 @@ pub enum Block<'a> {
 	TableCell(TableCell<'a>),
 }
 
+impl<'a> Block<'a> {
+	pub fn line_range(&self) -> (usize, usize) {
+		match self {
+			Block::BlockQuote(pos) => (pos.line, pos.line),
+			Block::List(info) => (info.marker_pos.line, info.marker_pos.line),
+			Block::ListItem(info) => (info.list.marker_pos.line, info.list.marker_pos.line),
+			Block::Break(pos) => (pos.line, pos.line),
+			Block::Header(_lvl, span) => (span.start.line, span.end.line),
+			Block::Paragraph(span) => (span.start.line, span.end.line),
+			Block::HTML(span) => (span.start.line, span.end.line),
+			Block::Code(span) => (span.start.line, span.end.line),
+			Block::FencedCode(info) => (info.code.start.line, info.code.end.line),
+			Block::Table(info) => info.line_range(),
+			Block::TableHead(info) => {
+				let (sta, _) = info.line_range();
+				let (_, end) = info.head().unwrap().line_range();
+				(sta, end)
+			}
+			Block::TableHeadCell(cell) => cell.line_range(),
+			Block::TableBody(info) => {
+				let (sta, _) = if let Some(head) = info.head() {
+					let (sta, end) = head.line_range();
+					(sta + 1, end)
+				} else {
+					info.line_range()
+				};
+				let (_, end) = info.line_range();
+				(sta, end)
+			}
+			Block::TableRow(row) => row.line_range(),
+			Block::TableCell(cell) => cell.line_range(),
+		}
+	}
+}
+
 impl<'a> fmt::Debug for Block<'a> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
-			Block::BlockQuote => write!(f, "BlockQuote"),
+			Block::BlockQuote(..) => write!(f, "BlockQuote"),
 			Block::List(info) => write!(f, "List{:?}", info),
 			Block::ListItem(info) => write!(f, "ListItem{:?}", info),
-			Block::Break => write!(f, "Break"),
+			Block::Break(..) => write!(f, "Break"),
 			Block::Header(h, s) => write!(f, "Header({}, {:?})", *h as u8, s),
 			Block::Paragraph(s) => write!(f, "Paragraph({:?})", s),
 			Block::HTML(s) => write!(f, "HTML({:?})", s),
@@ -207,6 +255,8 @@ pub struct ListInfo {
 	///
 	/// This will only be available if loose list processing is enabled.
 	pub loose: Option<bool>,
+	/// Marker position.
+	pub marker_pos: Pos,
 }
 
 impl fmt::Debug for ListInfo {
@@ -247,8 +297,7 @@ pub struct ListItemInfo {
 	pub index: usize,
 	/// If this item is a task item, this will contain the task state.
 	pub task: Option<bool>,
-
-	loose: Cell<Option<bool>>,
+	pub loose: Option<bool>,
 }
 
 impl fmt::Debug for ListItemInfo {
@@ -263,18 +312,18 @@ impl fmt::Debug for ListItemInfo {
 			self.list.marker,
 			if let Some(task) = self.task {
 				if task {
-					" task=true"
+					" task=1"
 				} else {
-					" task=false"
+					" task=0"
 				}
 			} else {
 				""
 			},
-			if let Some(loose) = self.loose.get() {
+			if let Some(loose) = self.loose {
 				if loose {
-					" loose"
+					" loose=1"
 				} else {
-					" not-loose"
+					" loose=0"
 				}
 			} else {
 				""
@@ -287,27 +336,14 @@ impl ListItemInfo {
 	pub fn from_block_info(info: block_parser::ListInfo) -> ListItemInfo {
 		ListItemInfo {
 			list:  ListInfo {
-				ordered: info.ordered,
-				marker:  info.marker,
-				loose:   None,
+				ordered:    info.ordered,
+				marker:     info.marker,
+				loose:      None,
+				marker_pos: info.marker_pos,
 			},
 			index: 0,
 			task:  info.task,
 			loose: Default::default(),
-		}
-	}
-}
-
-impl ListItemInfo {
-	/// Return `true` if the list item contains blank lines.
-	pub fn loose(&self) -> bool {
-		panic!();
-	}
-
-	pub fn is_list_loose(&self) -> bool {
-		match self.list.loose {
-			Some(true) => true,
-			_ => false,
 		}
 	}
 }
@@ -364,6 +400,11 @@ impl<'a> TableInfo<'a> {
 			}),
 		}
 	}
+
+	pub fn line_range(&self) -> (usize, usize) {
+		let (sta, end) = (self.inner.span.start, self.inner.span.end);
+		(sta.line, end.line)
+	}
 }
 
 struct TableInner<'a> {
@@ -412,6 +453,12 @@ pub struct TableCell<'a> {
 	pub align: TableAlign,
 }
 
+impl<'a> TableCell<'a> {
+	pub fn line_range(&self) -> (usize, usize) {
+		(self.text.start.line, self.text.end.line)
+	}
+}
+
 impl<'a> fmt::Debug for TableCell<'a> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "<c")?;
@@ -426,6 +473,12 @@ pub struct TableRow<'a> {
 	table: TableInfo<'a>,
 	iter:  table_parser::RowIterator<'a>,
 	cols:  usize,
+}
+
+impl<'a> TableRow<'a> {
+	pub fn line_range(&self) -> (usize, usize) {
+		self.iter.line_range()
+	}
 }
 
 impl<'a> fmt::Debug for TableRow<'a> {
@@ -543,12 +596,4 @@ pub struct LinkReference<'a> {
 	pub title: Span<'a>,
 	/// Link destination URL.
 	pub url: RawStr<'a>,
-}
-
-use std::collections::VecDeque;
-
-type EventList<'a> = VecDeque<Event<'a>>;
-
-pub fn compute_looseness<'a>(ls: &mut EventList<'a>) {
-	assert!(ls.len() > 0 && ls[0].is_list_open());
 }
