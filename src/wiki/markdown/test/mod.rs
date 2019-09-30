@@ -2,6 +2,7 @@ use super::*;
 
 mod basics;
 
+mod spec_atx_headings;
 mod spec_breaks;
 
 fn test(input: &str, expected: &str) {

@@ -1,19 +1,13 @@
 use speculate::speculate;
 
-/*
-it "" {
-	test(r#"
-	"#, r#"
-	"#);
-}
-*/
-
 use super::*;
 
 speculate! { describe "markdown xyz" {
 
-it "should parse" {
-	test(r#""#, r#""#)
+it "" {
+	test(r#"
+	"#, r#"
+	"#);
 }
 
 }}
