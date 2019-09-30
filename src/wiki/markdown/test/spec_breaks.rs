@@ -13,7 +13,7 @@ it "should parse" {
 		<hr/>
 		<hr/>
 		<hr/>
-	"#)
+	"#);
 }
 
 it "wrong characters" {
@@ -24,7 +24,7 @@ it "wrong characters" {
 	"#, r#"
 		<p>+++</p>
 		<p>===</p>
-	"#)
+	"#);
 }
 
 it "not enough characters" {
@@ -36,7 +36,7 @@ it "not enough characters" {
 		<p>--
 		**
 		__</p>
-	"#)
+	"#);
 }
 
 it "one to three spaces indent are allowed" {
@@ -48,7 +48,7 @@ it "one to three spaces indent are allowed" {
 		<hr/>
 		<hr/>
 		<hr/>
-	"#)
+	"#);
 }
 
 it "four spaces is too many" {
@@ -73,7 +73,7 @@ it "four spaces is too many" {
 		    ---</p>
 		<p>Bar
 			---</p>
-	"#)
+	"#);
 }
 
 it "more than three characters may be used" {
@@ -88,7 +88,7 @@ it "more than three characters may be used" {
 		<hr/>
 		<hr/>
 		<hr/>
-	"#)
+	"#);
 }
 
 it "spaces are allowed between characters" {
@@ -104,13 +104,13 @@ it "spaces are allowed between characters" {
 		<hr/>
 		<hr/>
 		<hr/>
-	"#)
+	"#);
 }
 
 it "spaces are allowed at the end" {
 	test("- - -  ", r#"
 		<hr/>
-	"#)
+	"#);
 }
 
 it "no other characters may occur on the line" {
@@ -124,7 +124,7 @@ it "no other characters may occur on the line" {
 		<p>_ _ _ _ a</p>
 		<p>a________</p>
 		<p>****a****</p>
-	"#)
+	"#);
 }
 
 it "non whitespace characters must be the same" {
@@ -132,10 +132,9 @@ it "non whitespace characters must be the same" {
 		_-_
 	"#, r#"
 		<p>_-_</p>
-	"#)
+	"#);
 }
 
-#[ignore]
 it "do not need blank lines before or after" {
 	test(r#"
 		- foo
@@ -149,7 +148,7 @@ it "do not need blank lines before or after" {
 		<ul>
 		<li>bar</li>
 		</ul>
-	"#)
+	"#);
 }
 
 it "can interrupt a paragraph" {
@@ -161,7 +160,7 @@ it "can interrupt a paragraph" {
 		<p>foo</p>
 		<hr/>
 		<p>bar</p>
-	"#)
+	"#);
 }
 
 it "has lower precedence than setext" {
@@ -172,10 +171,9 @@ it "has lower precedence than setext" {
 	"#, r#"
 		<h2>foo</h2>
 		<p>bar</p>
-	"#)
+	"#);
 }
 
-#[ignore]
 it "has higher precedence than a list item" {
 	test(r#"
 		* foo
@@ -189,10 +187,9 @@ it "has higher precedence than a list item" {
 		<ul>
 		<li>bar</li>
 		</ul>
-	"#)
+	"#);
 }
 
-#[ignore]
 it "can be used in a list item" {
 	test(r#"
 		- foo
@@ -206,7 +203,7 @@ it "can be used in a list item" {
 		</li>
 		<li>bar</li>
 		</ul>
-	"#)
+	"#);
 }
 
 }}

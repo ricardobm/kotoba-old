@@ -520,7 +520,7 @@ impl<'a> BlockIterator<'a> {
 					let (next_state, elem) = if let Some(inline) = std::mem::take(&mut self.inline) {
 						// If there is a current leaf block open, append text
 						// to it...
-						match self.append_leaf(inline, cur_line) {
+						match self.append_leaf(inline, cur_line, opened) {
 							LeafState::Open(leaf) => {
 								self.inline = Some(leaf);
 								(IteratorState::None, None)
@@ -854,7 +854,7 @@ impl<'a> BlockIterator<'a> {
 		}
 	}
 
-	fn append_leaf(&mut self, mut leaf: Leaf<'a>, line: Span<'a>) -> LeafState<'a> {
+	fn append_leaf(&mut self, mut leaf: Leaf<'a>, line: Span<'a>, opened: usize) -> LeafState<'a> {
 		lazy_static! {
 			static ref RE_SETEXT_HEADER: Regex = Regex::new(r"^[ ]{0,3}([-]{3,}|[=]{3,})\s*$").unwrap();
 		}
@@ -864,9 +864,31 @@ impl<'a> BlockIterator<'a> {
 		let (indent, _) = common::indent_width(line.text(), line.start.column);
 		match leaf {
 			Leaf::Paragraph { mut text } => {
+				// A setext headings cannot be interpreted as block constructs
+				// other than paragraphs, so the following is OK
+				//
+				//     heading
+				//     -------
+				//
+				//     > heading
+				//     > -------
+				//
+				//     - heading
+				//       -------
+				//
+				// while the following is not
+				//
+				//     > not a heading
+				//     ---------------
+				//
+				//     - not a heading
+				//     ---------------
+
+				let can_be_setext = self.blocks.len() == opened;
 				if empty {
 					LeafState::Closed(Leaf::Paragraph { text })
-				} else if RE_SETEXT_HEADER.is_match(line.text()) {
+				} else if can_be_setext && RE_SETEXT_HEADER.is_match(line.text()) {
+					// re-interpret the paragraph as a Setext heading
 					let level = if line.text().trim().chars().next().unwrap() == '=' {
 						1
 					} else {
