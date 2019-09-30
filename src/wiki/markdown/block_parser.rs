@@ -595,11 +595,7 @@ impl<'a> BlockIterator<'a> {
 	fn is_list_start(&mut self) -> bool {
 		let line = self.buffer.cur_line().text();
 		if line.starts_with(|ch| ch == '-' || ch == '+' || ch == '*') {
-			if !RE_BREAK.is_match(line) {
-				true
-			} else {
-				false
-			}
+			!RE_BREAK.is_match(line)
 		} else {
 			false
 		}

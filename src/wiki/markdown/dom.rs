@@ -46,6 +46,12 @@ pub use self::table_parser::TableAlign;
 #[derive(Copy, Clone)]
 pub struct RawStr<'a>(pub &'a str);
 
+impl<'a> fmt::Debug for RawStr<'a> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "{:?}", self.0)
+	}
+}
+
 #[derive(Copy, Clone)]
 pub enum HeaderLevel {
 	H1 = 1,
@@ -57,7 +63,7 @@ pub enum HeaderLevel {
 }
 
 /// Events generated when iterating markdown text.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Event<'a> {
 	/// Event that generates output.
 	Output(MarkupEvent<'a>),
@@ -115,7 +121,7 @@ impl<'a> Event<'a> {
 
 /// Events generated when iterating markdown text that directly generate
 /// some markup.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum MarkupEvent<'a> {
 	/// Generated any text in the output.
 	///
@@ -600,7 +606,7 @@ impl<'a> fmt::Debug for TableBodyIter<'a> {
 }
 
 /// Link reference.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LinkReference<'a> {
 	/// Link label text. This can contain inline elements.
 	pub label: Span<'a>,

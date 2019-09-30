@@ -78,12 +78,14 @@ pub struct MarkdownIterator<'a> {
 	pending: VecDeque<LooseItem>,
 }
 
+#[derive(Debug)]
 enum LooseItem {
 	List { loose: bool, index: usize },
 	ListItem { index: usize },
 	Child { level: usize, line: usize, loose: bool },
 }
 
+#[derive(Debug)]
 enum ParentContainer {
 	BlockQuote(Pos),
 	List(block_parser::ListInfo),
@@ -433,6 +435,14 @@ impl<'a> MarkdownIterator<'a> {
 
 				// Start handling of a `BlockEvent::Start(container)` event
 				IteratorState::HandleStart(block) => {
+					// close a pending open list before continuing
+					if let Some(ParentContainer::List(_)) = self.parents.back() {
+						let is_item = if let Container::ListItem(_) = &block { true } else { false };
+						if !is_item {
+							break self.close_list(IteratorState::HandleStart(block));
+						}
+					}
+
 					match block {
 						Container::BlockQuote(pos) => {
 							self.parents.push_back(ParentContainer::BlockQuote(pos));
@@ -470,9 +480,8 @@ impl<'a> MarkdownIterator<'a> {
 
 				// Generate a non-list-item block "open" event...
 				IteratorState::GenerateOpen(block) => {
-					// ...first we need to check if the last container open
-					// is a root list element and close it.
-					if let Some(ParentContainer::List(_)) = self.parents.iter().last() {
+					// close a pending open list before continuing
+					if let Some(ParentContainer::List(_)) = self.parents.back() {
 						// assert that we are not being used with a ListItem
 						if let Block::ListItem(_) = block {
 							unreachable!();
