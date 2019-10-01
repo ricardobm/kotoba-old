@@ -20,9 +20,9 @@ mod table_parser;
 mod dom;
 use self::dom::*;
 
-mod inline;
-
+mod entities;
 mod html;
+mod inline;
 
 use util;
 

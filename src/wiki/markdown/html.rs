@@ -36,12 +36,25 @@ fn write_html_char(f: &mut fmt::Formatter, c: char) -> fmt::Result {
 	}
 }
 
+fn escape_html(f: &mut fmt::Formatter, s: &str) -> fmt::Result {
+	for c in s.chars() {
+		write_html_char(f, c)?;
+	}
+	Ok(())
+}
+
 fn fmt_inline<'a>(ev: &InlineEvent<'a>, f: &mut fmt::Formatter) -> fmt::Result {
 	match ev {
-		InlineEvent::Text(s) => f.write_str(s),
-		InlineEvent::LineBreak => f.write_str("<br/>\n"),
-		InlineEvent::Entity { entity, .. } => f.write_str(entity),
-		InlineEvent::HTML { code, .. } => f.write_str(code),
+		&InlineEvent::Text(s) => f.write_str(s),
+		&InlineEvent::LineBreak => f.write_str("<br/>\n"),
+		&InlineEvent::Entity { entity, output, .. } => {
+			if entity == "&nbsp;" {
+				f.write_str(entity)
+			} else {
+				escape_html(f, output)
+			}
+		}
+		&InlineEvent::HTML { code, .. } => f.write_str(code),
 		_ => panic!("not implemented: HTML for inline {:?}", ev),
 	}
 }

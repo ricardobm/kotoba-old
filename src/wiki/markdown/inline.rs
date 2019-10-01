@@ -21,9 +21,9 @@ pub enum InlineEvent<'a> {
 		/// This can be either an entity or a character that needs escaping.
 		source: &'a str,
 		/// The HTML entity to generate.
-		entity: &'static str,
+		entity: &'a str,
 		/// The actual Unicode character corresponding to the entity.
-		output: char,
+		output: &'a str,
 	},
 	/// Either a `< >` delimited URL or a detected hyperlink.
 	AutoLink {
@@ -125,6 +125,14 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 							'\\' => {
 								break self.parse_escape();
 							}
+							'&' => {
+								break self.parse_entity();
+							}
+							'<' | '>' | '\'' | '"' => {
+								let (len, event) = next_char_escaped(self.chunk);
+								self.consume_chunk(len);
+								break (State::Start, event);
+							}
 							_ => panic!("panicked at next char '{:?}'", self.next_char()),
 						};
 					} else {
@@ -160,6 +168,32 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 				(State::Start, Some(backslash))
 			}
 		}
+	}
+
+	fn parse_entity(&mut self) -> (State<'a>, Option<InlineEvent<'a>>) {
+		use super::entities::get_named_entity;
+
+		lazy_static! {
+			static ref RE_ENTITY: Regex = Regex::new(r#"^&\w+;"#).unwrap();
+		}
+
+		if let Some(m) = RE_ENTITY.find(self.chunk) {
+			let len = m.end();
+			let entity = m.as_str();
+			if let Some(output) = get_named_entity(entity) {
+				let event = InlineEvent::Entity {
+					source: entity,
+					entity: entity,
+					output: output,
+				};
+				self.consume_chunk(len);
+				return (State::Start, Some(event));
+			}
+		}
+
+		let (len, event) = next_char_escaped(self.chunk);
+		self.consume_chunk(len);
+		(State::Start, event)
 	}
 
 	//
@@ -281,7 +315,7 @@ fn next_char_escaped<'a>(text: &'a str) -> (usize, Option<InlineEvent<'a>>) {
 		let event = InlineEvent::Entity {
 			source: txt,
 			entity: entity,
-			output: chr,
+			output: txt,
 		};
 		(len, Some(event))
 	} else {
@@ -296,7 +330,7 @@ fn is_special_char(chr: char) -> bool {
 		// escapes
 		'\\' => true,
 		// HTML entities
-		'&' | '<' | '>' | '\'' | '"' => false,
+		'&' | '<' | '>' | '\'' | '"' => true,
 		// code spans
 		'`' => false,
 		// emphasis and strikethrough
