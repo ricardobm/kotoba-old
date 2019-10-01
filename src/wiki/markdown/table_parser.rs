@@ -130,7 +130,7 @@ impl<'a> Iterator for RowIterator<'a> {
 			if text != ":" {
 				if text.starts_with(":") {
 					align = TableAlign::Left;
-					cell = cell.sub_text(text[1..].trim_start());
+					cell = cell.sub_from_text(text[1..].trim_start());
 				}
 
 				if text.ends_with(":") && !text.ends_with("\\:") {
@@ -139,7 +139,7 @@ impl<'a> Iterator for RowIterator<'a> {
 						TableAlign::Left => TableAlign::Center,
 						_ => unreachable!(),
 					};
-					cell = cell.sub_text(text[..text.len() - 1].trim_end());
+					cell = cell.sub_from_text(text[..text.len() - 1].trim_end());
 				}
 			}
 

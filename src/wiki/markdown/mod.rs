@@ -10,7 +10,7 @@ mod span;
 pub use self::span::{Range, Span, SpanIter};
 
 mod text;
-pub use self::text::{Pos, TextBuffer};
+pub use self::text::{Pos, TextBuffer, range_from, range_from_pos};
 
 mod link_ref;
 use self::link_ref::parse_link_ref;

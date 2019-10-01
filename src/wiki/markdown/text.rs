@@ -3,12 +3,30 @@ use std::fmt;
 use super::common;
 use super::Span;
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, Eq)]
 pub struct Pos {
 	pub line:   usize,
 	pub column: usize,
 	pub offset: usize,
 	was_cr:     bool,
+}
+
+impl PartialEq for Pos {
+	fn eq(&self, other: &Self) -> bool {
+		self.offset == other.offset
+	}
+}
+
+impl Ord for Pos {
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+		self.offset.cmp(&other.offset)
+	}
+}
+
+impl PartialOrd for Pos {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		Some(self.cmp(other))
+	}
 }
 
 impl fmt::Debug for Pos {
@@ -266,4 +284,42 @@ impl<'a> TextBuffer<'a> {
 
 		pos
 	}
+}
+
+//=========================================
+// Helper functions
+//=========================================
+
+pub fn range_from<T>(from: &T, len: usize) -> std::ops::Range<usize>
+where
+	T: std::ops::RangeBounds<usize>,
+{
+	let sta = match from.start_bound() {
+		std::ops::Bound::Unbounded => 0,
+		std::ops::Bound::Included(index) => *index,
+		std::ops::Bound::Excluded(index) => *index + 1,
+	};
+	let end = match from.end_bound() {
+		std::ops::Bound::Unbounded => len,
+		std::ops::Bound::Included(index) => *index + 1,
+		std::ops::Bound::Excluded(index) => *index,
+	};
+	std::ops::Range { start: sta, end: end }
+}
+
+pub fn range_from_pos<T>(from: &T, len: usize) -> std::ops::Range<usize>
+where
+	T: std::ops::RangeBounds<Pos>,
+{
+	let sta = match from.start_bound() {
+		std::ops::Bound::Unbounded => 0,
+		std::ops::Bound::Included(pos) => pos.offset,
+		std::ops::Bound::Excluded(pos) => pos.offset + 1,
+	};
+	let end = match from.end_bound() {
+		std::ops::Bound::Unbounded => len,
+		std::ops::Bound::Included(pos) => pos.offset + 1,
+		std::ops::Bound::Excluded(pos) => pos.offset,
+	};
+	std::ops::Range { start: sta, end: end }
 }

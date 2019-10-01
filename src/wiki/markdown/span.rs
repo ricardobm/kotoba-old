@@ -74,26 +74,24 @@ impl<'a> Span<'a> {
 		&self.buffer[self.start.offset..self.end.offset]
 	}
 
+	pub fn sub_text<T>(&self, range: T) -> &'a str
+	where
+		T: std::ops::RangeBounds<Pos>,
+	{
+		let range = super::range_from_pos(&range, self.buffer.len());
+		&self.buffer[range.start..range.end]
+	}
+
 	pub fn end(&self) -> Span<'a> {
 		self.sub(self.len()..)
 	}
 
-	pub fn sub_text(&self, s: &str) -> Span<'a> {
+	pub fn sub_from_text(&self, s: &str) -> Span<'a> {
 		self.sub(self.text_range(s).unwrap())
 	}
 
 	pub fn sub<T: std::ops::RangeBounds<usize>>(&self, range: T) -> Span<'a> {
-		let start = match range.start_bound() {
-			std::ops::Bound::Unbounded => 0,
-			std::ops::Bound::Included(index) => *index,
-			std::ops::Bound::Excluded(index) => *index + 1,
-		};
-		let end = match range.end_bound() {
-			std::ops::Bound::Unbounded => self.len(),
-			std::ops::Bound::Included(index) => *index + 1,
-			std::ops::Bound::Excluded(index) => *index,
-		};
-
+		let Range { start, end } = super::range_from(&range, self.len());
 		Span {
 			buffer: self.buffer,
 			start:  self.start.advance(self.buffer, start),
@@ -102,6 +100,11 @@ impl<'a> Span<'a> {
 			quotes: self.quotes,
 			loose:  None,
 		}
+	}
+
+	pub fn sub_pos<T: std::ops::RangeBounds<Pos>>(&self, range: T) -> Span<'a> {
+		let range = super::range_from_pos(&range, self.buffer.len());
+		self.sub(range)
 	}
 
 	/// Convert a block of text back to an offset in the Span's buffer.
@@ -199,6 +202,18 @@ pub struct SpanIter<'a> {
 }
 
 impl<'a> SpanIter<'a> {
+	#[inline(always)]
+	pub fn pos(&self) -> Pos {
+		self.cursor
+	}
+
+	pub fn skip_to(&mut self, pos: Pos) {
+		debug_assert!(pos >= self.cursor && pos <= self.maxpos);
+		self.cursor = pos;
+		self.pending = "";
+		self.stripped = false;
+	}
+
 	#[inline(always)]
 	pub fn at_end(&self) -> bool {
 		self.pending.len() == 0 && self.cursor.offset >= self.maxpos.offset
@@ -323,6 +338,77 @@ impl<'a> SpanIter<'a> {
 		self.cursor.column = column;
 		self.cursor.offset += offset;
 		self.pending = indent_to_return;
+	}
+
+	//=========================================
+	// Search methods
+	//=========================================
+
+	// All search methods clone the iterator and iterate forward when
+	// searching. As such, those methods are not limited to the current
+	// chunk only.
+
+	/// Search for text from the current position until the end of the iterator.
+	pub fn search_text<T>(&self, search: T) -> Option<Pos>
+	where
+		T: Fn(&str) -> Option<usize>,
+	{
+		let mut iter = self.clone();
+		let mut curr = iter.pos();
+		while let Some(haystack) = iter.next() {
+			if let Some(index) = search(haystack) {
+				let mut pos = curr;
+				pos.skip(&haystack[..index]);
+				return Some(pos);
+			} else {
+				curr = iter.pos();
+			}
+		}
+		None
+	}
+
+	/// Search for the specific string.
+	pub fn search_str(&self, needle: &str) -> Option<Pos> {
+		self.search_text(|s: &str| s.find(needle))
+	}
+
+	/// Search for a char that matches the searcher.
+	pub fn search_char<T>(&self, search: T) -> Option<Pos>
+	where
+		T: Fn(char) -> bool,
+	{
+		self.search_text(|s: &str| s.find(&search))
+	}
+
+	//=========================================
+	// Find methods
+	//=========================================
+
+	// All methods below are limited to the current chunk only.
+
+	pub fn find_in_chunk<T>(&mut self, search: T) -> Option<Pos>
+	where
+		T: Fn(&str) -> Option<usize>,
+	{
+		let haystack = self.chunk();
+		if let Some(offset) = search(haystack) {
+			let mut pos = self.cursor;
+			pos.skip(&haystack[..offset]);
+			Some(pos)
+		} else {
+			None
+		}
+	}
+
+	pub fn find_str_in_chunk(&mut self, needle: &str) -> Option<Pos> {
+		self.find_in_chunk(|s: &str| s.find(needle))
+	}
+
+	pub fn find_char_in_chunk<T>(&mut self, search: T) -> Option<Pos>
+	where
+		T: Fn(char) -> bool,
+	{
+		self.find_in_chunk(|s: &str| s.find(&search))
 	}
 }
 

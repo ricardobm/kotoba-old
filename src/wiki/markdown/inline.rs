@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use regex::Regex;
 
 use super::html::html_entity;
-use super::{RawStr, Span, SpanIter};
+use super::{Pos, RawStr, Span, SpanIter};
 
 const REPLACEMENT_CHAR: char = '\u{FFFD}';
 
@@ -95,6 +95,7 @@ impl<'a> Iterator for InlineIterator<'a> {
 enum State<'a> {
 	Start,
 	OutputNext(InlineEvent<'a>),
+	OutputCodeText(Pos, &'a str, SpanIter<'a>),
 	End,
 }
 
@@ -132,7 +133,7 @@ impl<'a> InlineIterator<'a> {
 						State::End
 					} else if let Some(index) = self.chunk().find(|c| is_special_char(c)) {
 						if index > 0 {
-							let text = self.consume_chunk(index);
+							let text = self.consume_and_skip(index);
 							let event = InlineEvent::Text(text);
 							break (State::Start, Some(event));
 						}
@@ -143,18 +144,56 @@ impl<'a> InlineIterator<'a> {
 							'&' => {
 								break self.parse_entity();
 							}
+							'`' => {
+								break self.parse_code();
+							}
 							'<' | '>' | '\'' | '"' | '\0' => {
 								let (len, event) = next_char_escaped(self.chunk());
-								self.consume_chunk(len);
+								self.skip_len(len);
 								break (State::Start, event);
 							}
 							_ => panic!("panicked at next char '{:?}'", self.next_char()),
 						};
 					} else {
-						let len = self.chunk().len();
-						let text = self.consume_chunk(len);
+						let text = self.chunk();
+						self.inner.skip_chunk();
 						let event = InlineEvent::Text(text);
 						break (State::Start, Some(event));
+					}
+				}
+
+				State::OutputCodeText(end, delim, mut iter) => {
+					if iter.at_end() {
+						// at the end of the tag, generate the Close event and
+						// consume the end delimiter
+						self.inner.skip_to(iter.pos());
+						self.skip_len(delim.len());
+						break (State::Start, Some(InlineEvent::Close(Inline::Code)));
+					}
+
+					// Find the next character that needs escaping.
+					if let Some(end) = iter.find_char_in_chunk(is_html_escaped) {
+						let sta = iter.pos();
+						if end > sta {
+							// generate text before the character
+							iter.skip_to(end);
+							let text = self.block.sub_text(sta..end);
+							let next = State::OutputCodeText(end, delim, iter);
+							let event = InlineEvent::Text(text);
+							break (next, Some(event));
+						} else {
+							// generate the HTML escape
+							let event = Self::escape_next(&mut iter);
+							let next = State::OutputCodeText(end, delim, iter);
+							break (next, event);
+						}
+					} else {
+						// generate the whole text range
+						let text = iter.chunk();
+						iter.skip_chunk();
+						let next = State::OutputCodeText(end, delim, iter);
+						let event = InlineEvent::Text(text);
+						break (next, Some(event));
 					}
 				}
 			};
@@ -168,17 +207,43 @@ impl<'a> InlineIterator<'a> {
 	// Parsing helpers
 	//
 
+	fn escape_next(iter: &mut SpanIter<'a>) -> Option<InlineEvent<'a>> {
+		let (len, event) = next_char_escaped(iter.chunk());
+		iter.skip_len(len);
+		event
+	}
+
+	fn parse_code(&mut self) -> (State<'a>, Option<InlineEvent<'a>>) {
+		lazy_static! {
+			static ref RE_DELIM: Regex = Regex::new(r"^[`]+").unwrap();
+		}
+		let delim = RE_DELIM.find(self.chunk()).unwrap().as_str();
+		self.skip_len(delim.len());
+
+		let sta = self.inner.pos();
+		let end = self.inner.search_str(delim);
+		if let Some(end) = end {
+			let text = self.block.sub_pos(sta..end);
+			let event = InlineEvent::Open(Inline::Code);
+			(State::OutputCodeText(end, delim, text.iter()), Some(event))
+		} else {
+			// generate the delimiter as raw text
+			let event = InlineEvent::Text(delim);
+			(State::Start, Some(event))
+		}
+	}
+
 	/// Parse an escape sequence at the backslash.
 	fn parse_escape(&mut self) -> (State<'a>, Option<InlineEvent<'a>>) {
 		if let (len, Some(escape)) = parse_escape(self.chunk()) {
 			debug_assert!(len > 0);
-			self.consume_chunk(len);
+			self.skip_len(len);
 			(State::Start, Some(escape))
 		} else {
 			// non-recognized escape sequences are just generated literally
-			let backslash = InlineEvent::Text(self.consume_chunk(1));
+			let backslash = InlineEvent::Text(self.consume_and_skip(1));
 			if let (len, Some(next_char)) = next_char_escaped(self.chunk()) {
-				self.consume_chunk(len);
+				self.skip_len(len);
 				(State::OutputNext(next_char), Some(backslash))
 			} else {
 				(State::Start, Some(backslash))
@@ -204,7 +269,7 @@ impl<'a> InlineIterator<'a> {
 					entity: entity,
 					output: TextOrChar::Text(output),
 				};
-				self.consume_chunk(len);
+				self.skip_len(len);
 				return (State::Start, Some(event));
 			}
 		} else if let Some(caps) = RE_ENTITY_DEC.captures(self.chunk()) {
@@ -214,7 +279,7 @@ impl<'a> InlineIterator<'a> {
 			let dec = caps.name("v").unwrap().as_str().parse::<u32>().unwrap();
 			let chr = std::char::from_u32(dec).unwrap_or(REPLACEMENT_CHAR);
 			let event = entity_or_char(src, chr);
-			self.consume_chunk(len);
+			self.skip_len(len);
 			return (State::Start, Some(event));
 		} else if let Some(caps) = RE_ENTITY_HEX.captures(self.chunk()) {
 			let src = caps.get(0).unwrap();
@@ -223,12 +288,12 @@ impl<'a> InlineIterator<'a> {
 			let hex = u32::from_str_radix(caps.name("v").unwrap().as_str(), 16).unwrap();
 			let chr = std::char::from_u32(hex).unwrap_or(REPLACEMENT_CHAR);
 			let event = entity_or_char(src, chr);
-			self.consume_chunk(len);
+			self.skip_len(len);
 			return (State::Start, Some(event));
 		}
 
 		let (len, event) = next_char_escaped(self.chunk());
-		self.consume_chunk(len);
+		self.skip_len(len);
 		(State::Start, event)
 	}
 
@@ -267,26 +332,21 @@ impl<'a> InlineIterator<'a> {
 	}
 
 	#[inline]
-	fn consume_chunk(&mut self, len: usize) -> &'a str {
-		debug_assert!(self.chunk().len() > 0 && len <= self.chunk().len() && len > 0);
-		let chunk = &self.chunk()[..len];
+	fn skip_len(&mut self, len: usize) {
 		self.inner.skip_len(len);
-		chunk
 	}
 
-	#[inline]
-	fn consume_chars(&mut self, count: usize) -> &'a str {
-		let chunk = self.chunk();
-		let len = chunk
-			.char_indices()
-			.skip(count)
-			.next()
-			.map(|x| x.0)
-			.unwrap_or(chunk.len());
+	fn consume_and_skip(&mut self, len: usize) -> &'a str {
 		if len > 0 {
-			self.consume_chunk(len)
+			if !self.assert_chunk() {
+				panic!("consume_and_skip({}) at the end of input", len);
+			}
+			let chunk = self.chunk();
+			debug_assert!(chunk.len() >= len);
+			self.inner.skip_len(len);
+			&chunk[..len]
 		} else {
-			&chunk[..0]
+			&self.block.text()[self.block.len()..]
 		}
 	}
 
@@ -360,6 +420,13 @@ fn entity_or_char<'a>(source: &'a str, c: char) -> InlineEvent<'a> {
 	}
 }
 
+fn is_html_escaped(chr: char) -> bool {
+	match chr {
+		'\0' | '&' | '<' | '>' | '\'' | '"' => true,
+		_ => false,
+	}
+}
+
 /// Check if a character needs special handling as an inline.
 #[inline]
 fn is_special_char(chr: char) -> bool {
@@ -371,7 +438,7 @@ fn is_special_char(chr: char) -> bool {
 		// HTML entities
 		'&' | '<' | '>' | '\'' | '"' => true,
 		// code spans
-		'`' => false,
+		'`' => true,
 		// emphasis and strikethrough
 		'*' | '_' | '~' => false,
 		// links

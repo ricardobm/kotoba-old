@@ -147,4 +147,12 @@ it "should handle setext in blocks properly" {
 	"#);
 }
 
+it "should support inline code" {
+	test(r#"
+		`foo`
+	"#, r#"
+		<p><code>foo</code></p>
+	"#);
+}
+
 }}

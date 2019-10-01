@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fmt::Write;
 
-use super::inline::{InlineEvent, TextOrChar};
+use super::inline::{InlineEvent, Inline, TextOrChar};
 use super::{Block, HeaderLevel, MarkupEvent};
 
 pub fn fmt_html<'a>(event: &MarkupEvent<'a>, f: &mut fmt::Formatter) -> fmt::Result {
@@ -70,6 +70,17 @@ fn fmt_inline<'a>(ev: &InlineEvent<'a>, f: &mut fmt::Formatter) -> fmt::Result {
 			}
 		}
 		&InlineEvent::HTML { code, .. } => f.write_str(code),
+
+		&InlineEvent::Open(Inline::Code) => f.write_str("<code>"),
+		&InlineEvent::Open(Inline::Emphasis) => f.write_str("<em>"),
+		&InlineEvent::Open(Inline::Strong) => f.write_str("<strong>"),
+		&InlineEvent::Open(Inline::Strikethrough) => f.write_str("<del>"),
+
+		&InlineEvent::Close(Inline::Code) => f.write_str("</code>"),
+		&InlineEvent::Close(Inline::Emphasis) => f.write_str("</em>"),
+		&InlineEvent::Close(Inline::Strong) => f.write_str("</strong>"),
+		&InlineEvent::Close(Inline::Strikethrough) => f.write_str("</del>"),
+
 		_ => panic!("not implemented: HTML for inline {:?}", ev),
 	}
 }
