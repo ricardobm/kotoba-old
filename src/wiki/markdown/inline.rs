@@ -2,7 +2,16 @@ use std::collections::VecDeque;
 
 use regex::Regex;
 
+use super::html::html_entity;
 use super::{RawStr, Span, SpanIter};
+
+const REPLACEMENT_CHAR: char = '\u{FFFD}';
+
+#[derive(Copy, Clone, Debug)]
+pub enum TextOrChar<'a> {
+	Text(&'a str),
+	Char(char),
+}
 
 #[derive(Clone, Debug)]
 pub enum InlineEvent<'a> {
@@ -22,9 +31,11 @@ pub enum InlineEvent<'a> {
 		source: &'a str,
 		/// The HTML entity to generate.
 		entity: &'a str,
-		/// The actual Unicode character corresponding to the entity.
-		output: &'a str,
+		/// The actual Unicode text corresponding to the entity.
+		output: TextOrChar<'a>,
 	},
+	/// Generates a single character of text.
+	Char(char),
 	/// Either a `< >` delimited URL or a detected hyperlink.
 	AutoLink {
 		uri:       &'a str,
@@ -128,7 +139,7 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 							'&' => {
 								break self.parse_entity();
 							}
-							'<' | '>' | '\'' | '"' => {
+							'<' | '>' | '\'' | '"' | '\0' => {
 								let (len, event) = next_char_escaped(self.chunk);
 								self.consume_chunk(len);
 								break (State::Start, event);
@@ -175,6 +186,8 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 
 		lazy_static! {
 			static ref RE_ENTITY: Regex = Regex::new(r#"^&\w+;"#).unwrap();
+			static ref RE_ENTITY_DEC: Regex = Regex::new(r#"^&\#(?P<v>[0-9]{1,7});"#).unwrap();
+			static ref RE_ENTITY_HEX: Regex = Regex::new(r#"^&\#[xX](?P<v>[0-9A-Fa-f]{1,6});"#).unwrap();
 		}
 
 		if let Some(m) = RE_ENTITY.find(self.chunk) {
@@ -184,11 +197,29 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 				let event = InlineEvent::Entity {
 					source: entity,
 					entity: entity,
-					output: output,
+					output: TextOrChar::Text(output),
 				};
 				self.consume_chunk(len);
 				return (State::Start, Some(event));
 			}
+		} else if let Some(caps) = RE_ENTITY_DEC.captures(self.chunk) {
+			let src = caps.get(0).unwrap();
+			let len = src.end();
+			let src = src.as_str();
+			let dec = caps.name("v").unwrap().as_str().parse::<u32>().unwrap();
+			let chr = std::char::from_u32(dec).unwrap_or(REPLACEMENT_CHAR);
+			let event = entity_or_char(src, chr);
+			self.consume_chunk(len);
+			return (State::Start, Some(event));
+		} else if let Some(caps) = RE_ENTITY_HEX.captures(self.chunk) {
+			let src = caps.get(0).unwrap();
+			let len = src.end();
+			let src = src.as_str();
+			let hex = u32::from_str_radix(caps.name("v").unwrap().as_str(), 16).unwrap();
+			let chr = std::char::from_u32(hex).unwrap_or(REPLACEMENT_CHAR);
+			let event = entity_or_char(src, chr);
+			self.consume_chunk(len);
+			return (State::Start, Some(event));
 		}
 
 		let (len, event) = next_char_escaped(self.chunk);
@@ -302,24 +333,30 @@ fn next_char_escaped<'a>(text: &'a str) -> (usize, Option<InlineEvent<'a>>) {
 	if let Some((_, chr)) = chars.next() {
 		let len = chars.next().map(|x| x.0).unwrap_or(text.len());
 		let txt = &text[0..len];
-		let entity = match chr {
-			'"' => "&quot;",
-			'&' => "&amp;",
-			'<' => "&lt;",
-			'>' => "&gt;",
-			'\'' => "&apos;",
-			_ => {
-				return (len, Some(InlineEvent::Text(txt)));
+		let event = if let Some(entity) = html_entity(chr) {
+			InlineEvent::Entity {
+				source: txt,
+				entity: entity,
+				output: TextOrChar::Text(txt),
 			}
-		};
-		let event = InlineEvent::Entity {
-			source: txt,
-			entity: entity,
-			output: txt,
+		} else {
+			InlineEvent::Text(txt)
 		};
 		(len, Some(event))
 	} else {
 		(0, None)
+	}
+}
+
+fn entity_or_char<'a>(source: &'a str, c: char) -> InlineEvent<'a> {
+	if let Some(entity) = html_entity(c) {
+		InlineEvent::Entity {
+			source: source,
+			entity: entity,
+			output: TextOrChar::Char(c),
+		}
+	} else {
+		InlineEvent::Char(c)
 	}
 }
 
@@ -329,6 +366,8 @@ fn is_special_char(chr: char) -> bool {
 	match chr {
 		// escapes
 		'\\' => true,
+		// should be replaced by `U+FFFD`
+		'\0' => true,
 		// HTML entities
 		'&' | '<' | '>' | '\'' | '"' => true,
 		// code spans

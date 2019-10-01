@@ -1,6 +1,7 @@
 use std::fmt;
+use std::fmt::Write;
 
-use super::inline::InlineEvent;
+use super::inline::{InlineEvent, TextOrChar};
 use super::{Block, HeaderLevel, MarkupEvent};
 
 pub fn fmt_html<'a>(event: &MarkupEvent<'a>, f: &mut fmt::Formatter) -> fmt::Result {
@@ -25,14 +26,24 @@ pub fn fmt_html<'a>(event: &MarkupEvent<'a>, f: &mut fmt::Formatter) -> fmt::Res
 }
 
 #[inline(always)]
-fn write_html_char(f: &mut fmt::Formatter, c: char) -> fmt::Result {
+pub fn html_entity(c: char) -> Option<&'static str> {
 	match c {
-		'"' => write!(f, "&quot;"),
-		'&' => write!(f, "&amp;"),
-		'\'' => write!(f, "&apos;"),
-		'<' => write!(f, "&lt;"),
-		'>' => write!(f, "&gt;"),
-		_ => f.write_str(c.encode_utf8(&mut [0; 4])),
+		'"' => Some("&quot;"),
+		'&' => Some("&amp;"),
+		'<' => Some("&lt;"),
+		'>' => Some("&gt;"),
+		'\'' => Some("&apos;"),
+		'\0' => Some("\u{FFFD}"), // mandated by the spec
+		_ => None,
+	}
+}
+
+#[inline(always)]
+fn write_html_char(f: &mut fmt::Formatter, c: char) -> fmt::Result {
+	if let Some(entity) = html_entity(c) {
+		f.write_str(entity)
+	} else {
+		f.write_char(c)
 	}
 }
 
@@ -46,12 +57,16 @@ fn escape_html(f: &mut fmt::Formatter, s: &str) -> fmt::Result {
 fn fmt_inline<'a>(ev: &InlineEvent<'a>, f: &mut fmt::Formatter) -> fmt::Result {
 	match ev {
 		&InlineEvent::Text(s) => f.write_str(s),
+		&InlineEvent::Char(c) => f.write_char(c),
 		&InlineEvent::LineBreak => f.write_str("<br/>\n"),
 		&InlineEvent::Entity { entity, output, .. } => {
 			if entity == "&nbsp;" {
 				f.write_str(entity)
 			} else {
-				escape_html(f, output)
+				match output {
+					TextOrChar::Text(s) => escape_html(f, s),
+					TextOrChar::Char(c) => write_html_char(f, c),
+				}
 			}
 		}
 		&InlineEvent::HTML { code, .. } => f.write_str(code),
