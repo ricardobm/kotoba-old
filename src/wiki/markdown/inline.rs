@@ -76,14 +76,14 @@ pub enum Inline {
 }
 
 #[derive(Clone)]
-pub struct InlineIterator<'a, T: Iterator<Item = &'a str>> {
-	inner: T,
-	chunk: &'a str,
+pub struct InlineIterator<'a> {
+	block: Span<'a>,
+	inner: SpanIter<'a>,
 	queue: VecDeque<char>,
 	state: State<'a>,
 }
 
-impl<'a, T: Iterator<Item = &'a str>> Iterator for InlineIterator<'a, T> {
+impl<'a> Iterator for InlineIterator<'a> {
 	type Item = InlineEvent<'a>;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -104,14 +104,18 @@ impl<'a> Default for State<'a> {
 	}
 }
 
-impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
-	pub fn new(span: &Span<'a>) -> InlineIterator<'a, SpanIter<'a>> {
+impl<'a> InlineIterator<'a> {
+	pub fn new(span: &Span<'a>) -> InlineIterator<'a> {
 		InlineIterator {
+			block: span.clone(),
 			inner: span.iter(),
-			chunk: "",
 			queue: VecDeque::new(),
 			state: State::Start,
 		}
+	}
+
+	fn chunk(&mut self) -> &'a str {
+		self.inner.chunk()
 	}
 
 	fn get_next(&mut self) -> Option<InlineEvent<'a>> {
@@ -126,7 +130,7 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 				State::Start => {
 					if !self.assert_chunk() {
 						State::End
-					} else if let Some(index) = self.chunk.find(|c| is_special_char(c)) {
+					} else if let Some(index) = self.chunk().find(|c| is_special_char(c)) {
 						if index > 0 {
 							let text = self.consume_chunk(index);
 							let event = InlineEvent::Text(text);
@@ -140,14 +144,15 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 								break self.parse_entity();
 							}
 							'<' | '>' | '\'' | '"' | '\0' => {
-								let (len, event) = next_char_escaped(self.chunk);
+								let (len, event) = next_char_escaped(self.chunk());
 								self.consume_chunk(len);
 								break (State::Start, event);
 							}
 							_ => panic!("panicked at next char '{:?}'", self.next_char()),
 						};
 					} else {
-						let text = self.consume_chunk(self.chunk.len());
+						let len = self.chunk().len();
+						let text = self.consume_chunk(len);
 						let event = InlineEvent::Text(text);
 						break (State::Start, Some(event));
 					}
@@ -165,14 +170,14 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 
 	/// Parse an escape sequence at the backslash.
 	fn parse_escape(&mut self) -> (State<'a>, Option<InlineEvent<'a>>) {
-		if let (len, Some(escape)) = parse_escape(self.chunk) {
+		if let (len, Some(escape)) = parse_escape(self.chunk()) {
 			debug_assert!(len > 0);
 			self.consume_chunk(len);
 			(State::Start, Some(escape))
 		} else {
 			// non-recognized escape sequences are just generated literally
 			let backslash = InlineEvent::Text(self.consume_chunk(1));
-			if let (len, Some(next_char)) = next_char_escaped(self.chunk) {
+			if let (len, Some(next_char)) = next_char_escaped(self.chunk()) {
 				self.consume_chunk(len);
 				(State::OutputNext(next_char), Some(backslash))
 			} else {
@@ -190,7 +195,7 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 			static ref RE_ENTITY_HEX: Regex = Regex::new(r#"^&\#[xX](?P<v>[0-9A-Fa-f]{1,6});"#).unwrap();
 		}
 
-		if let Some(m) = RE_ENTITY.find(self.chunk) {
+		if let Some(m) = RE_ENTITY.find(self.chunk()) {
 			let len = m.end();
 			let entity = m.as_str();
 			if let Some(output) = get_named_entity(entity) {
@@ -202,7 +207,7 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 				self.consume_chunk(len);
 				return (State::Start, Some(event));
 			}
-		} else if let Some(caps) = RE_ENTITY_DEC.captures(self.chunk) {
+		} else if let Some(caps) = RE_ENTITY_DEC.captures(self.chunk()) {
 			let src = caps.get(0).unwrap();
 			let len = src.end();
 			let src = src.as_str();
@@ -211,7 +216,7 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 			let event = entity_or_char(src, chr);
 			self.consume_chunk(len);
 			return (State::Start, Some(event));
-		} else if let Some(caps) = RE_ENTITY_HEX.captures(self.chunk) {
+		} else if let Some(caps) = RE_ENTITY_HEX.captures(self.chunk()) {
 			let src = caps.get(0).unwrap();
 			let len = src.end();
 			let src = src.as_str();
@@ -222,7 +227,7 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 			return (State::Start, Some(event));
 		}
 
-		let (len, event) = next_char_escaped(self.chunk);
+		let (len, event) = next_char_escaped(self.chunk());
 		self.consume_chunk(len);
 		(State::Start, event)
 	}
@@ -232,7 +237,7 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 	//
 
 	fn next_char(&mut self) -> char {
-		self.chunk.chars().next().unwrap()
+		self.chunk().chars().next().unwrap()
 	}
 
 	fn peek(&mut self, n: usize) -> Option<char> {
@@ -248,10 +253,10 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 
 	fn read_char(&mut self) -> Option<char> {
 		if self.assert_chunk() {
-			let mut chars = self.chunk.char_indices();
+			let mut chars = self.chunk().char_indices();
 			if let Some((_, chr)) = chars.next() {
-				let len = chars.next().map(|x| x.0).unwrap_or(self.chunk.len());
-				self.chunk = &self.chunk[len..];
+				let len = chars.next().map(|x| x.0).unwrap_or(self.chunk().len());
+				self.inner.skip_len(len);
 				Some(chr)
 			} else {
 				None
@@ -263,36 +268,31 @@ impl<'a, T: Iterator<Item = &'a str>> InlineIterator<'a, T> {
 
 	#[inline]
 	fn consume_chunk(&mut self, len: usize) -> &'a str {
-		debug_assert!(self.chunk.len() > 0 && len <= self.chunk.len() && len > 0);
-		let chunk = &self.chunk[..len];
-		self.chunk = &self.chunk[len..];
+		debug_assert!(self.chunk().len() > 0 && len <= self.chunk().len() && len > 0);
+		let chunk = &self.chunk()[..len];
+		self.inner.skip_len(len);
 		chunk
 	}
 
 	#[inline]
 	fn consume_chars(&mut self, count: usize) -> &'a str {
-		let len = self
-			.chunk
+		let chunk = self.chunk();
+		let len = chunk
 			.char_indices()
 			.skip(count)
 			.next()
 			.map(|x| x.0)
-			.unwrap_or(self.chunk.len());
+			.unwrap_or(chunk.len());
 		if len > 0 {
 			self.consume_chunk(len)
 		} else {
-			&self.chunk[..0]
+			&chunk[..0]
 		}
 	}
 
 	#[inline]
 	fn assert_chunk(&mut self) -> bool {
-		if self.chunk.len() == 0 {
-			if let Some(chunk) = self.inner.next() {
-				self.chunk = chunk;
-			}
-		}
-		return self.chunk.len() > 0;
+		return self.chunk().len() > 0;
 	}
 }
 
