@@ -77,7 +77,7 @@ fn parse_link_label<'a>(
 		text = text.trim();
 		while text.len() == 0 {
 			text = if let Some(text) = iter.next() {
-				text
+				text.trim_start()
 			} else {
 				break;
 			}
@@ -176,7 +176,7 @@ fn parse_link_url<'a>(
 		text = text.trim();
 		while text.len() == 0 {
 			text = if let Some(text) = iter.next() {
-				text
+				text.trim_start()
 			} else {
 				break;
 			}
@@ -312,7 +312,7 @@ fn parse_link_title<'a>(
 		text = text.trim();
 		while text.len() == 0 {
 			text = if let Some(text) = iter.next() {
-				text
+				text.trim_start()
 			} else {
 				break;
 			}
