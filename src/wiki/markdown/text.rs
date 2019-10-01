@@ -24,6 +24,63 @@ impl Pos {
 		out
 	}
 
+	pub fn next_line(&self, buffer: &str) -> Pos {
+		let text = &buffer[self.offset..];
+		if let Some(index) = text.find(|c| c == '\n' || c == '\r') {
+			let bytes = text.as_bytes();
+			let is_cr = (bytes[index] as char) == '\r';
+			let index = if is_cr && index < bytes.len() - 1 && (bytes[index + 1] as char) == '\n' {
+				index + 2
+			} else {
+				index + 1
+			};
+			Pos {
+				line:   self.line + 1,
+				column: 0,
+				offset: self.offset + index,
+				was_cr: false,
+			}
+		} else {
+			// skip to end of buffer
+			let mut pos = *self;
+			pos.skip(text);
+			pos
+		}
+	}
+
+	pub fn skip_if(&mut self, buffer: &str, if_str: &str) -> bool {
+		if buffer[self.offset..].starts_with(if_str) {
+			self.skip(if_str);
+			true
+		} else {
+			false
+		}
+	}
+
+	pub fn skip_spaces(&mut self, buffer: &str) {
+		let text = &buffer[self.offset..];
+		let mut chars = text.char_indices();
+		let mut offset = 0;
+		let mut column = self.column;
+		while let Some((index, chr)) = chars.next() {
+			if chr.is_whitespace() && chr != '\r' && chr != '\n' {
+				self.was_cr = false;
+				column = if chr == '\t' { common::tab(column) } else { column + 1 };
+			} else {
+				offset = index;
+				break;
+			}
+		}
+		self.column = column;
+		self.offset += offset;
+	}
+
+	pub fn skip_len(&mut self, buffer: &str, len: usize) {
+		let text = &buffer[self.offset..];
+		let skip = if len > text.len() { text.len() } else { len };
+		self.skip(&text[..skip]);
+	}
+
 	pub fn skip(&mut self, src: &str) {
 		for c in src.chars() {
 			self.do_skip_char(c);

@@ -166,32 +166,175 @@ impl<'a> Span<'a> {
 	/// with the whole text.
 	pub fn iter(&self) -> SpanIter<'a> {
 		SpanIter {
-			source: self.text(),
-			column: 0,
+			buffer: self.buffer,
+			cursor: self.start,
+			maxpos: self.end,
 			indent: self.indent,
 			quotes: self.quotes,
+
+			next_eol: None,
+			pending:  "",
+			stripped: false,
 		}
 	}
 
 	/// Returns an iterator over the inline elements of this span.
-	pub fn iter_inline(&self) -> InlineIterator<'a, SpanIter<'a>> {
-		InlineIterator::<'a, SpanIter<'a>>::new(self)
+	pub fn iter_inline(&self) -> InlineIterator<'a> {
+		InlineIterator::new(self)
 	}
 }
 
 /// Iterator for the text in a [Span].
+#[derive(Clone)]
 pub struct SpanIter<'a> {
-	source: &'a str,
-	column: usize,
+	buffer: &'a str,
+	cursor: Pos,
+	maxpos: Pos,
 	indent: usize,
 	quotes: usize,
+
+	next_eol: Option<Pos>,
+	pending:  &'static str,
+	stripped: bool,
+}
+
+impl<'a> SpanIter<'a> {
+	#[inline(always)]
+	pub fn at_end(&self) -> bool {
+		self.pending.len() == 0 && self.cursor.offset >= self.maxpos.offset
+	}
+
+	#[inline(always)]
+	pub fn chunk(&mut self) -> &'a str {
+		if self.pending.len() > 0 {
+			self.pending
+		} else if self.indent == 0 && self.quotes == 0 {
+			&self.buffer[self.cursor.offset..self.maxpos.offset]
+		} else {
+			self.skip_ignored();
+			if self.pending.len() > 0 {
+				self.pending
+			} else {
+				&self.buffer[self.cursor.offset..self.eol().offset]
+			}
+		}
+	}
+
+	pub fn skip_len(&mut self, mut len: usize) {
+		while !self.at_end() && len > 0 && len >= self.chunk().len() {
+			len -= self.chunk().len();
+			self.skip_chunk();
+		}
+		if self.pending.len() > 0 {
+			self.cursor.column = common::text_column(&self.pending[..len], self.cursor.column);
+			self.pending = &self.pending[len..];
+		} else {
+			self.cursor.skip_len(self.buffer, len);
+		}
+	}
+
+	pub fn skip_chunk(&mut self) {
+		if self.pending.len() > 0 {
+			self.cursor.column = common::text_column(self.pending, self.cursor.column);
+			self.pending = "";
+		} else if self.indent == 0 && self.quotes == 0 {
+			self.cursor = self.maxpos;
+		} else {
+			self.cursor = self.eol();
+			self.stripped = false;
+		}
+	}
+
+	fn eol(&mut self) -> Pos {
+		if let Some(eol) = self.next_eol {
+			if eol.offset > self.cursor.offset {
+				return eol;
+			}
+		}
+		let eol = self.cursor.next_line(self.buffer);
+		let eol = if eol.offset <= self.maxpos.offset {
+			eol
+		} else {
+			self.maxpos
+		};
+		self.next_eol = Some(eol);
+		eol
+	}
+
+	/// Skip ignored indentation and blockquote marks from the start of a line.
+	///
+	/// Does nothing if it is not at the start of a line.
+	fn skip_ignored(&mut self) {
+		if self.pending.len() > 0 || self.cursor.column != 0 || self.stripped {
+			return;
+		}
+
+		self.stripped = true;
+
+		// Strip quote markers from the source text.
+		for _ in 0..self.quotes {
+			let mut start = self.cursor;
+			start.skip_spaces(self.buffer);
+			if start.skip_if(self.buffer, "> ") || start.skip_if(self.buffer, ">") {
+				if start.offset <= self.maxpos.offset {
+					self.cursor = start;
+				} else {
+					break;
+				}
+			} else {
+				break;
+			}
+		}
+
+		// Strip the indentation level from the source text:
+
+		let max_offset = self.maxpos.offset - self.cursor.offset;
+
+		let mut indent = self.indent;
+		let mut indent_to_return = "";
+		let mut offset = 0;
+		let mut column = self.cursor.column;
+		let mut source = &self.buffer[self.cursor.offset..];
+		while indent > 0 && offset < max_offset {
+			if source.starts_with("\t") {
+				let tw = common::TAB_WIDTH - (column % common::TAB_WIDTH);
+				source = &source[1..];
+				offset += 1;
+				column += tw;
+				if indent >= tw {
+					indent -= tw;
+				} else {
+					// if the tab width is greater than the indentation
+					// we must skip, we generate a block of spaces to
+					// compensate
+					indent_to_return = &("                "[0..(tw - indent)]);
+					indent = 0;
+				}
+			} else if source.starts_with(" ") {
+				source = &source[1..];
+				offset += 1;
+				column += 1;
+				indent -= 1;
+			} else {
+				break;
+			}
+		}
+
+		self.cursor.column = column;
+		self.cursor.offset += offset;
+		self.pending = indent_to_return;
+	}
 }
 
 impl<'a> fmt::Debug for SpanIter<'a> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		const MAX_TEXT_LEN: usize = 5;
-		let text = self.source;
-		write!(f, "Iter({} {} {}", self.column, self.indent, self.quotes)?;
+		let text = if self.pending.len() > 0 {
+			self.pending
+		} else {
+			&self.buffer[self.cursor.offset..]
+		};
+		write!(f, "Iter({:?} {} {}", self.cursor, self.indent, self.quotes)?;
 		if text.len() <= MAX_TEXT_LEN {
 			write!(f, "{:?}", text)?;
 		} else {
@@ -205,86 +348,12 @@ impl<'a> Iterator for SpanIter<'a> {
 	type Item = &'a str;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if self.source.len() == 0 {
-			None
-		} else if self.indent == 0 && self.quotes == 0 {
-			// If we have nothing to skip, just return the whole text at once.
-			let text = self.source;
-			self.source = "";
-			Some(text)
+		let next = self.chunk();
+		if next.len() > 0 {
+			self.skip_chunk();
+			Some(next)
 		} else {
-			let mut source = self.source;
-
-			// If we are at the beginning of a line, then we strip any block
-			// quote marks and base indentation from the text.
-			if self.column == 0 {
-				let mut column = self.column;
-
-				// Strip quote markers from the source text.
-				for _ in 0..self.quotes {
-					// We don't want to trim `source` unless we stripped a quote
-					// marker.
-					let (text, col) = common::trim_start(source, column);
-					let (new_text, new_column) = if text.starts_with("> ") {
-						(&text[2..], col + 2)
-					} else if text.starts_with(">") {
-						(&text[1..], col + 1)
-					} else {
-						break;
-					};
-					source = new_text;
-					column = new_column;
-				}
-
-				// Strip the indentation level from the source text.
-				let mut indent = self.indent;
-				let mut indent_to_return = "";
-				while indent > 0 {
-					if source.starts_with("\t") {
-						let tw = common::TAB_WIDTH - (column % common::TAB_WIDTH);
-						source = common::skip_chars(source, 1);
-						column += tw;
-						if indent >= tw {
-							indent -= tw;
-						} else {
-							// if the tab width is greater than the indentation
-							// we must skip, we generate a block of spaces to
-							// compensate
-							indent_to_return = &("    "[0..(tw - indent)]);
-							indent = 0;
-						}
-					} else if let Some(chr) = source.chars().next() {
-						if chr.is_whitespace() && chr != '\n' && chr != '\r' {
-							source = common::skip_chars(source, 1);
-							column += 1;
-							indent -= 1;
-						} else {
-							break;
-						}
-					} else {
-						break;
-					}
-				}
-
-				self.source = source;
-				self.column = column;
-				if indent_to_return.len() > 0 {
-					return Some(indent_to_return);
-				}
-			}
-
-			let source = self.source;
-			let line_size = source.find(|c| c == '\n' || c == '\r');
-			let line_size = match line_size {
-				None => source.len(),
-				Some(size) if (&source[size..]).starts_with("\r\n") => size + 2,
-				Some(size) => size + 1,
-			};
-
-			self.source = &source[line_size..];
-			self.column = 0;
-
-			Some(&source[0..line_size])
+			None
 		}
 	}
 }
@@ -296,14 +365,23 @@ mod tests {
 	#[test]
 	fn test_markdown_span_iter() {
 		fn check(indent: usize, quotes: usize, source: &str, expected: Vec<&str>) {
-			let iter = SpanIter {
-				source: source,
-				column: 0,
-				indent: indent,
-				quotes: quotes,
+			let sta = Pos::default();
+			let end = {
+				let mut p = Pos::default();
+				p.skip(source);
+				p
 			};
+			let mut span = Span::new(source, sta, end);
+			span.indent = indent;
+			span.quotes = quotes;
+			let iter = span.iter();
 			let actual: Vec<_> = iter.collect();
 			assert_eq!(expected, actual);
+			for it in actual.iter() {
+				if it.trim().len() > 0 {
+					assert!(!span.text_range(it).is_none(), "chunk {:?} does not belong to span", it);
+				}
+			}
 		}
 
 		// Empty iterator:
