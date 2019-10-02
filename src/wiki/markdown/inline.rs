@@ -318,87 +318,16 @@ impl<'a> InlineIterator<'a> {
 	}
 
 	fn parse_code(&mut self) -> (State<'a>, Option<InlineEvent<'a>>) {
-		let (delim, code) = self.parse_code_delim(&mut self.inner.clone());
-		if let Some((mut span, spaced)) = code {
-			let end = span.end;
-			if spaced {
-				let _ = span.start.skip_if(span.buffer, " ")
-					|| span.start.skip_if(span.buffer, "\r\n")
-					|| span.start.skip_if(span.buffer, "\n")
-					|| span.start.skip_if(span.buffer, "\r");
-
-				let buffer = span.buffer.as_bytes();
-				let last_char = buffer[span.end.offset - 1] as char;
-				match last_char {
-					' ' => {
-						span.end.offset -= 1;
-						span.end.column -= 1;
-					}
-					'\r' | '\n' => {
-						if last_char == '\n' && (buffer[span.end.offset - 2] as char) == '\r' {
-							span.end.offset -= 2;
-						} else {
-							span.end.offset -= 1;
-						}
-						span.end.line -= 1;
-						span.end.column = 999;
-					}
-					_ => {}
-				}
-			}
-
+		let parsed = super::inline_code::parse(&self.inner);
+		let (code, end, delim) = (parsed.code, parsed.end, parsed.delim);
+		if let Some(code) = code {
 			let event = InlineEvent::Open(Inline::Code);
-			(State::OutputCodeText(end, delim, span.iter()), Some(event))
+			(State::OutputCodeText(end, delim, code.iter()), Some(event))
 		} else {
 			// generate the delimiter as raw text
 			let event = InlineEvent::Text(delim);
 			self.skip_len(delim.len());
 			(State::Start, Some(event))
-		}
-	}
-
-	fn parse_code_delim(&self, iter: &mut SpanIter<'a>) -> (&'a str, Option<(Span<'a>, bool)>) {
-		lazy_static! {
-			static ref RE_DELIM_STA: Regex = Regex::new(r"^[`]+").unwrap();
-			static ref RE_DELIM_END: Regex = Regex::new(r"[`]+").unwrap();
-		}
-		let delim = RE_DELIM_STA.find(iter.chunk()).unwrap().as_str();
-		iter.skip_len(delim.len());
-
-		let mut only_spaces = true;
-		let sta = iter.pos();
-		let end = iter.search_text(|s| {
-			for m in RE_DELIM_END.find_iter(s) {
-				if m.as_str().len() == delim.len() {
-					let index = m.start();
-					if s[..index].trim().len() > 0 {
-						only_spaces = false;
-					}
-					return Some(index);
-				}
-			}
-			if s.trim().len() > 0 {
-				only_spaces = false;
-			}
-			None
-		});
-
-		if let Some(end) = end {
-			let span = self.block.sub_pos(sta..end);
-			let text = span.text();
-			let space_sta = !only_spaces
-				&& match text.chars().next() {
-					Some(' ') | Some('\r') | Some('\n') => true,
-					_ => false,
-				};
-			let space_end = !only_spaces
-				&& match text.chars().rev().next() {
-					Some(' ') | Some('\r') | Some('\n') => true,
-					_ => false,
-				};
-			(delim, Some((span, space_sta && space_end)))
-		} else {
-			(delim, None)
 		}
 	}
 

@@ -173,12 +173,9 @@ impl<'a> Span<'a> {
 	/// with the whole text.
 	pub fn iter(&self) -> SpanIter<'a> {
 		SpanIter {
-			buffer: self.buffer,
-			cursor: self.start,
-			maxpos: self.end,
-			indent: self.indent,
-			quotes: self.quotes,
-
+			span:     self.clone(),
+			cursor:   self.start,
+			maxpos:   self.end,
 			next_eol: None,
 			pending:  "",
 			stripped: false,
@@ -194,11 +191,9 @@ impl<'a> Span<'a> {
 /// Iterator for the text in a [Span].
 #[derive(Clone)]
 pub struct SpanIter<'a> {
-	buffer: &'a str,
+	span:   Span<'a>,
 	cursor: Pos,
 	maxpos: Pos,
-	indent: usize,
-	quotes: usize,
 
 	next_eol: Option<Pos>,
 	pending:  &'static str,
@@ -209,6 +204,10 @@ impl<'a> SpanIter<'a> {
 	#[inline(always)]
 	pub fn pos(&self) -> Pos {
 		self.cursor
+	}
+
+	pub fn span(&self) -> &Span<'a> {
+		&self.span
 	}
 
 	pub fn restore_from(&mut self, iter: &SpanIter<'a>) {
@@ -234,14 +233,14 @@ impl<'a> SpanIter<'a> {
 	pub fn chunk(&mut self) -> &'a str {
 		if self.pending.len() > 0 {
 			self.pending
-		} else if self.indent == 0 && self.quotes == 0 {
-			&self.buffer[self.cursor.offset..self.maxpos.offset]
+		} else if self.span.indent == 0 && self.span.quotes == 0 {
+			&self.span.buffer[self.cursor.offset..self.maxpos.offset]
 		} else {
 			self.skip_ignored();
 			if self.pending.len() > 0 {
 				self.pending
 			} else {
-				&self.buffer[self.cursor.offset..self.eol().offset]
+				&self.span.buffer[self.cursor.offset..self.eol().offset]
 			}
 		}
 	}
@@ -255,7 +254,7 @@ impl<'a> SpanIter<'a> {
 			self.cursor.column = common::text_column(&self.pending[..len], self.cursor.column);
 			self.pending = &self.pending[len..];
 		} else {
-			self.cursor.skip_len(self.buffer, len);
+			self.cursor.skip_len(self.span.buffer, len);
 		}
 	}
 
@@ -263,7 +262,7 @@ impl<'a> SpanIter<'a> {
 		if self.pending.len() > 0 {
 			self.cursor.column = common::text_column(self.pending, self.cursor.column);
 			self.pending = "";
-		} else if self.indent == 0 && self.quotes == 0 {
+		} else if self.span.indent == 0 && self.span.quotes == 0 {
 			self.cursor = self.maxpos;
 		} else {
 			self.cursor = self.eol();
@@ -277,7 +276,7 @@ impl<'a> SpanIter<'a> {
 				return eol;
 			}
 		}
-		let eol = self.cursor.next_line(self.buffer);
+		let eol = self.cursor.next_line(self.span.buffer);
 		let eol = if eol.offset <= self.maxpos.offset {
 			eol
 		} else {
@@ -298,10 +297,10 @@ impl<'a> SpanIter<'a> {
 		self.stripped = true;
 
 		// Strip quote markers from the source text.
-		for _ in 0..self.quotes {
+		for _ in 0..self.span.quotes {
 			let mut start = self.cursor;
-			start.skip_spaces(self.buffer);
-			if start.skip_if(self.buffer, "> ") || start.skip_if(self.buffer, ">") {
+			start.skip_spaces(self.span.buffer);
+			if start.skip_if(self.span.buffer, "> ") || start.skip_if(self.span.buffer, ">") {
 				if start.offset <= self.maxpos.offset {
 					self.cursor = start;
 				} else {
@@ -316,11 +315,11 @@ impl<'a> SpanIter<'a> {
 
 		let max_offset = self.maxpos.offset - self.cursor.offset;
 
-		let mut indent = self.indent;
+		let mut indent = self.span.indent;
 		let mut indent_to_return = "";
 		let mut offset = 0;
 		let mut column = self.cursor.column;
-		let mut source = &self.buffer[self.cursor.offset..];
+		let mut source = &self.span.buffer[self.cursor.offset..];
 		while indent > 0 && offset < max_offset {
 			if source.starts_with("\t") {
 				let tw = common::TAB_WIDTH - (column % common::TAB_WIDTH);
@@ -429,9 +428,9 @@ impl<'a> fmt::Debug for SpanIter<'a> {
 		let text = if self.pending.len() > 0 {
 			self.pending
 		} else {
-			&self.buffer[self.cursor.offset..]
+			&self.span.buffer[self.cursor.offset..]
 		};
-		write!(f, "Iter({:?} {} {}", self.cursor, self.indent, self.quotes)?;
+		write!(f, "Iter({:?} {} {}", self.cursor, self.span.indent, self.span.quotes)?;
 		if text.len() <= MAX_TEXT_LEN {
 			write!(f, " {:?}", text)?;
 		} else {
