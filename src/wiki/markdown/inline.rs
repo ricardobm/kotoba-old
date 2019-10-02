@@ -166,24 +166,36 @@ impl<'a> InlineIterator<'a> {
 					if iter.at_end() {
 						// at the end of the tag, generate the Close event and
 						// consume the end delimiter
-						self.inner.skip_to(iter.pos());
+						self.inner.skip_to(end);
 						self.skip_len(delim.len());
 						break (State::Start, Some(InlineEvent::Close(Inline::Code)));
 					}
 
 					// Find the next character that needs escaping.
-					if let Some(end) = iter.find_char_in_chunk(is_html_escaped) {
+					if let Some(esc) = iter.find_char_in_chunk(|c| is_html_escaped(c) || c == '\r' || c == '\n') {
 						let sta = iter.pos();
-						if end > sta {
+						if esc > sta {
 							// generate text before the character
-							iter.skip_to(end);
-							let text = self.block.sub_text(sta..end);
+							iter.skip_to(esc);
+							let text = self.block.sub_text(sta..esc);
 							let next = State::OutputCodeText(end, delim, iter);
 							let event = InlineEvent::Text(text);
 							break (next, Some(event));
 						} else {
-							// generate the HTML escape
-							let event = Self::escape_next(&mut iter);
+							// generate the HTML escape or line break as space
+							let chr = iter.chunk().chars().next().unwrap();
+							let event = if chr == '\n' {
+								iter.skip_len(1);
+								Some(InlineEvent::Text(" "))
+							} else if chr == '\r' {
+								iter.skip_len(1);
+								if iter.chunk().chars().next() == Some('\n') {
+									iter.skip_len(1);
+								}
+								Some(InlineEvent::Text(" "))
+							} else {
+								Self::escape_next(&mut iter)
+							};
 							let next = State::OutputCodeText(end, delim, iter);
 							break (next, event);
 						}
@@ -214,22 +226,87 @@ impl<'a> InlineIterator<'a> {
 	}
 
 	fn parse_code(&mut self) -> (State<'a>, Option<InlineEvent<'a>>) {
-		lazy_static! {
-			static ref RE_DELIM: Regex = Regex::new(r"^[`]+").unwrap();
-		}
-		let delim = RE_DELIM.find(self.chunk()).unwrap().as_str();
-		self.skip_len(delim.len());
+		let (delim, code) = self.parse_code_delim(&mut self.inner.clone());
+		if let Some((mut span, spaced)) = code {
+			let end = span.end;
+			if spaced {
+				let _ = span.start.skip_if(span.buffer, " ")
+					|| span.start.skip_if(span.buffer, "\r\n")
+					|| span.start.skip_if(span.buffer, "\n")
+					|| span.start.skip_if(span.buffer, "\r");
 
-		let sta = self.inner.pos();
-		let end = self.inner.search_str(delim);
-		if let Some(end) = end {
-			let text = self.block.sub_pos(sta..end);
+				let buffer = span.buffer.as_bytes();
+				let last_char = buffer[span.end.offset - 1] as char;
+				match last_char {
+					' ' => {
+						span.end.offset -= 1;
+						span.end.column -= 1;
+					}
+					'\r' | '\n' => {
+						if last_char == '\n' && (buffer[span.end.offset - 2] as char) == '\r' {
+							span.end.offset -= 2;
+						} else {
+							span.end.offset -= 1;
+						}
+						span.end.line -= 1;
+						span.end.column = 999;
+					}
+					_ => {}
+				}
+			}
+
 			let event = InlineEvent::Open(Inline::Code);
-			(State::OutputCodeText(end, delim, text.iter()), Some(event))
+			(State::OutputCodeText(end, delim, span.iter()), Some(event))
 		} else {
 			// generate the delimiter as raw text
 			let event = InlineEvent::Text(delim);
+			self.skip_len(delim.len());
 			(State::Start, Some(event))
+		}
+	}
+
+	fn parse_code_delim(&self, iter: &mut SpanIter<'a>) -> (&'a str, Option<(Span<'a>, bool)>) {
+		lazy_static! {
+			static ref RE_DELIM_STA: Regex = Regex::new(r"^[`]+").unwrap();
+			static ref RE_DELIM_END: Regex = Regex::new(r"[`]+").unwrap();
+		}
+		let delim = RE_DELIM_STA.find(iter.chunk()).unwrap().as_str();
+		iter.skip_len(delim.len());
+
+		let mut only_spaces = true;
+		let sta = iter.pos();
+		let end = iter.search_text(|s| {
+			for m in RE_DELIM_END.find_iter(s) {
+				if m.as_str().len() == delim.len() {
+					let index = m.start();
+					if s[..index].trim().len() > 0 {
+						only_spaces = false;
+					}
+					return Some(index);
+				}
+			}
+			if s.trim().len() > 0 {
+				only_spaces = false;
+			}
+			None
+		});
+
+		if let Some(end) = end {
+			let span = self.block.sub_pos(sta..end);
+			let text = span.text();
+			let space_sta = !only_spaces
+				&& match text.chars().next() {
+					Some(' ') | Some('\r') | Some('\n') => true,
+					_ => false,
+				};
+			let space_end = !only_spaces
+				&& match text.chars().rev().next() {
+					Some(' ') | Some('\r') | Some('\n') => true,
+					_ => false,
+				};
+			(delim, Some((span, space_sta && space_end)))
+		} else {
+			(delim, None)
 		}
 	}
 

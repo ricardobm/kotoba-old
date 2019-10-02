@@ -150,9 +150,31 @@ it "should handle setext in blocks properly" {
 it "should support inline code" {
 	test(r#"
 		`foo`
+
+		`` foo ` bar ``
+
+		`  ``  `
+
+		` a`
+
+		` `
+		`  `
+
+		`foo\`bar`
 	"#, r#"
 		<p><code>foo</code></p>
+		<p><code>foo ` bar</code></p>
+		<p><code> `` </code></p>
+		<p><code> a</code></p>
+		<p><code> </code>
+		<code>  </code></p>
+		<p><code>foo\</code>bar`</p>
 	"#);
+
+	test_raw("`\u{00A0}x\u{00A0}`", "<p><code>\u{00A0}x\u{00A0}</code></p>");
+	test_raw("``\nfoo(n)\nbar  \r\n123\r456\n``", "<p><code>foo(n) bar   123 456</code></p>");
+	test_raw("`\r\nfoo(rn)   bar  \n123\r\n`", "<p><code>foo(rn)   bar   123</code></p>");
+	test_raw("`\rfoo(r)   bar  \n123\r`", "<p><code>foo(r)   bar   123</code></p>");
 }
 
 }}

@@ -10,7 +10,10 @@ mod spec_escapes;
 fn test(input: &str, expected: &str) {
 	let input = common::text(input);
 	let expected = common::text(expected);
+	test_raw(&input, &expected);
+}
 
-	let result = to_html(parse_markdown(input.as_str())).unwrap();
+fn test_raw(input: &str, expected: &str) {
+	let result = to_html(parse_markdown(input)).unwrap();
 	assert_eq!(result, expected);
 }

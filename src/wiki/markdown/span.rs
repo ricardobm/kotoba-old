@@ -103,7 +103,11 @@ impl<'a> Span<'a> {
 	}
 
 	pub fn sub_pos<T: std::ops::RangeBounds<Pos>>(&self, range: T) -> Span<'a> {
-		let range = super::range_from_pos(&range, self.buffer.len());
+		let mut range = super::range_from_pos(&range, self.buffer.len());
+		debug_assert!(range.start >= self.start.offset);
+		debug_assert!(range.end <= self.end.offset);
+		range.start -= self.start.offset;
+		range.end -= self.start.offset;
 		self.sub(range)
 	}
 
@@ -349,9 +353,9 @@ impl<'a> SpanIter<'a> {
 	// chunk only.
 
 	/// Search for text from the current position until the end of the iterator.
-	pub fn search_text<T>(&self, search: T) -> Option<Pos>
+	pub fn search_text<T>(&self, mut search: T) -> Option<Pos>
 	where
-		T: Fn(&str) -> Option<usize>,
+		T: FnMut(&str) -> Option<usize>,
 	{
 		let mut iter = self.clone();
 		let mut curr = iter.pos();
@@ -414,7 +418,7 @@ impl<'a> SpanIter<'a> {
 
 impl<'a> fmt::Debug for SpanIter<'a> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		const MAX_TEXT_LEN: usize = 5;
+		const MAX_TEXT_LEN: usize = 16;
 		let text = if self.pending.len() > 0 {
 			self.pending
 		} else {
@@ -422,9 +426,9 @@ impl<'a> fmt::Debug for SpanIter<'a> {
 		};
 		write!(f, "Iter({:?} {} {}", self.cursor, self.indent, self.quotes)?;
 		if text.len() <= MAX_TEXT_LEN {
-			write!(f, "{:?}", text)?;
+			write!(f, " {:?}", text)?;
 		} else {
-			write!(f, "{:?}…", &text[..MAX_TEXT_LEN])?;
+			write!(f, " {:?}…", &text[..MAX_TEXT_LEN])?;
 		}
 		write!(f, ")")
 	}
