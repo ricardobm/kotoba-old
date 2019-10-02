@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use regex::Regex;
 
 use super::html::html_entity;
+use super::links;
 use super::{Pos, RawStr, Span, SpanIter};
 
 const REPLACEMENT_CHAR: char = '\u{FFFD}';
@@ -38,8 +39,16 @@ pub enum InlineEvent<'a> {
 	Char(char),
 	/// Either a `< >` delimited URL or a detected hyperlink.
 	AutoLink {
-		uri:       &'a str,
-		scheme:    &'a str,
+		/// The whole URI.
+		uri: &'a str,
+		/// Just the scheme part of the URI, not including the `:`.
+		scheme: &'a str,
+		/// The non-scheme part of the URI.
+		address: &'a str,
+		/// `true` if this is an email autolink, meaning that `mailto:` should
+		/// be added to the URI.
+		is_email: bool,
+		/// True if this autolink was delimited by `< >`.
 		delimited: bool,
 	},
 	/// Open an inline element.
@@ -137,7 +146,8 @@ impl<'a> InlineIterator<'a> {
 							let event = InlineEvent::Text(text);
 							break (State::Start, Some(event));
 						}
-						match self.next_char() {
+						let next = self.next_char();
+						match next {
 							'\\' => {
 								break self.parse_escape();
 							}
@@ -148,11 +158,16 @@ impl<'a> InlineIterator<'a> {
 								break self.parse_code();
 							}
 							'<' | '>' | '\'' | '"' | '\0' => {
+								if next == '<' {
+									if let Some(link) = links::parse_autolink(&mut self.inner) {
+										break (State::Start, Some(link));
+									}
+								}
 								let (len, event) = next_char_escaped(self.chunk());
 								self.skip_len(len);
 								break (State::Start, event);
 							}
-							_ => panic!("panicked at next char '{:?}'", self.next_char()),
+							_ => panic!("panicked at next char '{:?}'", next),
 						};
 					} else {
 						let text = self.chunk();

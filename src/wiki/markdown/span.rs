@@ -211,6 +211,13 @@ impl<'a> SpanIter<'a> {
 		self.cursor
 	}
 
+	pub fn restore_from(&mut self, iter: &SpanIter<'a>) {
+		self.cursor = iter.cursor;
+		self.next_eol = iter.next_eol;
+		self.pending = iter.pending;
+		self.stripped = iter.stripped;
+	}
+
 	pub fn skip_to(&mut self, pos: Pos) {
 		debug_assert!(pos >= self.cursor && pos <= self.maxpos);
 		self.cursor = pos;

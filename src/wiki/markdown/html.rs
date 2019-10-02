@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fmt::Write;
 
-use super::inline::{InlineEvent, Inline, TextOrChar};
+use super::inline::{Inline, InlineEvent, TextOrChar};
 use super::{Block, HeaderLevel, MarkupEvent};
 
 pub fn fmt_html<'a>(event: &MarkupEvent<'a>, f: &mut fmt::Formatter) -> fmt::Result {
@@ -70,6 +70,17 @@ fn fmt_inline<'a>(ev: &InlineEvent<'a>, f: &mut fmt::Formatter) -> fmt::Result {
 			}
 		}
 		&InlineEvent::HTML { code, .. } => f.write_str(code),
+
+		&InlineEvent::AutoLink { uri, is_email, .. } => {
+			f.write_str(r#"<a href=""#)?;
+			if is_email {
+				f.write_str("mailto:")?;
+			}
+			escape_html(f, uri)?;
+			f.write_str(r#"">"#)?;
+			escape_html(f, uri)?;
+			f.write_str(r#"</a>"#)
+		}
 
 		&InlineEvent::Open(Inline::Code) => f.write_str("<code>"),
 		&InlineEvent::Open(Inline::Emphasis) => f.write_str("<em>"),
