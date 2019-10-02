@@ -204,3 +204,14 @@ pub fn parse_autolink_extension<'a>(chunk: &'a str) -> Option<(Range, InlineEven
 
 	None
 }
+
+/*
+   TODO: nested link handling
+
+   The link syntax in markdown allows nested brackets in the link label, but
+   in case those nested brackets are links themselves (e.g. the shortcut link
+   reference syntax) they take precedence.
+
+   The above means that we need to know all the link references in the
+   document to parse links.
+*/
