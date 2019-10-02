@@ -4,7 +4,7 @@ use regex::Regex;
 
 use super::html::html_entity;
 use super::links;
-use super::{Pos, RawStr, Span, SpanIter};
+use super::{Pos, Range, RawStr, Span, SpanIter};
 
 const REPLACEMENT_CHAR: char = '\u{FFFD}';
 
@@ -39,15 +39,22 @@ pub enum InlineEvent<'a> {
 	Char(char),
 	/// Either a `< >` delimited URL or a detected hyperlink.
 	AutoLink {
-		/// The whole URI.
-		uri: &'a str,
-		/// Just the scheme part of the URI, not including the `:`.
+		/// The matched link address, as it appears on the source text.
+		///
+		/// This should also be used as the link label. It may or may not
+		/// contain the scheme.
+		link: &'a str,
+		/// Scheme prefix, excluding the `:`.
+		///
+		/// If the source does not contain the scheme, this will be a static
+		/// string with the detected schema.
 		scheme: &'a str,
-		/// The non-scheme part of the URI.
-		address: &'a str,
-		/// `true` if this is an email autolink, meaning that `mailto:` should
-		/// be added to the URI.
-		is_email: bool,
+		/// This will contain the necessary schema prefix in case the [link]
+		/// does not contain it, being empty otherwise.
+		///
+		/// The prefix includes the `:` and possibly the `//`. It should not
+		/// be used as part of the label.
+		prefix: &'a str,
 		/// True if this autolink was delimited by `< >`.
 		delimited: bool,
 	},
@@ -90,6 +97,8 @@ pub struct InlineIterator<'a> {
 	inner: SpanIter<'a>,
 	queue: VecDeque<char>,
 	state: State<'a>,
+
+	next_link: Option<(Range, Option<(Range, InlineEvent<'a>)>)>,
 }
 
 impl<'a> Iterator for InlineIterator<'a> {
@@ -105,6 +114,7 @@ enum State<'a> {
 	Start,
 	OutputNext(InlineEvent<'a>),
 	OutputCodeText(Pos, &'a str, SpanIter<'a>),
+	AutoLink(usize, InlineEvent<'a>),
 	End,
 }
 
@@ -121,6 +131,8 @@ impl<'a> InlineIterator<'a> {
 			inner: span.iter(),
 			queue: VecDeque::new(),
 			state: State::Start,
+
+			next_link: None,
 		}
 	}
 
@@ -128,6 +140,7 @@ impl<'a> InlineIterator<'a> {
 		self.inner.chunk()
 	}
 
+	#[allow(unreachable_code)]
 	fn get_next(&mut self) -> Option<InlineEvent<'a>> {
 		let (next_state, result) = loop {
 			self.state = match std::mem::take(&mut self.state) {
@@ -139,8 +152,20 @@ impl<'a> InlineIterator<'a> {
 
 				State::Start => {
 					if !self.assert_chunk() {
-						State::End
+						break (State::End, None);
+					} else if let Some((Range { start: 0, end }, event)) = self.next_autolink() {
+						self.skip_len(end);
+						break (State::Start, Some(event));
 					} else if let Some(index) = self.chunk().find(|c| is_special_char(c)) {
+						let index = if let Some((link, _)) = self.next_autolink() {
+							if link.start < index {
+								link.start
+							} else {
+								index
+							}
+						} else {
+							index
+						};
 						if index > 0 {
 							let text = self.consume_and_skip(index);
 							let event = InlineEvent::Text(text);
@@ -170,11 +195,22 @@ impl<'a> InlineIterator<'a> {
 							_ => panic!("panicked at next char '{:?}'", next),
 						};
 					} else {
-						let text = self.chunk();
-						self.inner.skip_chunk();
+						// Detect GFM extension autolinks
+						let len = if let Some((range, _)) = self.next_autolink() {
+							debug_assert!(range.start > 0);
+							range.start
+						} else {
+							self.chunk().len()
+						};
+						let text = self.consume_and_skip(len);
 						let event = InlineEvent::Text(text);
 						break (State::Start, Some(event));
 					}
+				}
+
+				State::AutoLink(len, event) => {
+					self.inner.skip_len(len);
+					break (State::Start, Some(event));
 				}
 
 				State::OutputCodeText(end, delim, mut iter) => {
@@ -233,6 +269,47 @@ impl<'a> InlineIterator<'a> {
 	//
 	// Parsing helpers
 	//
+
+	/// Find and parses the next autolink in the current chunk.
+	fn next_autolink(&mut self) -> Option<(Range, InlineEvent<'a>)> {
+		let cur_txt = self.inner.chunk();
+		let cur_pos = self.inner.pos().offset;
+		let cur_len = cur_txt.len();
+		if let Some((valid_range, link)) = &self.next_link {
+			if cur_pos >= valid_range.start && cur_pos < valid_range.end {
+				if let Some((range, event)) = link {
+					if cur_pos <= range.start {
+						let out_range = Range {
+							start: range.start - cur_pos,
+							end:   range.end - cur_pos,
+						};
+						return Some((out_range, event.clone()));
+					}
+				} else {
+					// cached range is valid, but it does not have a link
+					return None;
+				}
+			}
+		}
+
+		// The range for which this cached value is valid
+		let cur_range = Range {
+			start: cur_pos,
+			end:   cur_pos + cur_len,
+		};
+		if let Some((range, event)) = links::parse_autolink_extension(cur_txt) {
+			// store the absolute range instead
+			let abs_range = Range {
+				start: range.start + cur_pos,
+				end:   range.end + cur_pos,
+			};
+			self.next_link = Some((cur_range, Some((abs_range, event.clone()))));
+			Some((range, event))
+		} else {
+			self.next_link = Some((cur_range, None));
+			None
+		}
+	}
 
 	fn escape_next(iter: &mut SpanIter<'a>) -> Option<InlineEvent<'a>> {
 		let (len, event) = next_char_escaped(iter.chunk());

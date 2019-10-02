@@ -79,21 +79,18 @@ it "is not one of these" {
 	test(r#"
 		<>
 
-		< http://foo.bar >
+		<http://foo.bar >
 
 		<m:abc>
 
 		<foo.bar.baz>
 
-		foo@bar.example.com
-
 		<foo\+@bar.example.com>
 	"#, r#"
 		<p>&lt;&gt;</p>
-		<p>&lt; http://foo.bar &gt;</p>
+		<p>&lt;http://foo.bar &gt;</p>
 		<p>&lt;m:abc&gt;</p>
 		<p>&lt;foo.bar.baz&gt;</p>
-		<p>foo@bar.example.com</p>
 		<p>&lt;foo+@bar.example.com&gt;</p>
 	"#);
 }
@@ -109,6 +106,143 @@ it "supports email autolinks" {
 		<foo+special@Bar.baz-bar0.com>
 	"#, r#"
 		<p><a href="mailto:foo+special@Bar.baz-bar0.com">foo+special@Bar.baz-bar0.com</a></p>
+	"#);
+}
+
+it "supports GFM extension autolinks" {
+	test(r#"
+		http://example.com
+
+		foo@bar.example.com
+	"#, r#"
+		<p><a href="http://example.com">http://example.com</a></p>
+		<p><a href="mailto:foo@bar.example.com">foo@bar.example.com</a></p>
+	"#);
+
+	test(r#"
+		www.commonmark.org
+
+		Visit www.commonmark.org/help for more information.
+	"#, r#"
+		<p><a href="http://www.commonmark.org">www.commonmark.org</a></p>
+		<p>Visit <a href="http://www.commonmark.org/help">www.commonmark.org/help</a> for more information.</p>
+	"#);
+
+	// Trailing punctuation is not considered part of the autolink:
+
+	test(r#"
+		Visit www.commonmark.org.
+
+		Visit www.commonmark.org/a.b.
+	"#, r#"
+		<p>Visit <a href="http://www.commonmark.org">www.commonmark.org</a>.</p>
+		<p>Visit <a href="http://www.commonmark.org/a.b">www.commonmark.org/a.b</a>.</p>
+	"#);
+
+	test(r#"www.commonmark.org/?/??"#, r#"<p><a href="http://www.commonmark.org/?/">www.commonmark.org/?/</a>??</p>"#);
+	test(r#"www.commonmark.org/!/!!"#, r#"<p><a href="http://www.commonmark.org/!/">www.commonmark.org/!/</a>!!</p>"#);
+	test(r#"www.commonmark.org/,/,,"#, r#"<p><a href="http://www.commonmark.org/,/">www.commonmark.org/,/</a>,,</p>"#);
+	test(r#"www.commonmark.org/:/::"#, r#"<p><a href="http://www.commonmark.org/:/">www.commonmark.org/:/</a>::</p>"#);
+	test(r#"www.commonmark.org/*/**"#, r#"<p><a href="http://www.commonmark.org/*/">www.commonmark.org/*/</a>**</p>"#);
+	test(r#"www.commonmark.org/_/__"#, r#"<p><a href="http://www.commonmark.org/_/">www.commonmark.org/_/</a>__</p>"#);
+	test(r#"www.commonmark.org/~/~~"#, r#"<p><a href="http://www.commonmark.org/~/">www.commonmark.org/~/</a>~~</p>"#);
+
+	// Parenthesis handling:
+
+	test(r#"
+		www.google.com/search?q=Markup+(business)
+	"#, r#"
+		<p><a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a></p>
+	"#);
+
+	test(r#"
+		www.google.com/search?q=Markup+(business)))
+	"#, r#"
+		<p><a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a>))</p>
+	"#);
+
+	test(r#"
+		(www.google.com/search?q=Markup+(business))
+	"#, r#"
+		<p>(<a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a>)</p>
+	"#);
+
+	test(r#"
+		(www.google.com/search?q=Markup+(business)
+	"#, r#"
+		<p>(<a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a></p>
+	"#);
+
+	test(r#"
+		www.google.com/search?q=(business))+ok
+	"#, r#"
+		<p><a href="http://www.google.com/search?q=(business))+ok">www.google.com/search?q=(business))+ok</a></p>
+	"#);
+
+	// Entity trimming:
+
+	test(r#"
+		www.google.com/search?q=commonmark&hl=en
+	"#, r#"
+		<p><a href="http://www.google.com/search?q=commonmark&amp;hl=en">www.google.com/search?q=commonmark&amp;hl=en</a></p>
+	"#);
+
+	test(r#"
+		www.google.com/search?q=commonmark&hl;
+	"#, r#"
+		<p><a href="http://www.google.com/search?q=commonmark">www.google.com/search?q=commonmark</a>&amp;hl;</p>
+	"#);
+
+	// `<` ends the autolink:
+
+	test(r#"
+		www.commonmark.org/he<lp
+	"#, r#"
+		<p><a href="http://www.commonmark.org/he">www.commonmark.org/he</a>&lt;lp</p>
+	"#);
+
+	// Extended URL:
+
+	test(r#"
+		http://commonmark.org
+
+		(Visit https://encrypted.google.com/search?q=Markup+(business))
+	"#, r#"
+		<p><a href="http://commonmark.org">http://commonmark.org</a></p>
+		<p>(Visit <a href="https://encrypted.google.com/search?q=Markup+(business)">https://encrypted.google.com/search?q=Markup+(business)</a>)</p>
+	"#);
+
+	// Email autolinks:
+
+	test(r#"
+		foo@bar.baz
+	"#, r#"
+		<p><a href="mailto:foo@bar.baz">foo@bar.baz</a></p>
+	"#);
+
+	test(r#"
+		hello@mail+xyz.example is not valid, but hello+xyz@mail.example is.
+	"#, r#"
+		<p>hello@mail+xyz.example is not valid, but <a href="mailto:hello+xyz@mail.example">hello+xyz@mail.example</a> is.</p>
+	"#);
+
+	test(r#"
+		a.b-c_d@a.b
+
+		a.b-c_d@a.b.
+
+		a.b-c_d@a.b-
+
+		a.b-c_d@a.b_
+
+		Sequence: a.b-c_d@a.b_ a.b-c_d@a.b
+
+	"#, r#"
+		<p><a href="mailto:a.b-c_d@a.b">a.b-c_d@a.b</a></p>
+		<p><a href="mailto:a.b-c_d@a.b">a.b-c_d@a.b</a>.</p>
+		<p>a.b-c_d@a.b-</p>
+		<p>a.b-c_d@a.b_</p>
+		<p>Sequence: a.b-c_d@a.b_ <a href="mailto:a.b-c_d@a.b">a.b-c_d@a.b</a></p>
 	"#);
 }
 

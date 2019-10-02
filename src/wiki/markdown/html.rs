@@ -71,14 +71,14 @@ fn fmt_inline<'a>(ev: &InlineEvent<'a>, f: &mut fmt::Formatter) -> fmt::Result {
 		}
 		&InlineEvent::HTML { code, .. } => f.write_str(code),
 
-		&InlineEvent::AutoLink { uri, is_email, .. } => {
+		&InlineEvent::AutoLink { link, prefix, .. } => {
 			f.write_str(r#"<a href=""#)?;
-			if is_email {
-				f.write_str("mailto:")?;
+			if prefix.len() > 0 {
+				f.write_str(prefix)?;
 			}
-			escape_html(f, uri)?;
+			escape_html(f, link)?;
 			f.write_str(r#"">"#)?;
-			escape_html(f, uri)?;
+			escape_html(f, link)?;
 			f.write_str(r#"</a>"#)
 		}
 
