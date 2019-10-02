@@ -1154,7 +1154,7 @@ impl<'a> BlockIterator<'a> {
 				let m = m.trim_start_matches("/");
 				for s in TAGS.iter() {
 					let n = m.trim_start_matches(s);
-					if n.len() < lc.len() && is_tag_end(n, true) {
+					if n.len() < m.len() && is_tag_end(n, true) {
 						return Some("");
 					}
 				}
