@@ -2,11 +2,13 @@ use regex::Regex;
 
 use super::html::html_entity;
 use super::LinkReferenceMap;
-use super::{Pos, Range, RawStr, Span, SpanIter};
+use super::{Pos, PosRange, Range, RawStr, Span, SpanIter};
 
 mod code;
 mod entities;
+mod iterator;
 mod links;
+mod text;
 
 const REPLACEMENT_CHAR: char = '\u{FFFD}';
 

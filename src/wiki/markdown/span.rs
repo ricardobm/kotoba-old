@@ -2,7 +2,7 @@ use std::fmt;
 
 use super::common;
 use super::LinkReferenceMap;
-use super::Pos;
+use super::{Pos, Range};
 
 /// Span of text from the Markdown source, representing an inline block of
 /// text.
@@ -58,8 +58,6 @@ impl<'a> std::cmp::PartialEq for Span<'a> {
 		}
 	}
 }
-
-pub type Range = std::ops::Range<usize>;
 
 impl<'a> Default for Span<'a> {
 	fn default() -> Span<'static> {

@@ -3,6 +3,10 @@ use std::fmt;
 use super::common;
 use super::Span;
 
+pub type Range = std::ops::Range<usize>;
+
+pub type PosRange = std::ops::Range<Pos>;
+
 #[derive(Copy, Clone, Default, Eq)]
 pub struct Pos {
 	pub line:   usize,

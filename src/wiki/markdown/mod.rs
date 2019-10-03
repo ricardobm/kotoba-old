@@ -7,10 +7,10 @@ use self::block_parser::{BlockEvent, BlockIterator, Container, Leaf};
 mod common;
 
 mod span;
-pub use self::span::{Range, Span, SpanIter};
+pub use self::span::{Span, SpanIter};
 
 mod text;
-pub use self::text::{range_from, range_from_pos, Pos, TextBuffer};
+pub use self::text::{range_from, range_from_pos, Range, Pos, PosRange, TextBuffer};
 
 mod link_ref;
 use self::link_ref::parse_link_ref;
