@@ -27,6 +27,7 @@ extern crate chrono;
 extern crate itertools;
 extern crate rand;
 extern crate regex;
+extern crate unicase;
 
 #[macro_use]
 extern crate lazy_static;

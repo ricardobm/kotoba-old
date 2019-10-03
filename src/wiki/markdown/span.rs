@@ -11,7 +11,7 @@ use super::Pos;
 /// direct usage.
 /// Block of inline markdown text that can be independently parsed into [Inline]
 /// elements.
-#[derive(Clone)]
+#[derive(Clone, Eq)]
 pub struct Span<'a> {
 	/// Full raw source text.
 	pub buffer: &'a str,
@@ -25,6 +25,37 @@ pub struct Span<'a> {
 	pub quotes: usize,
 	/// Is this block of text inside a loose paragraph?
 	pub loose: Option<bool>,
+}
+
+// NOTE: both Hash and PartialEq implementations are here just to support the
+// link reference definition label comparison rules.
+
+impl<'a> std::hash::Hash for Span<'a> {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		for s in self.iter_folded() {
+			s.hash(state);
+		}
+	}
+}
+
+impl<'a> std::cmp::PartialEq for Span<'a> {
+	fn eq(&self, other: &Span<'a>) -> bool {
+		let (mut s1, mut s2) = (self.iter_folded(), other.iter_folded());
+		while let Some(s1) = s1.next() {
+			if let Some(s2) = s2.next() {
+				if s1 != s2 {
+					return false;
+				}
+			} else {
+				return false;
+			}
+		}
+		if let Some(_) = s2.next() {
+			false
+		} else {
+			true
+		}
+	}
 }
 
 pub type Range = std::ops::Range<usize>;
@@ -54,6 +85,20 @@ impl<'a> Span<'a> {
 
 	pub fn len(&self) -> usize {
 		self.end.offset - self.start.offset
+	}
+
+	pub fn iter_folded(&self) -> impl Iterator<Item = unicase::UniCase<String>> + 'a {
+		use regex::Regex;
+		use unicode_normalization::UnicodeNormalization;
+
+		lazy_static! {
+			static ref RE_SPACES: Regex = Regex::new(r"\s+").unwrap();
+		}
+
+		self.iter().map(|s| {
+			let s: String = RE_SPACES.replace_all(s.trim(), " ").nfc().collect();
+			unicase::UniCase::unicode(s)
+		})
 	}
 
 	pub fn trimmed(&self) -> Span<'a> {

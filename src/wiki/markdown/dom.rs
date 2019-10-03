@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
@@ -615,4 +616,149 @@ pub struct LinkReference<'a> {
 	pub title: Span<'a>,
 	/// Link destination URL.
 	pub url: RawStr<'a>,
+}
+
+#[derive(Clone)]
+pub struct LinkReferenceMap<'a> {
+	map: HashMap<Span<'a>, LinkReference<'a>>,
+}
+
+impl<'a> LinkReferenceMap<'a> {
+	pub fn new() -> LinkReferenceMap<'a> {
+		LinkReferenceMap {
+			map: Default::default(),
+		}
+	}
+
+	pub fn insert(&mut self, link: LinkReference<'a>) {
+		// By the spec, when there are multiple matching link reference
+		// definitions, the first must be used, so we don't overwrite
+		let key = link.label.clone();
+		self.map.entry(key).or_insert(link);
+	}
+
+	pub fn get(&self, label: &Span<'a>) -> Option<&LinkReference<'a>> {
+		self.map.get(label)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+
+	use super::*;
+
+	#[test]
+	fn link_reference_map_should_map_keys() {
+		let key1 = span("foo");
+		let key2 = span("bar");
+
+		let val1 = LinkReference {
+			label: key1.clone(),
+			title: span("foo value"),
+			url:   RawStr(""),
+		};
+		let val2 = LinkReference {
+			label: key2.clone(),
+			title: span("bar value"),
+			url:   RawStr(""),
+		};
+
+		let mut map = LinkReferenceMap::new();
+		map.insert(val1);
+		map.insert(val2);
+
+		assert_eq!(map.get(&key1).unwrap().title, span("foo value"));
+		assert_eq!(map.get(&key2).unwrap().title, span("bar value"));
+	}
+
+	#[test]
+	fn link_reference_map_should_use_first_definition() {
+		let key = span("foo");
+
+		let val1 = LinkReference {
+			label: key.clone(),
+			title: span("foo value"),
+			url:   RawStr(""),
+		};
+		let val2 = LinkReference {
+			label: key.clone(),
+			title: span("bar value"),
+			url:   RawStr(""),
+		};
+
+		let mut map = LinkReferenceMap::new();
+		map.insert(val1);
+		map.insert(val2);
+
+		assert_eq!(map.get(&key).unwrap().title, span("foo value"));
+	}
+
+	#[test]
+	fn link_reference_map_should_case_fold_and_normalize() {
+		// spell-checker: disable
+		let key1a = span("foo");
+		let key1b = span("FOO");
+		let key2a = span("    Maße  \t   αγω    ");
+		let key2b = span(" maSSe\tΑΓΩ\t");
+		// spell-checker: enable
+
+		let val1a = LinkReference {
+			label: key1a.clone(),
+			title: span("foo value"),
+			url:   RawStr(""),
+		};
+		let val2a = LinkReference {
+			label: key2a.clone(),
+			title: span("bar value"),
+			url:   RawStr(""),
+		};
+
+		let val1b = LinkReference {
+			label: key1b.clone(),
+			title: span("NOT foo value"),
+			url:   RawStr(""),
+		};
+		let val2b = LinkReference {
+			label: key2b.clone(),
+			title: span("NOT bar value"),
+			url:   RawStr(""),
+		};
+
+		let mut map = LinkReferenceMap::new();
+		map.insert(val1a);
+		map.insert(val2a);
+
+		assert_eq!(map.get(&key1a).unwrap().title, span("foo value"));
+		assert_eq!(map.get(&key2a).unwrap().title, span("bar value"));
+
+		assert_eq!(map.get(&key1b).unwrap().title, span("foo value"));
+		assert_eq!(map.get(&key2b).unwrap().title, span("bar value"));
+
+		map.insert(val1b);
+		map.insert(val2b);
+
+		assert_eq!(map.get(&key1a).unwrap().title, span("foo value"));
+		assert_eq!(map.get(&key2a).unwrap().title, span("bar value"));
+
+		assert_eq!(map.get(&key1b).unwrap().title, span("foo value"));
+		assert_eq!(map.get(&key2b).unwrap().title, span("bar value"));
+	}
+
+	fn span<'s>(s: &'s str) -> Span<'s> {
+		let sta = Pos::default();
+		let end = {
+			let mut p = sta;
+			p.skip(s);
+			p
+		};
+		Span {
+			buffer: s,
+			start:  sta,
+			end:    end,
+			indent: 0,
+			quotes: 0,
+			loose:  None,
+		}
+	}
+
 }
