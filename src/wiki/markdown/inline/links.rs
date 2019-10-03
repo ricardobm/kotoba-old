@@ -1,12 +1,12 @@
 use regex::Regex;
 
-use super::InlineEvent;
+use super::InlineOutput;
 use super::{Range, SpanIter};
 
 /// Parses an autolink at the current position.
 ///
 /// Skip the link and returns the inner text.
-pub fn parse_autolink<'a>(iter: &mut SpanIter<'a>) -> Option<InlineEvent<'a>> {
+pub fn parse_autolink<'a>(iter: &mut SpanIter<'a>) -> Option<InlineOutput<'a>> {
 	lazy_static! {
 		static ref RE_AUTOLINK: Regex = Regex::new(
 			r#"(?xi)
@@ -36,7 +36,7 @@ pub fn parse_autolink<'a>(iter: &mut SpanIter<'a>) -> Option<InlineEvent<'a>> {
 		let link = m.name("link").unwrap().as_str();
 		let scheme = m.name("scheme").unwrap().as_str();
 		iter.skip_len(m.get(0).unwrap().as_str().len());
-		Some(InlineEvent::AutoLink {
+		Some(InlineOutput::AutoLink {
 			link,
 			scheme,
 			prefix: "",
@@ -45,7 +45,7 @@ pub fn parse_autolink<'a>(iter: &mut SpanIter<'a>) -> Option<InlineEvent<'a>> {
 	} else if let Some(m) = RE_EMAIL.captures(iter.chunk()) {
 		let link = m.name("link").unwrap().as_str();
 		iter.skip_len(m.get(0).unwrap().as_str().len());
-		Some(InlineEvent::AutoLink {
+		Some(InlineOutput::AutoLink {
 			link,
 			scheme: "mailto",
 			prefix: "mailto:",
@@ -59,8 +59,8 @@ pub fn parse_autolink<'a>(iter: &mut SpanIter<'a>) -> Option<InlineEvent<'a>> {
 /// Find and parses an GFM autolink extension.
 ///
 /// If successful, returns the range for the match and
-/// the [InlineEvent::AutoLink].
-pub fn parse_autolink_extension<'a>(chunk: &'a str) -> Option<(Range, InlineEvent<'a>)> {
+/// the [InlineOutput::AutoLink].
+pub fn parse_autolink_extension<'a>(chunk: &'a str) -> Option<(Range, InlineOutput<'a>)> {
 	lazy_static! {
 		// If an autolink ends in a semicolon (;), we check to see if it appears
 		// to resemble an entity reference; if the preceding text is & followed
@@ -193,7 +193,7 @@ pub fn parse_autolink_extension<'a>(chunk: &'a str) -> Option<(Range, InlineEven
 			("http", "http://")
 		};
 
-		let event = InlineEvent::AutoLink {
+		let event = InlineOutput::AutoLink {
 			link:      link,
 			scheme:    scheme,
 			prefix:    prefix,

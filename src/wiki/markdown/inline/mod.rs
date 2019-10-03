@@ -4,8 +4,8 @@ use super::html::html_entity;
 use super::LinkReferenceMap;
 use super::{Pos, Range, RawStr, Span, SpanIter};
 
-mod entities;
 mod code;
+mod entities;
 mod links;
 
 const REPLACEMENT_CHAR: char = '\u{FFFD}';
@@ -17,16 +17,21 @@ pub enum TextOrChar<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub enum InlineEvent<'a> {
-	/// Raw text to be output.
+pub enum InlineOutput<'a> {
+	/// Text content to output.
 	///
-	/// This is HTML safe to the extent that the basic HTML entities generate
-	/// an [Entity] event.
+	/// This is guaranteed to not contain any basic HTML entities, so it can be
+	/// output to HTML without escaping.
 	Text(&'a str),
+	/// Single char version of [Text].
+	Char(char),
 	/// A hard line break (e.g. `<br/>`).
 	LineBreak,
-	/// Generated either from HTML entities in the Markdown text or from
-	/// raw characters that need HTML escaping (`<`, `>`, `&`, `\`, `"`, `'`).
+	/// HTML entity.
+	///
+	/// This is generated for any basic HTML entities in the Markdown text
+	/// (e.g. `<`, `>`, `&`, `\`, `"`, `'`) and also for explicit entities
+	/// in the source.
 	Entity {
 		/// The source text.
 		///
@@ -37,9 +42,9 @@ pub enum InlineEvent<'a> {
 		/// The actual Unicode text corresponding to the entity.
 		output: TextOrChar<'a>,
 	},
-	/// Generates a single character of text.
-	Char(char),
 	/// Either a `< >` delimited URL or a detected hyperlink.
+	///
+	/// Note that the text content of an [AutoLink] is not HTML-safe.
 	AutoLink {
 		/// The matched link address, as it appears on the source text.
 		///
@@ -100,11 +105,11 @@ pub struct InlineIterator<'a, 'r> {
 	state: State<'a>,
 	refs:  &'r LinkReferenceMap<'a>,
 
-	next_link: Option<(Range, Option<(Range, InlineEvent<'a>)>)>,
+	next_link: Option<(Range, Option<(Range, InlineOutput<'a>)>)>,
 }
 
 impl<'a, 'r> Iterator for InlineIterator<'a, 'r> {
-	type Item = InlineEvent<'a>;
+	type Item = InlineOutput<'a>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		self.get_next()
@@ -114,9 +119,9 @@ impl<'a, 'r> Iterator for InlineIterator<'a, 'r> {
 #[derive(Clone, Debug)]
 enum State<'a> {
 	Start,
-	OutputNext(InlineEvent<'a>),
+	OutputNext(InlineOutput<'a>),
 	OutputCodeText(Pos, &'a str, SpanIter<'a>),
-	AutoLink(usize, InlineEvent<'a>),
+	AutoLink(usize, InlineOutput<'a>),
 	End,
 }
 
@@ -143,7 +148,7 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 	}
 
 	#[allow(unreachable_code)]
-	fn get_next(&mut self) -> Option<InlineEvent<'a>> {
+	fn get_next(&mut self) -> Option<InlineOutput<'a>> {
 		let (next_state, result) = loop {
 			self.state = match std::mem::take(&mut self.state) {
 				State::End => break (State::End, None),
@@ -170,7 +175,7 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 						};
 						if index > 0 {
 							let text = self.consume_and_skip(index);
-							let event = InlineEvent::Text(text);
+							let event = InlineOutput::Text(text);
 							break (State::Start, Some(event));
 						}
 						let next = self.next_char();
@@ -205,7 +210,7 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 							self.chunk().len()
 						};
 						let text = self.consume_and_skip(len);
-						let event = InlineEvent::Text(text);
+						let event = InlineOutput::Text(text);
 						break (State::Start, Some(event));
 					}
 				}
@@ -221,7 +226,7 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 						// consume the end delimiter
 						self.inner.skip_to(end);
 						self.skip_len(delim.len());
-						break (State::Start, Some(InlineEvent::Close(Inline::Code)));
+						break (State::Start, Some(InlineOutput::Close(Inline::Code)));
 					}
 
 					// Find the next character that needs escaping.
@@ -232,20 +237,20 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 							iter.skip_to(esc);
 							let text = self.block.sub_text(sta..esc);
 							let next = State::OutputCodeText(end, delim, iter);
-							let event = InlineEvent::Text(text);
+							let event = InlineOutput::Text(text);
 							break (next, Some(event));
 						} else {
 							// generate the HTML escape or line break as space
 							let chr = iter.chunk().chars().next().unwrap();
 							let event = if chr == '\n' {
 								iter.skip_len(1);
-								Some(InlineEvent::Text(" "))
+								Some(InlineOutput::Text(" "))
 							} else if chr == '\r' {
 								iter.skip_len(1);
 								if iter.chunk().chars().next() == Some('\n') {
 									iter.skip_len(1);
 								}
-								Some(InlineEvent::Text(" "))
+								Some(InlineOutput::Text(" "))
 							} else {
 								Self::escape_next(&mut iter)
 							};
@@ -257,7 +262,7 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 						let text = iter.chunk();
 						iter.skip_chunk();
 						let next = State::OutputCodeText(end, delim, iter);
-						let event = InlineEvent::Text(text);
+						let event = InlineOutput::Text(text);
 						break (next, Some(event));
 					}
 				}
@@ -273,7 +278,7 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 	//
 
 	/// Find and parses the next autolink in the current chunk.
-	fn next_autolink(&mut self) -> Option<(Range, InlineEvent<'a>)> {
+	fn next_autolink(&mut self) -> Option<(Range, InlineOutput<'a>)> {
 		let cur_txt = self.inner.chunk();
 		let cur_pos = self.inner.pos().offset;
 		let cur_len = cur_txt.len();
@@ -313,35 +318,35 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 		}
 	}
 
-	fn escape_next(iter: &mut SpanIter<'a>) -> Option<InlineEvent<'a>> {
+	fn escape_next(iter: &mut SpanIter<'a>) -> Option<InlineOutput<'a>> {
 		let (len, event) = next_char_escaped(iter.chunk());
 		iter.skip_len(len);
 		event
 	}
 
-	fn parse_code(&mut self) -> (State<'a>, Option<InlineEvent<'a>>) {
+	fn parse_code(&mut self) -> (State<'a>, Option<InlineOutput<'a>>) {
 		let parsed = self::code::parse(&self.inner);
 		let (code, end, delim) = (parsed.code, parsed.end, parsed.delim);
 		if let Some(code) = code {
-			let event = InlineEvent::Open(Inline::Code);
+			let event = InlineOutput::Open(Inline::Code);
 			(State::OutputCodeText(end, delim, code.iter()), Some(event))
 		} else {
 			// generate the delimiter as raw text
-			let event = InlineEvent::Text(delim);
+			let event = InlineOutput::Text(delim);
 			self.skip_len(delim.len());
 			(State::Start, Some(event))
 		}
 	}
 
 	/// Parse an escape sequence at the backslash.
-	fn parse_escape(&mut self) -> (State<'a>, Option<InlineEvent<'a>>) {
+	fn parse_escape(&mut self) -> (State<'a>, Option<InlineOutput<'a>>) {
 		if let (len, Some(escape)) = parse_escape(self.chunk()) {
 			debug_assert!(len > 0);
 			self.skip_len(len);
 			(State::Start, Some(escape))
 		} else {
 			// non-recognized escape sequences are just generated literally
-			let backslash = InlineEvent::Text(self.consume_and_skip(1));
+			let backslash = InlineOutput::Text(self.consume_and_skip(1));
 			if let (len, Some(next_char)) = next_char_escaped(self.chunk()) {
 				self.skip_len(len);
 				(State::OutputNext(next_char), Some(backslash))
@@ -351,7 +356,7 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 		}
 	}
 
-	fn parse_entity(&mut self) -> (State<'a>, Option<InlineEvent<'a>>) {
+	fn parse_entity(&mut self) -> (State<'a>, Option<InlineOutput<'a>>) {
 		use self::entities::get_named_entity;
 
 		lazy_static! {
@@ -364,7 +369,7 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 			let len = m.end();
 			let entity = m.as_str();
 			if let Some(output) = get_named_entity(entity) {
-				let event = InlineEvent::Entity {
+				let event = InlineOutput::Entity {
 					source: entity,
 					entity: entity,
 					output: TextOrChar::Text(output),
@@ -434,7 +439,7 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 // Helper functions
 //=====================================
 
-fn parse_escape<'a>(text: &'a str) -> (usize, Option<InlineEvent<'a>>) {
+fn parse_escape<'a>(text: &'a str) -> (usize, Option<InlineOutput<'a>>) {
 	lazy_static! {
 		static ref RE_VALID_ESCAPE: Regex = Regex::new(
 			r#"(?x)
@@ -456,25 +461,25 @@ fn parse_escape<'a>(text: &'a str) -> (usize, Option<InlineEvent<'a>>) {
 		debug_assert!(len > 0);
 		(len + 1, event)
 	} else if let Some(m) = RE_HARD_BREAK.find(text) {
-		(m.end(), Some(InlineEvent::LineBreak))
+		(m.end(), Some(InlineOutput::LineBreak))
 	} else {
 		(0, None)
 	}
 }
 
-fn next_char_escaped<'a>(text: &'a str) -> (usize, Option<InlineEvent<'a>>) {
+fn next_char_escaped<'a>(text: &'a str) -> (usize, Option<InlineOutput<'a>>) {
 	let mut chars = text.char_indices();
 	if let Some((_, chr)) = chars.next() {
 		let len = chars.next().map(|x| x.0).unwrap_or(text.len());
 		let txt = &text[0..len];
 		let event = if let Some(entity) = html_entity(chr) {
-			InlineEvent::Entity {
+			InlineOutput::Entity {
 				source: txt,
 				entity: entity,
 				output: TextOrChar::Text(txt),
 			}
 		} else {
-			InlineEvent::Text(txt)
+			InlineOutput::Text(txt)
 		};
 		(len, Some(event))
 	} else {
@@ -482,15 +487,15 @@ fn next_char_escaped<'a>(text: &'a str) -> (usize, Option<InlineEvent<'a>>) {
 	}
 }
 
-fn entity_or_char<'a>(source: &'a str, c: char) -> InlineEvent<'a> {
+fn entity_or_char<'a>(source: &'a str, c: char) -> InlineOutput<'a> {
 	if let Some(entity) = html_entity(c) {
-		InlineEvent::Entity {
+		InlineOutput::Entity {
 			source: source,
 			entity: entity,
 			output: TextOrChar::Char(c),
 		}
 	} else {
-		InlineEvent::Char(c)
+		InlineOutput::Char(c)
 	}
 }
 

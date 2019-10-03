@@ -8,42 +8,7 @@ use super::{Pos, Span};
 
 pub use self::table_parser::TableAlign;
 
-// ==============================
-// Note on markdown text handling
-// ==============================
-//
-// We use three types of string that deal with raw markdown text:
-//
-// - `&'a str`
-//
-//   is raw slice borrowed directly from the source. Never spans more
-//   than one line and cannot contain escape sequences or any inline
-//   element.
-//
-//   Note that this can still contain `U+0000` characters that should
-//   be replaced by `U+FFFD` when generating the output.
-//
-// - `RawStr<'a>`
-//
-//   is the same as an `&'a str` but this may contain escape sequences
-//   that need to be translated when generating the output.
-//
-// - `Span<'a>`
-//
-//   is a multiline block of inline text.
-//
-//   This can contain `U+0000` and escape sequences, the same as the
-//   other types, but may also contain inline elements that need to be
-//   parsed separately (this will depend on where syntactically the
-//   span of text is located).
-//
-//   The raw string in a `Span` can also contain blockquote markers and
-//   indentation that need to be stripped. As such, the `Span` provides
-//   an iterator model for consuming the text while skipping ignored
-//   characters.
-
-/// Raw markdown text from the source, possibly containing escape
-/// sequences but no inlines nor line breaks.
+/// Represents a plain text sequence from the Markdown source.
 #[derive(Copy, Clone)]
 pub struct RawStr<'a>(pub &'a str);
 

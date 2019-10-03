@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fmt::Write;
 
-use super::inline::{Inline, InlineEvent, TextOrChar};
+use super::inline::{Inline, InlineOutput, TextOrChar};
 use super::{Block, HeaderLevel, LinkReferenceMap, MarkupEvent};
 
 pub fn output<'a>(f: &mut fmt::Formatter, event: &MarkupEvent<'a>, refs: &LinkReferenceMap<'a>) -> fmt::Result {
@@ -54,12 +54,12 @@ fn escape_html(f: &mut fmt::Formatter, s: &str) -> fmt::Result {
 	Ok(())
 }
 
-fn fmt_inline<'a>(ev: &InlineEvent<'a>, f: &mut fmt::Formatter) -> fmt::Result {
+fn fmt_inline<'a>(ev: &InlineOutput<'a>, f: &mut fmt::Formatter) -> fmt::Result {
 	match ev {
-		&InlineEvent::Text(s) => f.write_str(s),
-		&InlineEvent::Char(c) => f.write_char(c),
-		&InlineEvent::LineBreak => f.write_str("<br/>\n"),
-		&InlineEvent::Entity { entity, output, .. } => {
+		&InlineOutput::Text(s) => f.write_str(s),
+		&InlineOutput::Char(c) => f.write_char(c),
+		&InlineOutput::LineBreak => f.write_str("<br/>\n"),
+		&InlineOutput::Entity { entity, output, .. } => {
 			if entity == "&nbsp;" {
 				f.write_str(entity)
 			} else {
@@ -69,9 +69,9 @@ fn fmt_inline<'a>(ev: &InlineEvent<'a>, f: &mut fmt::Formatter) -> fmt::Result {
 				}
 			}
 		}
-		&InlineEvent::HTML { code, .. } => f.write_str(code),
+		&InlineOutput::HTML { code, .. } => f.write_str(code),
 
-		&InlineEvent::AutoLink { link, prefix, .. } => {
+		&InlineOutput::AutoLink { link, prefix, .. } => {
 			f.write_str(r#"<a href=""#)?;
 			if prefix.len() > 0 {
 				f.write_str(prefix)?;
@@ -82,15 +82,15 @@ fn fmt_inline<'a>(ev: &InlineEvent<'a>, f: &mut fmt::Formatter) -> fmt::Result {
 			f.write_str(r#"</a>"#)
 		}
 
-		&InlineEvent::Open(Inline::Code) => f.write_str("<code>"),
-		&InlineEvent::Open(Inline::Emphasis) => f.write_str("<em>"),
-		&InlineEvent::Open(Inline::Strong) => f.write_str("<strong>"),
-		&InlineEvent::Open(Inline::Strikethrough) => f.write_str("<del>"),
+		&InlineOutput::Open(Inline::Code) => f.write_str("<code>"),
+		&InlineOutput::Open(Inline::Emphasis) => f.write_str("<em>"),
+		&InlineOutput::Open(Inline::Strong) => f.write_str("<strong>"),
+		&InlineOutput::Open(Inline::Strikethrough) => f.write_str("<del>"),
 
-		&InlineEvent::Close(Inline::Code) => f.write_str("</code>"),
-		&InlineEvent::Close(Inline::Emphasis) => f.write_str("</em>"),
-		&InlineEvent::Close(Inline::Strong) => f.write_str("</strong>"),
-		&InlineEvent::Close(Inline::Strikethrough) => f.write_str("</del>"),
+		&InlineOutput::Close(Inline::Code) => f.write_str("</code>"),
+		&InlineOutput::Close(Inline::Emphasis) => f.write_str("</em>"),
+		&InlineOutput::Close(Inline::Strong) => f.write_str("</strong>"),
+		&InlineOutput::Close(Inline::Strikethrough) => f.write_str("</del>"),
 
 		_ => panic!("not implemented: HTML for inline {:?}", ev),
 	}
