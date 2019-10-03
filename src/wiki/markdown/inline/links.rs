@@ -1,6 +1,6 @@
 use regex::Regex;
 
-use super::inline::InlineEvent;
+use super::InlineEvent;
 use super::{Range, SpanIter};
 
 /// Parses an autolink at the current position.

@@ -1,11 +1,12 @@
-use std::collections::VecDeque;
-
 use regex::Regex;
 
 use super::html::html_entity;
-use super::links;
 use super::LinkReferenceMap;
 use super::{Pos, Range, RawStr, Span, SpanIter};
+
+mod entities;
+mod code;
+mod links;
 
 const REPLACEMENT_CHAR: char = '\u{FFFD}';
 
@@ -96,7 +97,6 @@ pub enum Inline {
 pub struct InlineIterator<'a, 'r> {
 	block: Span<'a>,
 	inner: SpanIter<'a>,
-	queue: VecDeque<char>,
 	state: State<'a>,
 	refs:  &'r LinkReferenceMap<'a>,
 
@@ -131,7 +131,6 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 		InlineIterator {
 			block: span.clone(),
 			inner: span.iter(),
-			queue: VecDeque::new(),
 			state: State::Start,
 			refs:  refs,
 
@@ -321,7 +320,7 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 	}
 
 	fn parse_code(&mut self) -> (State<'a>, Option<InlineEvent<'a>>) {
-		let parsed = super::inline_code::parse(&self.inner);
+		let parsed = self::code::parse(&self.inner);
 		let (code, end, delim) = (parsed.code, parsed.end, parsed.delim);
 		if let Some(code) = code {
 			let event = InlineEvent::Open(Inline::Code);
@@ -353,7 +352,7 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 	}
 
 	fn parse_entity(&mut self) -> (State<'a>, Option<InlineEvent<'a>>) {
-		use super::entities::get_named_entity;
+		use self::entities::get_named_entity;
 
 		lazy_static! {
 			static ref RE_ENTITY: Regex = Regex::new(r#"^&\w+;"#).unwrap();
@@ -404,32 +403,6 @@ impl<'a, 'r> InlineIterator<'a, 'r> {
 
 	fn next_char(&mut self) -> char {
 		self.chunk().chars().next().unwrap()
-	}
-
-	fn peek(&mut self, n: usize) -> Option<char> {
-		while n >= self.queue.len() {
-			if let Some(chr) = self.read_char() {
-				self.queue.push_back(chr);
-			} else {
-				return None;
-			}
-		}
-		Some(self.queue[n])
-	}
-
-	fn read_char(&mut self) -> Option<char> {
-		if self.assert_chunk() {
-			let mut chars = self.chunk().char_indices();
-			if let Some((_, chr)) = chars.next() {
-				let len = chars.next().map(|x| x.0).unwrap_or(self.chunk().len());
-				self.inner.skip_len(len);
-				Some(chr)
-			} else {
-				None
-			}
-		} else {
-			None
-		}
 	}
 
 	#[inline]
