@@ -157,9 +157,12 @@ impl<'a> MarkupEvent<'a> {
 	}
 }
 
-impl<'a> fmt::Display for MarkupEvent<'a> {
+pub struct MarkupWithLinks<'a, 'r>(pub &'r MarkupEvent<'a>, pub &'r LinkReferenceMap<'a>);
+
+impl<'a, 'r> fmt::Display for MarkupWithLinks<'a, 'r> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		super::html::fmt_html(self, f)
+		let MarkupWithLinks(markup, refs) = self;
+		super::html::output(f, markup, refs)
 	}
 }
 

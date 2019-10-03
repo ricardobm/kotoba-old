@@ -2,12 +2,12 @@ use std::fmt;
 use std::fmt::Write;
 
 use super::inline::{Inline, InlineEvent, TextOrChar};
-use super::{Block, HeaderLevel, MarkupEvent};
+use super::{Block, HeaderLevel, LinkReferenceMap, MarkupEvent};
 
-pub fn fmt_html<'a>(event: &MarkupEvent<'a>, f: &mut fmt::Formatter) -> fmt::Result {
+pub fn output<'a>(f: &mut fmt::Formatter, event: &MarkupEvent<'a>, refs: &LinkReferenceMap<'a>) -> fmt::Result {
 	match event {
 		MarkupEvent::Inline(span) => {
-			for event in span.iter_inline() {
+			for event in span.iter_inline(refs) {
 				fmt_inline(&event, f)?;
 			}
 			Ok(())

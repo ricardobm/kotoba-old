@@ -1,6 +1,7 @@
 use std::fmt;
 
 use super::common;
+use super::LinkReferenceMap;
 use super::Pos;
 
 /// Span of text from the Markdown source, representing an inline block of
@@ -228,8 +229,8 @@ impl<'a> Span<'a> {
 	}
 
 	/// Returns an iterator over the inline elements of this span.
-	pub fn iter_inline(&self) -> InlineIterator<'a> {
-		InlineIterator::new(self)
+	pub fn iter_inline<'r>(&self, refs: &'r LinkReferenceMap<'a>) -> InlineIterator<'a, 'r> {
+		InlineIterator::new(self, refs)
 	}
 }
 

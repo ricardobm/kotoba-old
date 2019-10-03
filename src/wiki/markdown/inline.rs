@@ -4,6 +4,7 @@ use regex::Regex;
 
 use super::html::html_entity;
 use super::links;
+use super::LinkReferenceMap;
 use super::{Pos, Range, RawStr, Span, SpanIter};
 
 const REPLACEMENT_CHAR: char = '\u{FFFD}';
@@ -92,16 +93,17 @@ pub enum Inline {
 }
 
 #[derive(Clone)]
-pub struct InlineIterator<'a> {
+pub struct InlineIterator<'a, 'r> {
 	block: Span<'a>,
 	inner: SpanIter<'a>,
 	queue: VecDeque<char>,
 	state: State<'a>,
+	refs:  &'r LinkReferenceMap<'a>,
 
 	next_link: Option<(Range, Option<(Range, InlineEvent<'a>)>)>,
 }
 
-impl<'a> Iterator for InlineIterator<'a> {
+impl<'a, 'r> Iterator for InlineIterator<'a, 'r> {
 	type Item = InlineEvent<'a>;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -124,13 +126,14 @@ impl<'a> Default for State<'a> {
 	}
 }
 
-impl<'a> InlineIterator<'a> {
-	pub fn new(span: &Span<'a>) -> InlineIterator<'a> {
+impl<'a, 'r> InlineIterator<'a, 'r> {
+	pub fn new(span: &Span<'a>, refs: &'r LinkReferenceMap<'a>) -> InlineIterator<'a, 'r> {
 		InlineIterator {
 			block: span.clone(),
 			inner: span.iter(),
 			queue: VecDeque::new(),
 			state: State::Start,
+			refs:  refs,
 
 			next_link: None,
 		}

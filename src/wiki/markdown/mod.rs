@@ -37,39 +37,45 @@ pub fn parse_markdown<'a>(input: &'a str) -> MarkdownIterator<'a> {
 
 /// Generate HTML code from the iterator returned by [parse_markdown].
 pub fn to_html<'a>(iter: MarkdownIterator<'a>) -> util::Result<String> {
-	let mut output = String::new();
-	let mut first = true;
-	let mut last_was_paragraph = false;
+	// Collect all link references from the iterator:
+	let mut references = LinkReferenceMap::new();
+	let mut document = Vec::new();
 	for it in iter {
 		match it {
 			Event::Output(markup) => {
-				if !first {
-					let break_line = match &markup {
-						MarkupEvent::Open(Block::Paragraph(span)) => !(span.loose == Some(false)),
-						MarkupEvent::Close(Block::Paragraph(_)) => false,
-						MarkupEvent::Close(Block::ListItem(info)) => {
-							!last_was_paragraph || info.list.loose == Some(true)
-						}
-						MarkupEvent::Open(..) => true,
-						MarkupEvent::Close(block) => block.is_container(),
-						_ => false,
-					};
-					if break_line {
-						write!(output, "\n")?;
-					}
-				}
-				write!(output, "{}", markup)?;
-				first = false;
-				last_was_paragraph = if let MarkupEvent::Close(Block::Paragraph(_)) = markup {
-					true
-				} else {
-					false
-				};
+				document.push(markup);
 			}
-			Event::Reference(_) => {
-				// TODO: implement references
+			Event::Reference(reference) => {
+				references.insert(reference);
 			}
 		}
+	}
+
+	// Output markup:
+	let mut output = String::new();
+	let mut first = true;
+	let mut last_was_paragraph = false;
+	for markup in document {
+		if !first {
+			let break_line = match &markup {
+				MarkupEvent::Open(Block::Paragraph(span)) => !(span.loose == Some(false)),
+				MarkupEvent::Close(Block::Paragraph(_)) => false,
+				MarkupEvent::Close(Block::ListItem(info)) => !last_was_paragraph || info.list.loose == Some(true),
+				MarkupEvent::Open(..) => true,
+				MarkupEvent::Close(block) => block.is_container(),
+				_ => false,
+			};
+			if break_line {
+				write!(output, "\n")?;
+			}
+		}
+		write!(output, "{}", MarkupWithLinks(&markup, &references))?;
+		first = false;
+		last_was_paragraph = if let MarkupEvent::Close(Block::Paragraph(_)) = markup {
+			true
+		} else {
+			false
+		};
 	}
 	Ok(output)
 }
