@@ -69,7 +69,7 @@ fn parse_code_delim<'a>(iter: &mut SpanIter<'a>) -> (&'a str, Option<(Span<'a>, 
 		static ref RE_DELIM_END: Regex = Regex::new(r"[`]+").unwrap();
 	}
 	let delim = RE_DELIM_STA.find(iter.chunk()).unwrap().as_str();
-	iter.skip_len(delim.len());
+	iter.skip_bytes(delim.len());
 
 	let mut only_spaces = true;
 	let sta = iter.pos();

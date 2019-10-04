@@ -281,20 +281,16 @@ impl<'a> SpanIter<'a> {
 		}
 	}
 
-	pub fn skip_bytes(&mut self, bytes: usize) {
-		self.skip_len(bytes);
-	}
-
-	pub fn skip_len(&mut self, mut len: usize) {
-		while !self.at_end() && len > 0 && len >= self.chunk().len() {
-			len -= self.chunk().len();
+	pub fn skip_bytes(&mut self, mut bytes: usize) {
+		while !self.at_end() && bytes > 0 && bytes >= self.chunk().len() {
+			bytes -= self.chunk().len();
 			self.skip_chunk();
 		}
 		if self.pending.len() > 0 {
-			self.cursor.column = common::text_column(&self.pending[..len], self.cursor.column);
-			self.pending = &self.pending[len..];
+			self.cursor.column = common::text_column(&self.pending[..bytes], self.cursor.column);
+			self.pending = &self.pending[bytes..];
 		} else {
-			self.cursor.skip_len(self.span.buffer, len);
+			self.cursor.skip_len(self.span.buffer, bytes);
 		}
 	}
 
