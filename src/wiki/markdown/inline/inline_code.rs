@@ -1,29 +1,30 @@
 use regex::Regex;
 
-use super::{Pos, Span, SpanIter};
+use super::inline_text::{TextMode, TextNode};
+use super::{PosRange, Span, SpanIter};
 
-pub struct ParsedInlineCode<'a> {
-	/// The delimiter used for opening/closing.
+/// Inline code element.
+#[derive(Clone, Debug)]
+pub struct CodeNode<'a> {
+	/// The code element delimiter.
 	pub delim: &'a str,
-	/// Span containing the code if the match was successful.
-	pub code: Option<Span<'a>>,
-	/// End position of the code.
-	///
-	/// This is the start position if the match was unsuccessful.
-	///
-	/// Even if the match was successful, this can be different
-	/// than `self.code.end` because the first and last space of
-	/// the code may be trimmed.
-	pub end: Pos,
+	/// Entire range for the code element.
+	pub range: PosRange,
+	/// Code element text.
+	pub text: TextNode<'a>,
 }
 
 /// Parse an inline code starting at the current position.
-pub fn parse<'a>(iter: &SpanIter<'a>) -> ParsedInlineCode<'a> {
+///
+/// Returns `(None, delim)` in case the current position does not contain
+/// an inline code node, where `delim` is the unmatched backtick string.
+pub fn parse<'a>(iter: &SpanIter<'a>) -> (Option<CodeNode<'a>>, &'a str) {
 	let start = iter.pos();
 	let mut iter = iter.clone();
 	let (delim, code) = parse_code_delim(&mut iter);
-	let (code, end) = if let Some((mut span, spaced)) = code {
-		let end = span.end;
+	let node = if let Some((mut span, spaced)) = code {
+		let mut end = span.end;
+		end.skip(delim);
 		if spaced {
 			let _ = span.start.skip_if(span.buffer, " ")
 				|| span.start.skip_if(span.buffer, "\r\n")
@@ -49,16 +50,17 @@ pub fn parse<'a>(iter: &SpanIter<'a>) -> ParsedInlineCode<'a> {
 				_ => {}
 			}
 		}
-		(Some(span), end)
-	} else {
-		(None, start)
-	};
 
-	ParsedInlineCode {
-		delim: delim,
-		code:  code,
-		end:   end,
-	}
+		let node = CodeNode {
+			delim: delim,
+			range: PosRange { start, end },
+			text:  TextNode::new(span, TextMode::InlineCode),
+		};
+		Some(node)
+	} else {
+		None
+	};
+	(node, delim)
 }
 
 fn parse_code_delim<'a>(iter: &mut SpanIter<'a>) -> (&'a str, Option<(Span<'a>, bool)>) {

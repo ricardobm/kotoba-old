@@ -1,7 +1,6 @@
 use std::fmt;
 
 use super::common;
-use super::LinkReferenceMap;
 use super::{Pos, Range};
 
 /// Span of text from the Markdown source, representing an inline block of
@@ -197,8 +196,6 @@ impl<'a> fmt::Debug for Span<'a> {
 	}
 }
 
-use super::inline::InlineIterator;
-
 impl<'a> Span<'a> {
 	/// Returns an iterator over the blocks of inline text in the [Span].
 	///
@@ -224,11 +221,6 @@ impl<'a> Span<'a> {
 			pending:  "",
 			stripped: false,
 		}
-	}
-
-	/// Returns an iterator over the inline elements of this span.
-	pub fn iter_inline<'r>(&self, refs: &'r LinkReferenceMap<'a>) -> InlineIterator<'a, 'r> {
-		InlineIterator::new(self, refs)
 	}
 }
 
@@ -287,6 +279,10 @@ impl<'a> SpanIter<'a> {
 				&self.span.buffer[self.cursor.offset..self.eol().offset]
 			}
 		}
+	}
+
+	pub fn skip_bytes(&mut self, bytes: usize) {
+		self.skip_len(bytes);
 	}
 
 	pub fn skip_len(&mut self, mut len: usize) {
@@ -392,6 +388,29 @@ impl<'a> SpanIter<'a> {
 		self.cursor.column = column;
 		self.cursor.offset += offset;
 		self.pending = indent_to_return;
+	}
+
+	//=========================================
+	// Helper methods
+	//=========================================
+
+	pub fn next_char(&mut self) -> Option<char> {
+		self.chunk().chars().next()
+	}
+
+	pub fn skip_char(&mut self) -> bool {
+		let len = self.chunk().len();
+		if len > 0 {
+			let skip = self.chunk().char_indices().map(|x| x.0).skip(1).next().unwrap_or(len);
+			self.skip_bytes(skip);
+			true
+		} else {
+			false
+		}
+	}
+
+	pub fn previous_char(&self) -> Option<char> {
+		self.span.buffer[..self.cursor.offset].chars().last()
 	}
 
 	//=========================================

@@ -1,14 +1,14 @@
 use std::fmt;
 use std::fmt::Write;
 
-use super::inline::{Inline, InlineOutput, TextOrChar};
+use super::inline::{parse_inline, CodeNode, Elem, TextNode, TextOrChar, TextSpan};
 use super::{Block, HeaderLevel, LinkReferenceMap, MarkupEvent};
 
 pub fn output<'a>(f: &mut fmt::Formatter, event: &MarkupEvent<'a>, refs: &LinkReferenceMap<'a>) -> fmt::Result {
 	match event {
 		MarkupEvent::Inline(span) => {
-			for event in span.iter_inline(refs) {
-				fmt_inline(&event, f)?;
+			for elem in parse_inline(span, refs) {
+				fmt_inline(f, elem)?;
 			}
 			Ok(())
 		}
@@ -54,46 +54,69 @@ fn escape_html(f: &mut fmt::Formatter, s: &str) -> fmt::Result {
 	Ok(())
 }
 
-fn fmt_inline<'a>(ev: &InlineOutput<'a>, f: &mut fmt::Formatter) -> fmt::Result {
-	match ev {
-		&InlineOutput::Text(s) => f.write_str(s),
-		&InlineOutput::Char(c) => f.write_char(c),
-		&InlineOutput::LineBreak => f.write_str("<br/>\n"),
-		&InlineOutput::Entity { entity, output, .. } => {
-			if entity == "&nbsp;" {
-				f.write_str(entity)
-			} else {
-				match output {
-					TextOrChar::Text(s) => escape_html(f, s),
-					TextOrChar::Char(c) => write_html_char(f, c),
+fn fmt_inline<'a>(f: &mut fmt::Formatter, elem: Elem<'a>) -> fmt::Result {
+	match elem {
+		Elem::Tag(tag, children) => {
+			write!(f, "<{}>", tag.html_tag())?;
+			for it in children {
+				fmt_inline(f, it)?;
+			}
+			write!(f, "</{}>", tag.html_tag())?;
+		}
+
+		Elem::Code(CodeNode { text, .. }) => {
+			f.write_str("<code>")?;
+			fmt_text(f, text)?;
+			f.write_str("</code>")?;
+		}
+
+		Elem::Text(text) => {
+			fmt_text(f, text)?;
+		}
+
+		Elem::AutoLink(a) => {
+			f.write_str(r#"<a href=""#)?;
+			if a.prefix.len() > 0 {
+				f.write_str(a.prefix)?;
+			}
+			escape_html(f, a.link)?;
+			f.write_str(r#"">"#)?;
+			escape_html(f, a.link)?;
+			f.write_str(r#"</a>"#)?;
+		}
+	}
+	Ok(())
+}
+
+fn fmt_text<'a>(f: &mut fmt::Formatter, node: TextNode<'a>) -> fmt::Result {
+	for text in node.iter() {
+		match text {
+			TextSpan::Text(s) => f.write_str(s)?,
+			TextSpan::Char(c) => f.write_char(c)?,
+			TextSpan::LineBreak => f.write_str("<br/>\n")?,
+			TextSpan::Entity { entity, output, .. } => {
+				if entity == "&nbsp;" {
+					f.write_str(entity)?;
+				} else {
+					match output {
+						TextOrChar::Text(s) => escape_html(f, s)?,
+						TextOrChar::Char(c) => write_html_char(f, c)?,
+					}
 				}
 			}
-		}
-		&InlineOutput::HTML { code, .. } => f.write_str(code),
-
-		&InlineOutput::AutoLink { link, prefix, .. } => {
-			f.write_str(r#"<a href=""#)?;
-			if prefix.len() > 0 {
-				f.write_str(prefix)?;
+			TextSpan::Link { link, prefix, .. } => {
+				f.write_str(r#"<a href=""#)?;
+				if prefix.len() > 0 {
+					f.write_str(prefix)?;
+				}
+				escape_html(f, link)?;
+				f.write_str(r#"">"#)?;
+				escape_html(f, link)?;
+				f.write_str(r#"</a>"#)?;
 			}
-			escape_html(f, link)?;
-			f.write_str(r#"">"#)?;
-			escape_html(f, link)?;
-			f.write_str(r#"</a>"#)
 		}
-
-		&InlineOutput::Open(Inline::Code) => f.write_str("<code>"),
-		&InlineOutput::Open(Inline::Emphasis) => f.write_str("<em>"),
-		&InlineOutput::Open(Inline::Strong) => f.write_str("<strong>"),
-		&InlineOutput::Open(Inline::Strikethrough) => f.write_str("<del>"),
-
-		&InlineOutput::Close(Inline::Code) => f.write_str("</code>"),
-		&InlineOutput::Close(Inline::Emphasis) => f.write_str("</em>"),
-		&InlineOutput::Close(Inline::Strong) => f.write_str("</strong>"),
-		&InlineOutput::Close(Inline::Strikethrough) => f.write_str("</del>"),
-
-		_ => panic!("not implemented: HTML for inline {:?}", ev),
 	}
+	Ok(())
 }
 
 fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> fmt::Result {
