@@ -110,7 +110,13 @@ fn fmt_inline<'a>(f: &mut fmt::Formatter, elem: Elem<'a>) -> fmt::Result {
 
 			f.write_str("</a>")?;
 		}
+
+		Elem::HTML(span) => {
+			for it in span.iter() {
+				f.write_str(it)?;
+			}
 		}
+	}
 	Ok(())
 }
 

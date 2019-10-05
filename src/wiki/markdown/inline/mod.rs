@@ -12,6 +12,7 @@ mod inline_text;
 pub use self::inline_text::{TextMode, TextNode, TextOrChar, TextSpan};
 mod link;
 pub use self::link::Link;
+mod raw_html;
 
 dbg_flag!(false);
 
@@ -28,6 +29,8 @@ pub enum Elem<'a> {
 	AutoLink(AutoLink<'a>),
 	/// Inline link.
 	Link(Link<'a>),
+	/// Raw HTML to generate verbatim.
+	HTML(Span<'a>),
 }
 
 #[derive(Clone, Debug)]
@@ -126,6 +129,8 @@ fn parse_left_angle_bracket<'a>(iter: &mut SpanIter<'a>) -> Option<Elem<'a>> {
 	debug_assert!(if let Some('<') = iter.next_char() { true } else { false });
 	if let Some(link) = autolink::parse(iter) {
 		Some(Elem::AutoLink(link))
+	} else if let Some(span) = raw_html::parse(iter) {
+		Some(Elem::HTML(span))
 	} else {
 		iter.skip_char();
 		None

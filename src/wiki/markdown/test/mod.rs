@@ -8,6 +8,7 @@ mod spec_breaks;
 mod spec_entities;
 mod spec_escapes;
 mod spec_links;
+mod spec_raw_html;
 
 fn test(input: &str, expected: &str) {
 	let input = common::text(input);

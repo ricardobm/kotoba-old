@@ -49,7 +49,6 @@ it "destination can contain spaces only within brackets" {
 	"#);
 }
 
-#[ignore = "TODO: need support for tags"]
 it "destination cannot contain line breaks" {
 	test(r#"
 		[link](foo
@@ -75,16 +74,12 @@ it "destination can contain parenthesis within brackets" {
 
 }
 
-#[allow(unreachable_code)]
 it "pointy brackets must match" {
 	test(r#"
 		[link](<foo\>)
 	"#, r#"
 		<p>[link](&lt;foo&gt;)</p>
 	"#);
-
-	// TODO: enable me when we support raw HTML
-	return;
 
 	test(r#"
 		[a](<b)c
@@ -303,7 +298,6 @@ it "has precedence over emphasis" {
 	"#);
 }
 
-#[ignore]
 it "has lower precedence than tags" {
 	test(r#"
 		[foo <bar attr="](baz)">

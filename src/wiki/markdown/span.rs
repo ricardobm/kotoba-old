@@ -246,6 +246,15 @@ impl<'a> SpanIter<'a> {
 		&self.span
 	}
 
+	/// Returns the full text range from the current position until the end
+	/// of the iterator.
+	///
+	/// Note that the returned text will include usually skipped indent and
+	/// blockquote markers.
+	pub fn remaining_text(&self) -> &'a str {
+		&self.span.buffer[self.cursor.offset..self.maxpos.offset]
+	}
+
 	pub fn restore_from(&mut self, iter: &SpanIter<'a>) {
 		self.cursor = iter.cursor;
 		self.next_eol = iter.next_eol;
