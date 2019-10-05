@@ -1,5 +1,5 @@
 use super::html::html_entity;
-use super::LinkReferenceMap;
+use super::{LinkReference, LinkReferenceMap};
 use super::{Pos, PosRange, Range, Span, SpanIter};
 
 mod entities;
@@ -10,6 +10,8 @@ mod autolink;
 pub use self::autolink::AutoLink;
 mod inline_text;
 pub use self::inline_text::{TextMode, TextNode, TextOrChar, TextSpan};
+mod link;
+pub use self::link::Link;
 
 dbg_flag!(false);
 
@@ -24,6 +26,8 @@ pub enum Elem<'a> {
 	Code(CodeNode<'a>),
 	/// A `< >` delimited autolink.
 	AutoLink(AutoLink<'a>),
+	/// Inline link.
+	Link(Link<'a>),
 }
 
 #[derive(Clone, Debug)]
@@ -43,7 +47,7 @@ impl InlineTag {
 	}
 }
 
-pub fn parse_inline<'a>(span: &Span<'a>, _refs: &LinkReferenceMap) -> Vec<Elem<'a>> {
+pub fn parse_inline<'a>(span: &Span<'a>, refs: &LinkReferenceMap<'a>) -> Vec<Elem<'a>> {
 	let mut iter = span.iter();
 	let mut list = Vec::new();
 
@@ -74,9 +78,11 @@ pub fn parse_inline<'a>(span: &Span<'a>, _refs: &LinkReferenceMap) -> Vec<Elem<'
 						None
 					}
 				}
-				Some('<') => {
-					if let Some(link) = autolink::parse(&mut iter) {
-						Some(Elem::AutoLink(link))
+				Some('<') => parse_left_angle_bracket(&mut iter),
+				Some('[') => {
+					if let Some(link) = link::parse(&iter, refs) {
+						iter.skip_to(link.range.end);
+						Some(Elem::Link(link))
 					} else {
 						iter.skip_char();
 						None
@@ -114,6 +120,16 @@ pub fn parse_inline<'a>(span: &Span<'a>, _refs: &LinkReferenceMap) -> Vec<Elem<'
 	dbg_print!("parsed {} inline elements", list.len());
 
 	list
+}
+
+fn parse_left_angle_bracket<'a>(iter: &mut SpanIter<'a>) -> Option<Elem<'a>> {
+	debug_assert!(if let Some('<') = iter.next_char() { true } else { false });
+	if let Some(link) = autolink::parse(iter) {
+		Some(Elem::AutoLink(link))
+	} else {
+		iter.skip_char();
+		None
+	}
 }
 
 fn is_syntax_char(c: char) -> bool {

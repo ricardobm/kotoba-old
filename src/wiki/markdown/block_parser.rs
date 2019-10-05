@@ -272,7 +272,7 @@ pub enum Leaf<'a> {
 	/// Link reference definition.
 	LinkReference {
 		/// Link target.
-		url: &'a str,
+		url: Span<'a>,
 		/// Link label, not including the `[]` delimiters.
 		label: Span<'a>,
 		/// Link title, not including the quotes.

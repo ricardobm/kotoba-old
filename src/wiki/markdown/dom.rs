@@ -583,7 +583,7 @@ pub struct LinkReference<'a> {
 	/// contain escape sequences.
 	pub title: Span<'a>,
 	/// Link destination URL.
-	pub url: RawStr<'a>,
+	pub url: Span<'a>,
 }
 
 #[derive(Clone)]
@@ -623,12 +623,12 @@ mod tests {
 		let val1 = LinkReference {
 			label: key1.clone(),
 			title: span("foo value"),
-			url:   RawStr(""),
+			url:   span(""),
 		};
 		let val2 = LinkReference {
 			label: key2.clone(),
 			title: span("bar value"),
-			url:   RawStr(""),
+			url:   span(""),
 		};
 
 		let mut map = LinkReferenceMap::new();
@@ -646,12 +646,12 @@ mod tests {
 		let val1 = LinkReference {
 			label: key.clone(),
 			title: span("foo value"),
-			url:   RawStr(""),
+			url:   span(""),
 		};
 		let val2 = LinkReference {
 			label: key.clone(),
 			title: span("bar value"),
-			url:   RawStr(""),
+			url:   span(""),
 		};
 
 		let mut map = LinkReferenceMap::new();
@@ -673,23 +673,23 @@ mod tests {
 		let val1a = LinkReference {
 			label: key1a.clone(),
 			title: span("foo value"),
-			url:   RawStr(""),
+			url:   span(""),
 		};
 		let val2a = LinkReference {
 			label: key2a.clone(),
 			title: span("bar value"),
-			url:   RawStr(""),
+			url:   span(""),
 		};
 
 		let val1b = LinkReference {
 			label: key1b.clone(),
 			title: span("NOT foo value"),
-			url:   RawStr(""),
+			url:   span(""),
 		};
 		let val2b = LinkReference {
 			label: key2b.clone(),
 			title: span("NOT bar value"),
-			url:   RawStr(""),
+			url:   span(""),
 		};
 
 		let mut map = LinkReferenceMap::new();

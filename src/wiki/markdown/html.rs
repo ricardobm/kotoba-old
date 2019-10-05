@@ -75,14 +75,34 @@ fn fmt_inline<'a>(f: &mut fmt::Formatter, elem: Elem<'a>) -> fmt::Result {
 		}
 
 		Elem::AutoLink(a) => {
-			f.write_str(r#"<a href=""#)?;
+			f.write_str("<a href=\"")?;
 			if a.prefix.len() > 0 {
 				f.write_str(a.prefix)?;
 			}
 			escape_html(f, a.link)?;
-			f.write_str(r#"">"#)?;
+			f.write_str("\">")?;
 			escape_html(f, a.link)?;
-			f.write_str(r#"</a>"#)?;
+			f.write_str("</a>")?;
+		}
+
+		Elem::Link(a) => {
+			f.write_str("<a href=\"")?;
+			if let Some(url) = a.url {
+				fmt_text(f, url)?;
+			}
+			f.write_str("\"")?;
+			if let Some(title) = a.title {
+				f.write_str(" title=\"")?;
+				fmt_text(f, title)?;
+				f.write_str("\"")?;
+			}
+			f.write_str(">")?;
+
+			for it in a.children {
+				fmt_inline(f, it)?;
+			}
+
+			f.write_str("</a>")?;
 		}
 	}
 	Ok(())

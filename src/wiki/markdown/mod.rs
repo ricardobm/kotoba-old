@@ -10,7 +10,7 @@ mod span;
 pub use self::span::{Span, SpanIter};
 
 mod text;
-pub use self::text::{range_from, range_from_pos, Range, Pos, PosRange, TextBuffer};
+pub use self::text::{range_from, range_from_pos, Pos, PosRange, Range, TextBuffer};
 
 mod link_ref;
 use self::link_ref::parse_link_ref;
@@ -737,7 +737,7 @@ impl<'a> MarkdownIterator<'a> {
 			Leaf::LinkReference { url, label, title } => LeafOrReference::Reference(LinkReference {
 				label: label,
 				title: title,
-				url:   RawStr(url),
+				url:   url,
 			}),
 			Leaf::IndentedCode { code } => LeafOrReference::Leaf(Block::Code(code.clone()), code, SpanMode::Code),
 			Leaf::FencedCode { code, lang, info, .. } => {

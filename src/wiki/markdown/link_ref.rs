@@ -42,9 +42,8 @@ pub fn parse_link_ref<'a>(span: Span<'a>) -> Leaf<'a> {
 				let mut iter = iter;
 				let empty = text.trim().len() == 0 && iter.all(|x| x.trim().len() == 0);
 				if empty {
-					let buffer = span.buffer;
 					return Leaf::LinkReference {
-						url:   &buffer[url.start..url.end],
+						url:   span.sub(url),
 						label: span.sub(label),
 						title: span.sub(title),
 					};
@@ -62,6 +61,7 @@ fn parse_link_label<'a>(
 	mut text: &'a str,
 	as_ref: bool,
 ) -> (SpanIter<'a>, Option<(Range, &'a str)>) {
+	#[derive(Debug)]
 	enum S<'a> {
 		Start,
 		LabelSta,
@@ -79,7 +79,7 @@ fn parse_link_label<'a>(
 			text = if let Some(text) = iter.next() {
 				text.trim_start()
 			} else {
-				break;
+				break 'main;
 			}
 		}
 
@@ -120,6 +120,7 @@ fn parse_link_label<'a>(
 						S::LabelEnd(start, end, end + delim_len)
 					} else {
 						// Current span has no `]:`
+						text = "";
 						continue 'main;
 					}
 				}

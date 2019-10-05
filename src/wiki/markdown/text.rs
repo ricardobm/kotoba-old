@@ -79,14 +79,14 @@ impl Pos {
 		}
 	}
 
-	pub fn skip_spaces(&mut self, buffer: &str) {
+	pub fn skip_spaces(&mut self, buffer: &str, include_eol: bool) {
 		let text = &buffer[self.offset..];
 		let mut chars = text.char_indices();
 		let mut offset = 0;
 		let mut column = self.column;
 		while let Some((index, chr)) = chars.next() {
-			if chr.is_whitespace() && chr != '\r' && chr != '\n' {
-				self.was_cr = false;
+			if chr.is_whitespace() && (include_eol || (chr != '\r' && chr != '\n')) {
+				self.was_cr = chr == '\r';
 				column = if chr == '\t' { common::tab(column) } else { column + 1 };
 			} else {
 				offset = index;
