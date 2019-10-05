@@ -119,19 +119,19 @@ it "no other characters may occur on the line" {
 
 		a________
 
-		****a****
+		***a*
 	"#, r#"
 		<p>_ _ _ _ a</p>
 		<p>a________</p>
-		<p>****a****</p>
+		<p>***a*</p>
 	"#);
 }
 
 it "non whitespace characters must be the same" {
 	test(r#"
-		_-_
+		-_-
 	"#, r#"
-		<p>_-_</p>
+		<p>-_-</p>
 	"#);
 }
 

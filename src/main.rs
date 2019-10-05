@@ -36,6 +36,7 @@ extern crate lazy_static;
 
 extern crate fnv;
 extern crate unicode_normalization;
+extern crate unicode_categories;
 
 extern crate zip;
 

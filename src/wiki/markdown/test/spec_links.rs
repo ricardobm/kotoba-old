@@ -237,7 +237,7 @@ it "may contain balanced and escaped brackets" {
 	"#);
 }
 
-#[ignore]
+#[allow(unreachable_code)]
 it "text may contain inline content" {
 	test(r#"
 		[link *foo **bar** `#`*](/uri)
@@ -245,6 +245,8 @@ it "text may contain inline content" {
 		<p><a href="/uri">link <em>foo <strong>bar</strong> <code>#</code></em></a></p>
 	"#);
 
+	// TODO: enable me when we support images
+	return;
 	test(r#"
 		[![moon](moon.jpg)](/uri)
 	"#, r#"
@@ -260,14 +262,14 @@ it "links may not contain other links" {
 		<p>[foo <a href="/uri">bar</a>](/uri)</p>
 	"#);
 
-	// TODO: enable me when we support emphasis and images
-	return;
 	test(r#"
 		[foo *[bar [baz](/uri)](/uri)*](/uri)
 	"#, r#"
 		<p>[foo <em>[bar <a href="/uri">baz</a>](/uri)</em>](/uri)</p>
 	"#);
 
+	// TODO: enable me when we support images
+	return;
 	test(r#"
 		![[[foo](uri1)](uri2)](uri3)
 	"#, r#"
