@@ -1175,7 +1175,7 @@ impl<'a> BlockIterator<'a> {
 								(
 									\s*=\s*
 									(
-										[^"'=<>`]+       # Unquoted value
+										[^\s"'=<>`]+     # Unquoted value
 										|
 										'[^']*'          # Single quoted value
 										|
