@@ -12,6 +12,12 @@ pub fn output<'a>(f: &mut fmt::Formatter, event: &MarkupEvent<'a>, refs: &LinkRe
 			}
 			Ok(())
 		}
+		MarkupEvent::Raw(span) => {
+			for html in span.iter() {
+				f.write_str(html)?;
+			}
+			Ok(())
+		}
 		MarkupEvent::Code(span) => {
 			for txt in span.iter() {
 				for ch in txt.chars() {
@@ -104,7 +110,7 @@ fn fmt_inline<'a>(f: &mut fmt::Formatter, elem: Elem<'a>) -> fmt::Result {
 
 			f.write_str("</a>")?;
 		}
-	}
+		}
 	Ok(())
 }
 
@@ -148,15 +154,22 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 		}
 	}
 
+	let no_tag = match block {
+		Block::HTML(..) => true,
+		_ => false,
+	};
+
 	let is_single_tag = match block {
 		Block::Break(..) => true,
 		_ => false,
 	};
 
-	if open {
-		write!(f, "<")?;
-	} else if !is_single_tag {
-		write!(f, "</")?;
+	if !no_tag {
+		if open {
+			write!(f, "<")?;
+		} else if !is_single_tag {
+			write!(f, "</")?;
+		}
 	}
 
 	match block {
@@ -257,12 +270,14 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 		}
 	}
 
-	if is_single_tag {
-		if open {
-			write!(f, "/>")?;
+	if !no_tag {
+		if is_single_tag {
+			if open {
+				write!(f, "/>")?;
+			}
+		} else {
+			write!(f, ">")?;
 		}
-	} else {
-		write!(f, ">")?;
 	}
 
 	Ok(())

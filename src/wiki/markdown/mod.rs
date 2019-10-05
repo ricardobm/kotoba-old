@@ -411,7 +411,7 @@ impl<'a> MarkdownIterator<'a> {
 										}
 									}
 								}
-								MarkupEvent::Code(_) | MarkupEvent::Inline(_) => {
+								MarkupEvent::Code(_) | MarkupEvent::Inline(_) | MarkupEvent::Raw(_) => {
 									// don't care about text
 								}
 							}
@@ -594,6 +594,7 @@ impl<'a> MarkdownIterator<'a> {
 					let event = match mode {
 						SpanMode::Text => Event::Output(MarkupEvent::Inline(span)),
 						SpanMode::Code => Event::Output(MarkupEvent::Code(span)),
+						SpanMode::Raw => Event::Output(MarkupEvent::Raw(span)),
 					};
 					break (IteratorState::LeafEnd(block), Some(event));
 				}
@@ -733,7 +734,7 @@ impl<'a> MarkdownIterator<'a> {
 	fn parse_leaf(leaf: Leaf<'a>) -> LeafOrReference {
 		match leaf {
 			Leaf::Paragraph { text } => LeafOrReference::Leaf(Block::Paragraph(text.clone()), text, SpanMode::Text),
-			Leaf::HTML { code, .. } => LeafOrReference::Leaf(Block::HTML(code.clone()), code, SpanMode::Code),
+			Leaf::HTML { code, .. } => LeafOrReference::Leaf(Block::HTML(code.clone()), code, SpanMode::Raw),
 			Leaf::LinkReference { url, label, title } => LeafOrReference::Reference(LinkReference {
 				label: label,
 				title: title,
@@ -793,6 +794,7 @@ impl<'a> MarkdownIterator<'a> {
 enum SpanMode {
 	Text,
 	Code,
+	Raw,
 }
 
 enum LeafOrReference<'a> {

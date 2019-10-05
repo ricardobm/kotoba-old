@@ -91,6 +91,8 @@ impl<'a> Event<'a> {
 pub enum MarkupEvent<'a> {
 	/// Generated for inline blocks in the output.
 	Inline(Span<'a>),
+	/// Generated for raw HTML in the output.
+	Raw(Span<'a>),
 	/// Generated for raw text in the output.
 	Code(Span<'a>),
 	/// Generated at the beginning of a block element.

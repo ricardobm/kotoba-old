@@ -1162,7 +1162,7 @@ impl<'a> BlockIterator<'a> {
 
 			if !inline {
 				lazy_static! {
-					static ref RE_OPEN_TAG: Regex = Regex::new(
+					static ref RE_OPEN_OR_CLOSING_TAG: Regex = Regex::new(
 						r#"(?ix)
 							^<
 							[a-z][-a-z0-9]*              # Tag name
@@ -1190,8 +1190,12 @@ impl<'a> BlockIterator<'a> {
 					.unwrap();
 				}
 
-				if RE_OPEN_TAG.is_match(text_trim) {
-					return Some("");
+				if let Some(m) = RE_OPEN_OR_CLOSING_TAG.find(text_trim) {
+					// Open or closing tag should be followed only by
+					// whitespace and the end of line
+					if text_trim[m.start()..].trim().len() == 0 {
+						return Some("");
+					}
 				}
 			}
 		}
