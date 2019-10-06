@@ -70,6 +70,10 @@ pub fn parse_inline<'a>(span: &Span<'a>, refs: &LinkReferenceMap<'a>) -> Vec<Ele
 			// delimiter and return None.
 			let start = iter.pos();
 			match iter.next_char() {
+				Some('\\') => {
+					iter.skip_char();
+					iter.skip_char();
+				}
 				Some('`') => {
 					let (code, delim) = inline_code::parse(&iter);
 					if let Some(code) = code {
@@ -128,6 +132,8 @@ fn parse_left_angle_bracket<'a>(iter: &mut SpanIter<'a>) -> Option<Elem<'a>> {
 
 fn is_syntax_char(c: char) -> bool {
 	match c {
+		// Escapes
+		'\\' => true,
 		// HTML or autolink
 		'<' => true,
 		// code spans
