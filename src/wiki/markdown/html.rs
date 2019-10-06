@@ -96,6 +96,7 @@ fn fmt_inline<'a>(f: &mut fmt::Formatter, elem: Elem<'a>) -> fmt::Result {
 			if let Some(url) = a.url {
 				fmt_text(f, url)?;
 			}
+
 			f.write_str("\"")?;
 			if let Some(title) = a.title {
 				f.write_str(" title=\"")?;
@@ -111,6 +112,27 @@ fn fmt_inline<'a>(f: &mut fmt::Formatter, elem: Elem<'a>) -> fmt::Result {
 			f.write_str("</a>")?;
 		}
 
+		Elem::Image(img) => {
+			f.write_str("<img src=\"")?;
+			if let Some(url) = img.url {
+				fmt_text(f, url)?;
+			}
+
+			f.write_str("\" alt=\"")?;
+			for it in img.alt {
+				fmt_inline_text(f, it)?;
+			}
+			f.write_str("\"")?;
+
+			if let Some(title) = img.title {
+				f.write_str(" title=\"")?;
+				fmt_text(f, title)?;
+				f.write_str("\"")?;
+			}
+
+			f.write_str("/>")?;
+		}
+
 		Elem::HTML(span) => {
 			for it in span.iter() {
 				f.write_str(it)?;
@@ -120,12 +142,66 @@ fn fmt_inline<'a>(f: &mut fmt::Formatter, elem: Elem<'a>) -> fmt::Result {
 	Ok(())
 }
 
+/// Same as [fmt_inline] but outputs only textual content.
+fn fmt_inline_text<'a>(f: &mut fmt::Formatter, elem: Elem<'a>) -> fmt::Result {
+	match elem {
+		Elem::Tag(_tag, children) => {
+			for it in children {
+				fmt_inline_text(f, it)?;
+			}
+		}
+
+		Elem::Code(CodeNode { text, .. }) => {
+			fmt_text(f, text)?;
+		}
+
+		Elem::Text(text) => {
+			fmt_text_with_mode(f, text, Mode::TextOnly)?;
+		}
+
+		Elem::AutoLink(a) => {
+			escape_html(f, a.link)?;
+		}
+
+		Elem::Link(a) => {
+			for it in a.children {
+				fmt_inline_text(f, it)?;
+			}
+		}
+
+		Elem::Image(img) => {
+			for it in img.alt {
+				fmt_inline_text(f, it)?;
+			}
+		}
+
+		Elem::HTML(_span) => {}
+	}
+	Ok(())
+}
+
+enum Mode {
+	Normal,
+	TextOnly,
+}
+
 fn fmt_text<'a>(f: &mut fmt::Formatter, node: TextNode<'a>) -> fmt::Result {
+	fmt_text_with_mode(f, node, Mode::Normal)
+}
+
+fn fmt_text_with_mode<'a>(f: &mut fmt::Formatter, node: TextNode<'a>, mode: Mode) -> fmt::Result {
+	let text_only = if let Mode::TextOnly = mode { true } else { false };
 	for text in node.iter() {
 		match text {
 			TextSpan::Text(s) => f.write_str(s)?,
 			TextSpan::Char(c) => f.write_char(c)?,
-			TextSpan::LineBreak => f.write_str("<br/>\n")?,
+			TextSpan::LineBreak => {
+				if text_only {
+					f.write_str(" ")?;
+				} else {
+					f.write_str("<br/>\n")?;
+				}
+			}
 			TextSpan::Entity { entity, output, .. } => {
 				if entity == "&nbsp;" {
 					f.write_str(entity)?;
@@ -137,14 +213,18 @@ fn fmt_text<'a>(f: &mut fmt::Formatter, node: TextNode<'a>) -> fmt::Result {
 				}
 			}
 			TextSpan::Link { link, prefix, .. } => {
-				f.write_str(r#"<a href=""#)?;
-				if prefix.len() > 0 {
-					f.write_str(prefix)?;
+				if !text_only {
+					f.write_str(r#"<a href=""#)?;
+					if prefix.len() > 0 {
+						f.write_str(prefix)?;
+					}
+					escape_html(f, link)?;
+					f.write_str(r#"">"#)?;
 				}
 				escape_html(f, link)?;
-				f.write_str(r#"">"#)?;
-				escape_html(f, link)?;
-				f.write_str(r#"</a>"#)?;
+				if !text_only {
+					f.write_str(r#"</a>"#)?;
+				}
 			}
 		}
 	}

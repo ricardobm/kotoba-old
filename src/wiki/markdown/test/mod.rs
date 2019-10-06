@@ -8,6 +8,7 @@ mod spec_breaks;
 mod spec_emphasis;
 mod spec_entities;
 mod spec_escapes;
+mod spec_images;
 mod spec_links;
 mod spec_raw_html;
 

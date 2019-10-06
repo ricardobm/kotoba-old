@@ -237,7 +237,6 @@ it "may contain balanced and escaped brackets" {
 	"#);
 }
 
-#[allow(unreachable_code)]
 it "text may contain inline content" {
 	test(r#"
 		[link *foo **bar** `#`*](/uri)
@@ -245,8 +244,6 @@ it "text may contain inline content" {
 		<p><a href="/uri">link <em>foo <strong>bar</strong> <code>#</code></em></a></p>
 	"#);
 
-	// TODO: enable me when we support images
-	return;
 	test(r#"
 		[![moon](moon.jpg)](/uri)
 	"#, r#"
@@ -254,7 +251,6 @@ it "text may contain inline content" {
 	"#);
 }
 
-#[allow(unreachable_code)]
 it "links may not contain other links" {
 	test(r#"
 		[foo [bar](/uri)](/uri)
@@ -268,16 +264,13 @@ it "links may not contain other links" {
 		<p>[foo <em>[bar <a href="/uri">baz</a>](/uri)</em>](/uri)</p>
 	"#);
 
-	// TODO: enable me when we support images
-	return;
 	test(r#"
 		![[[foo](uri1)](uri2)](uri3)
 	"#, r#"
-		<p><img src="uri3" alt="[foo](uri2)" /></p>
+		<p><img src="uri3" alt="[foo](uri2)"/></p>
 	"#);
 }
 
-#[allow(unreachable_code)]
 it "has precedence over emphasis" {
 	test(r#"
 		*[foo*](/uri)
@@ -291,8 +284,6 @@ it "has precedence over emphasis" {
 		<p><a href="baz*">foo *bar</a></p>
 	"#);
 
-	// TODO: enable me when we support emphasis
-	return;
 	test(r#"
 		*foo [bar* baz]
 	"#, r#"

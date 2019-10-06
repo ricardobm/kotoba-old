@@ -16,7 +16,7 @@ mod raw_html;
 pub use self::autolink::AutoLink;
 pub use self::inline_code::CodeNode;
 pub use self::inline_text::{TextMode, TextNode, TextOrChar, TextSpan};
-pub use self::link::Link;
+pub use self::link::{Image, Link};
 
 dbg_flag!(false);
 
@@ -33,6 +33,8 @@ pub enum Elem<'a> {
 	AutoLink(AutoLink<'a>),
 	/// Inline link.
 	Link(Link<'a>),
+	/// Images.
+	Image(Image<'a>),
 	/// Raw HTML to generate verbatim.
 	HTML(Span<'a>),
 }
@@ -92,6 +94,14 @@ pub fn parse_inline<'a>(span: &Span<'a>, refs: &LinkReferenceMap<'a>) -> Vec<Ele
 					if let Some(link) = link::parse(&iter, refs) {
 						iter.skip_to(link.range.end);
 						helper.push_elem(start, iter.pos(), Elem::Link(link));
+					} else {
+						iter.skip_char();
+					}
+				}
+				Some('!') => {
+					if let Some(img) = link::parse_image(&iter, refs) {
+						iter.skip_to(img.range.end);
+						helper.push_elem(start, iter.pos(), Elem::Image(img));
 					} else {
 						iter.skip_char();
 					}

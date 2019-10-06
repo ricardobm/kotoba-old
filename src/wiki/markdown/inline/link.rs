@@ -17,10 +17,45 @@ pub struct Link<'a> {
 	pub range:    PosRange,
 }
 
+#[derive(Clone, Debug)]
+pub struct Image<'a> {
+	pub title: Option<TextNode<'a>>,
+	pub url:   Option<TextNode<'a>>,
+	pub alt:   Vec<Elem<'a>>,
+	pub range: PosRange,
+}
+
+/// Parse an image at the current position in the iterator, assuming `!` has
+/// already been consumed.
+pub fn parse_image<'a>(iter: &SpanIter<'a>, refs: &LinkReferenceMap<'a>) -> Option<Image<'a>> {
+	let mut iter = iter.clone();
+	if let Some('!') = iter.next_char() {
+		iter.skip_char();
+		parse_link(&mut iter, refs, true).map(|x| {
+			let mut new_range = x.range;
+			new_range.start.offset -= 1;
+			new_range.start.column -= 1;
+			Image {
+				title: x.title,
+				url:   x.url,
+				alt:   x.children,
+				range: new_range,
+			}
+		})
+	} else {
+		None
+	}
+}
+
+/// Parse a link at the current position in the iterator.
 pub fn parse<'a>(iter: &SpanIter<'a>, refs: &LinkReferenceMap<'a>) -> Option<Link<'a>> {
 	let mut iter = iter.clone();
+	parse_link(&mut iter, refs, false)
+}
+
+fn parse_link<'a>(iter: &mut SpanIter<'a>, refs: &LinkReferenceMap<'a>, is_image: bool) -> Option<Link<'a>> {
 	let start = iter.pos();
-	let label = if let Some(label) = parse_link_label(&mut iter, refs) {
+	let label = if let Some(label) = parse_link_label(iter, refs, is_image) {
 		label
 	} else {
 		return None;
@@ -34,7 +69,7 @@ pub fn parse<'a>(iter: &SpanIter<'a>, refs: &LinkReferenceMap<'a>) -> Option<Lin
 			children: children,
 			range:    PosRange { start, end },
 		})
-	} else if let Some(ref_label) = parse_link_label(&mut iter, refs) {
+	} else if let Some(ref_label) = parse_link_label(iter, refs, false) {
 		let end = iter.pos();
 		if let Some(link_ref) = refs.get(&ref_label) {
 			Some(reference_to_link(link_ref, label, refs, start, end))
@@ -65,15 +100,19 @@ fn reference_to_link<'a>(
 	end: Pos,
 ) -> Link<'a> {
 	let children = super::parse_inline(&label, refs);
+	let title = reference
+		.title
+		.as_ref()
+		.map(|x| TextNode::new(x.clone(), TextMode::WithEscapesAndEntities));
 	Link {
-		title:    Some(TextNode::new(reference.title.clone(), TextMode::WithEscapesAndEntities)),
+		title:    title,
 		url:      Some(TextNode::new(reference.url.clone(), TextMode::WithEscapesAndEntities)),
 		children: children,
 		range:    PosRange { start, end },
 	}
 }
 
-fn parse_link_label<'a>(iter: &mut SpanIter<'a>, refs: &LinkReferenceMap<'a>) -> Option<Span<'a>> {
+fn parse_link_label<'a>(iter: &mut SpanIter<'a>, refs: &LinkReferenceMap<'a>, is_image: bool) -> Option<Span<'a>> {
 	if let Some('[') = iter.next_char() {
 		let mut bracket_count = 1;
 		iter.skip_char();
@@ -81,37 +120,46 @@ fn parse_link_label<'a>(iter: &mut SpanIter<'a>, refs: &LinkReferenceMap<'a>) ->
 
 		// Look for the end of the label.
 		let mut is_empty = true;
+		let mut was_exclamation = false;
 		let label_end = loop {
-			if let Some(pos) = iter.search_char(is_special_char) {
-				if is_empty {
-					is_empty = iter.span().sub_pos(iter.pos()..pos).text().trim().len() == 0;
-				}
-				iter.skip_to(pos);
-			}
-
 			match iter.next_char() {
+				Some('!') => {
+					is_empty = false;
+					was_exclamation = true;
+					iter.skip_char();
+				}
+
 				Some('[') => {
-					// links cannot contain other links
-					if let Some(_) = parse(&iter, refs) {
-						return None;
+					// links cannot contain other links, but may contain images
+					// (images can may contain either)
+					if !is_image && !was_exclamation {
+						if let Some(_) = parse(&iter, refs) {
+							return None;
+						}
 					}
 					// links may contain matched pairs of brackets
+					is_empty = false;
+					was_exclamation = false;
 					bracket_count += 1;
 					iter.skip_char();
 				}
 
 				Some(']') => {
 					let end = iter.pos();
+					was_exclamation = false;
 					bracket_count -= 1;
 					iter.skip_char();
 					if bracket_count == 0 {
 						break end;
+					} else {
+						is_empty = false;
 					}
 				}
 
 				Some('\\') => {
 					// skip escape sequence
 					is_empty = false;
+					was_exclamation = false;
 					iter.skip_char();
 					iter.skip_char();
 				}
@@ -119,6 +167,7 @@ fn parse_link_label<'a>(iter: &mut SpanIter<'a>, refs: &LinkReferenceMap<'a>) ->
 				Some('`') => {
 					// backtick code spans bind more tightly than links
 					is_empty = false;
+					was_exclamation = false;
 					let (code, delim) = inline_code::parse(&iter);
 					if let Some(code) = code {
 						iter.skip_to(code.range.end);
@@ -129,6 +178,7 @@ fn parse_link_label<'a>(iter: &mut SpanIter<'a>, refs: &LinkReferenceMap<'a>) ->
 
 				Some('<') => {
 					is_empty = false;
+					was_exclamation = false;
 					// raw HTML and autolinks also bind more tightly than links
 					if let None = super::parse_left_angle_bracket(iter) {
 						iter.skip_char();
@@ -139,6 +189,7 @@ fn parse_link_label<'a>(iter: &mut SpanIter<'a>, refs: &LinkReferenceMap<'a>) ->
 					if !c.is_ascii_whitespace() {
 						is_empty = false;
 					}
+					was_exclamation = false;
 					iter.skip_char();
 				}
 
@@ -147,7 +198,7 @@ fn parse_link_label<'a>(iter: &mut SpanIter<'a>, refs: &LinkReferenceMap<'a>) ->
 			}
 		};
 
-		if !is_empty {
+		if !is_empty || is_image {
 			let label = iter.span().sub_pos(label_start..label_end);
 			Some(label)
 		} else {
@@ -360,7 +411,7 @@ fn parse_link_title<'a>(iter: &mut SpanIter<'a>) -> Option<TextNode<'a>> {
 
 fn is_special_char(c: char) -> bool {
 	match c {
-		'[' | ']' | '<' | '`' | '\\' => true,
+		'[' | ']' | '<' | '`' | '\\' | '!' => true,
 		_ => false,
 	}
 }
