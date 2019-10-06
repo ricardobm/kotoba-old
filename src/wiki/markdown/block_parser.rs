@@ -281,7 +281,9 @@ pub enum Leaf<'a> {
 	FencedCode {
 		/// The fence delimiter.
 		fence: &'a str,
-		/// Raw code span, not including the delimiters or info string.
+		/// Raw code span including the whole block.
+		span: Span<'a>,
+		/// Just the code portion.
 		code: Span<'a>,
 		/// If the info string starts with a language tag, this will be it.
 		lang: Option<&'a str>,
@@ -364,6 +366,7 @@ impl Default for IteratorState {
 	}
 }
 
+#[derive(Debug)]
 enum LeafState<'a> {
 	Closed(Leaf<'a>),
 	ClosedAndConsumed(Leaf<'a>),
@@ -611,6 +614,11 @@ impl<'a> BlockIterator<'a> {
 		// Save current state in case we fail.
 		let start_pos = self.buffer.save();
 
+		match &self.inline {
+			Some(Leaf::FencedCode { .. }) => return None,
+			_ => {}
+		}
+
 		// Parse next block.
 		let result = {
 			// Skip optional indentation before the element
@@ -804,6 +812,7 @@ impl<'a> BlockIterator<'a> {
 				fence,
 				lang,
 				info,
+				span: span.clone(),
 				code: span,
 			}))
 		} else if let Some(end) = Self::match_html_start(text, is_inline) {
@@ -908,6 +917,7 @@ impl<'a> BlockIterator<'a> {
 			}
 			Leaf::FencedCode {
 				fence,
+				mut span,
 				mut code,
 				lang,
 				info,
@@ -916,18 +926,26 @@ impl<'a> BlockIterator<'a> {
 					let delim = fence.chars().next().unwrap();
 					let is_close = line_trim.text().starts_with(fence);
 					let is_close = is_close && line_trim.text().chars().all(|ch| ch == delim);
+					if code.start == span.start {
+						// skip the first line break
+						code.start = line.start;
+					}
 					if is_close {
 						code.end = line.start;
+						span.end = line.end;
 						LeafState::ClosedAndConsumed(Leaf::FencedCode {
 							fence,
+							span,
 							code,
 							lang,
 							info,
 						})
 					} else {
 						code.end = line.end;
+						span.end = line.end;
 						LeafState::Open(Leaf::FencedCode {
 							fence,
+							span,
 							code,
 							lang,
 							info,
@@ -935,8 +953,10 @@ impl<'a> BlockIterator<'a> {
 					}
 				} else {
 					code.end = line.end;
+					span.end = line.end;
 					LeafState::Open(Leaf::FencedCode {
 						fence,
+						span,
 						code,
 						lang,
 						info,

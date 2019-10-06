@@ -18,12 +18,14 @@ mod markdown_basics {
 
 			3.1
 			3.2
+			3.3
 		"#,
 			r#"
 			<p>Paragraph 1</p>
 			<p>Paragraph 2</p>
 			<p>3.1
-			3.2</p>
+			3.2
+			3.3</p>
 		"#,
 		);
 	}
