@@ -583,7 +583,7 @@ pub struct LinkReference<'a> {
 	pub label: Span<'a>,
 	/// Link title text. This cannot contain inline elements, but may
 	/// contain escape sequences.
-	pub title: Span<'a>,
+	pub title: Option<Span<'a>>,
 	/// Link destination URL.
 	pub url: Span<'a>,
 }
@@ -624,12 +624,12 @@ mod tests {
 
 		let val1 = LinkReference {
 			label: key1.clone(),
-			title: span("foo value"),
+			title: Some(span("foo value")),
 			url:   span(""),
 		};
 		let val2 = LinkReference {
 			label: key2.clone(),
-			title: span("bar value"),
+			title: Some(span("bar value")),
 			url:   span(""),
 		};
 
@@ -637,8 +637,8 @@ mod tests {
 		map.insert(val1);
 		map.insert(val2);
 
-		assert_eq!(map.get(&key1).unwrap().title, span("foo value"));
-		assert_eq!(map.get(&key2).unwrap().title, span("bar value"));
+		assert_eq!(map.get(&key1).unwrap().title.clone().unwrap(), span("foo value"));
+		assert_eq!(map.get(&key2).unwrap().title.clone().unwrap(), span("bar value"));
 	}
 
 	#[test]
@@ -647,12 +647,12 @@ mod tests {
 
 		let val1 = LinkReference {
 			label: key.clone(),
-			title: span("foo value"),
+			title: Some(span("foo value")),
 			url:   span(""),
 		};
 		let val2 = LinkReference {
 			label: key.clone(),
-			title: span("bar value"),
+			title: Some(span("bar value")),
 			url:   span(""),
 		};
 
@@ -660,7 +660,7 @@ mod tests {
 		map.insert(val1);
 		map.insert(val2);
 
-		assert_eq!(map.get(&key).unwrap().title, span("foo value"));
+		assert_eq!(map.get(&key).unwrap().title.clone().unwrap(), span("foo value"));
 	}
 
 	#[test]
@@ -674,23 +674,23 @@ mod tests {
 
 		let val1a = LinkReference {
 			label: key1a.clone(),
-			title: span("foo value"),
+			title: Some(span("foo value")),
 			url:   span(""),
 		};
 		let val2a = LinkReference {
 			label: key2a.clone(),
-			title: span("bar value"),
+			title: Some(span("bar value")),
 			url:   span(""),
 		};
 
 		let val1b = LinkReference {
 			label: key1b.clone(),
-			title: span("NOT foo value"),
+			title: Some(span("NOT foo value")),
 			url:   span(""),
 		};
 		let val2b = LinkReference {
 			label: key2b.clone(),
-			title: span("NOT bar value"),
+			title: Some(span("NOT bar value")),
 			url:   span(""),
 		};
 
@@ -698,20 +698,20 @@ mod tests {
 		map.insert(val1a);
 		map.insert(val2a);
 
-		assert_eq!(map.get(&key1a).unwrap().title, span("foo value"));
-		assert_eq!(map.get(&key2a).unwrap().title, span("bar value"));
+		assert_eq!(map.get(&key1a).unwrap().title.clone().unwrap(), span("foo value"));
+		assert_eq!(map.get(&key2a).unwrap().title.clone().unwrap(), span("bar value"));
 
-		assert_eq!(map.get(&key1b).unwrap().title, span("foo value"));
-		assert_eq!(map.get(&key2b).unwrap().title, span("bar value"));
+		assert_eq!(map.get(&key1b).unwrap().title.clone().unwrap(), span("foo value"));
+		assert_eq!(map.get(&key2b).unwrap().title.clone().unwrap(), span("bar value"));
 
 		map.insert(val1b);
 		map.insert(val2b);
 
-		assert_eq!(map.get(&key1a).unwrap().title, span("foo value"));
-		assert_eq!(map.get(&key2a).unwrap().title, span("bar value"));
+		assert_eq!(map.get(&key1a).unwrap().title.clone().unwrap(), span("foo value"));
+		assert_eq!(map.get(&key2a).unwrap().title.clone().unwrap(), span("bar value"));
 
-		assert_eq!(map.get(&key1b).unwrap().title, span("foo value"));
-		assert_eq!(map.get(&key2b).unwrap().title, span("bar value"));
+		assert_eq!(map.get(&key1b).unwrap().title.clone().unwrap(), span("foo value"));
+		assert_eq!(map.get(&key2b).unwrap().title.clone().unwrap(), span("bar value"));
 	}
 
 	fn span<'s>(s: &'s str) -> Span<'s> {

@@ -276,7 +276,7 @@ pub enum Leaf<'a> {
 		/// Link label, not including the `[]` delimiters.
 		label: Span<'a>,
 		/// Link title, not including the quotes.
-		title: Span<'a>,
+		title: Option<Span<'a>>,
 	},
 	/// Indented code block.
 	IndentedCode {
