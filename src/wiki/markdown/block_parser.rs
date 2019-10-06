@@ -922,7 +922,17 @@ impl<'a> BlockIterator<'a> {
 				lang,
 				info,
 			} => {
-				if indent < 4 {
+				if line_trim.len() == 0 && opened < self.blocks.len() {
+					// close with the container
+					code.end = line.start;
+					LeafState::Closed(Leaf::FencedCode {
+						fence,
+						span,
+						code,
+						lang,
+						info,
+					})
+				} else if indent < 4 {
 					let delim = fence.chars().next().unwrap();
 					let is_close = line_trim.text().starts_with(fence);
 					let is_close = is_close && line_trim.text().chars().all(|ch| ch == delim);
@@ -1043,9 +1053,17 @@ impl<'a> BlockIterator<'a> {
 		}
 	}
 
-	fn close_leaf(&mut self, leaf: Leaf<'a>) -> Leaf<'a> {
+	fn close_leaf(&mut self, mut leaf: Leaf<'a>) -> Leaf<'a> {
 		if let Leaf::Paragraph { text } = leaf {
 			super::parse_link_ref(text)
+		} else if let Leaf::FencedCode {
+			ref span, ref mut code, ..
+		} = &mut leaf
+		{
+			if code.start == span.start {
+				code.start = span.end
+			}
+			leaf
 		} else {
 			leaf
 		}
