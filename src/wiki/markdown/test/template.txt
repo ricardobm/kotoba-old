@@ -1,13 +1,27 @@
-use speculate::speculate;
-
 use super::*;
 
-speculate! { describe "markdown xyz" {
+// spell-checker: disable
 
-it "" {
-	test(r#"
-	"#, r#"
-	"#);
+mod markdown_spec_ {
+	use super::*;
+
+	#[test]
+	fn should_() {
+		// example 00
+		test(
+			r##"
+			"##,
+			r##"
+			"##,
+		);
+	}
+
+	#[test]
+	fn should_() {
+		// example 00
+		test_raw(
+			"",
+			"",
+		);
+	}
 }
-
-}}

@@ -10,39 +10,46 @@ mod markdown_basics {
 
 	#[test]
 	fn should_support_simple_paragraphs() {
-		test(r#"
+		test(
+			r#"
 			Paragraph 1
 
 			Paragraph 2
 
 			3.1
 			3.2
-		"#, r#"
+		"#,
+			r#"
 			<p>Paragraph 1</p>
 			<p>Paragraph 2</p>
 			<p>3.1
 			3.2</p>
-		"#);
+		"#,
+		);
 	}
 
 	#[test]
 	fn should_support_lists() {
-		test(r#"
+		test(
+			r#"
 			- Item 1
 			- Item 2
 			- Item 3
-		"#, r#"
+		"#,
+			r#"
 			<ul>
 			<li>Item 1</li>
 			<li>Item 2</li>
 			<li>Item 3</li>
 			</ul>
-		"#);
+		"#,
+		);
 	}
 
 	#[test]
 	fn should_support_atx_headings() {
-		test(r#"
+		test(
+			r#"
 			# H 1
 			## H 2
 			### H 3
@@ -56,7 +63,8 @@ mod markdown_basics {
 			### H3 # # #
 			P2
 			####### H7
-		"#, r#"
+		"#,
+			r#"
 			<h1>H 1</h1>
 			<h2>H 2</h2>
 			<h3>H 3</h3>
@@ -69,52 +77,22 @@ mod markdown_basics {
 			<h3>H3 # #</h3>
 			<p>P2
 			####### H7</p>
-		"#);
-	}
-
-	#[test]
-	fn should_support_setext_headings() {
-		test(r#"
-			Title 1
-			=======
-
-			Title 2
-			-------
-
-			Multi-line
-			Title 2
-			---
-
-			L1
-			L2
-			==
-			===
-			L3
-			--
-			---
-		"#, r#"
-			<h1>Title 1</h1>
-			<h2>Title 2</h2>
-			<h2>Multi-line
-			Title 2</h2>
-			<h1>L1
-			L2
-			==</h1>
-			<h2>L3
-			--</h2>
-		"#);
+		"#,
+		);
 	}
 
 	#[test]
 	fn should_handle_setext_in_blocks_properly() {
-		test(r#"
+		test(
+			r#"
 			setext heading
 			--------------
 
 			- this is not a title
 			-------------
 			- semantic break above
-		"#, r#"
+		"#,
+			r#"
 			<h2>setext heading</h2>
 			<ul>
 			<li>this is not a title</li>
@@ -123,15 +101,18 @@ mod markdown_basics {
 			<ul>
 			<li>semantic break above</li>
 			</ul>
-		"#);
+		"#,
+		);
 
-		test(r#"
+		test(
+			r#"
 			> quote title
 			> -----------
 			> bellow is not a title
 			-----------------------
 			> another quote
-		"#, r#"
+		"#,
+			r#"
 			<blockquote>
 			<h2>quote title</h2>
 			<p>bellow is not a title</p>
@@ -140,25 +121,30 @@ mod markdown_basics {
 			<blockquote>
 			<p>another quote</p>
 			</blockquote>
-		"#);
+		"#,
+		);
 
-		test(r#"
+		test(
+			r#"
 			- heading
 			  -------
 			- in a list
-		"#, r#"
+		"#,
+			r#"
 			<ul>
 			<li>
 			<h2>heading</h2>
 			</li>
 			<li>in a list</li>
 			</ul>
-		"#);
+		"#,
+		);
 	}
 
 	#[test]
 	fn should_support_inline_code() {
-		test(r#"
+		test(
+			r#"
 			`foo`
 
 			`` foo ` bar ``
@@ -171,7 +157,8 @@ mod markdown_basics {
 			`  `
 
 			`foo\`bar`
-		"#, r#"
+		"#,
+			r#"
 			<p><code>foo</code></p>
 			<p><code>foo ` bar</code></p>
 			<p><code> `` </code></p>
@@ -179,11 +166,18 @@ mod markdown_basics {
 			<p><code> </code>
 			<code>  </code></p>
 			<p><code>foo\</code>bar`</p>
-		"#);
+		"#,
+		);
 
 		test_raw("`\u{00A0}x\u{00A0}`", "<p><code>\u{00A0}x\u{00A0}</code></p>");
-		test_raw("``\nfoo(n)\nbar  \r\n123\r456\n``", "<p><code>foo(n) bar   123 456</code></p>");
-		test_raw("`\r\nfoo(rn)   bar  \n123\r\n`", "<p><code>foo(rn)   bar   123</code></p>");
+		test_raw(
+			"``\nfoo(n)\nbar  \r\n123\r456\n``",
+			"<p><code>foo(n) bar   123 456</code></p>",
+		);
+		test_raw(
+			"`\r\nfoo(rn)   bar  \n123\r\n`",
+			"<p><code>foo(rn)   bar   123</code></p>",
+		);
 		test_raw("`\rfoo(r)   bar  \n123\r`", "<p><code>foo(r)   bar   123</code></p>");
 	}
 }

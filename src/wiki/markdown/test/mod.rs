@@ -12,6 +12,7 @@ mod spec_escapes;
 mod spec_images;
 mod spec_links;
 mod spec_raw_html;
+mod spec_setext_headings;
 
 fn test(input: &str, expected: &str) {
 	let input = common::text(input);

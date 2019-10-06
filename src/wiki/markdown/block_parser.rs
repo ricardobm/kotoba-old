@@ -844,7 +844,7 @@ impl<'a> BlockIterator<'a> {
 
 	fn append_leaf(&mut self, mut leaf: Leaf<'a>, line: Span<'a>, opened: usize) -> LeafState<'a> {
 		lazy_static! {
-			static ref RE_SETEXT_HEADER: Regex = Regex::new(r"^[ ]{0,3}([-]{3,}|[=]{3,})\s*$").unwrap();
+			static ref RE_SETEXT_HEADER: Regex = Regex::new(r"^[ ]{0,3}([-]{1,}|[=]{1,})\s*$").unwrap();
 		}
 
 		let line_trim = line.trimmed();
@@ -882,7 +882,10 @@ impl<'a> BlockIterator<'a> {
 					} else {
 						2
 					};
-					let header = Leaf::Header { level, text };
+					let header = Leaf::Header {
+						level,
+						text: text.trimmed(),
+					};
 					LeafState::ClosedAndConsumed(header)
 				} else {
 					if let Some(_) = Self::parse_leaf(line.clone(), true) {
