@@ -97,7 +97,7 @@ pub struct MarkdownIterator<'a> {
 
 #[derive(Debug)]
 enum LooseItem {
-	List { loose: bool, index: usize },
+	List { loose: bool, index: usize, end: usize },
 	ListItem { index: usize },
 	Child { level: usize, line: usize, loose: bool },
 }
@@ -191,12 +191,13 @@ impl<'a> MarkdownIterator<'a> {
 					// drain the queue of pending events from a previous list
 					Some(event)
 				} else if let Some(event) = self.read_next() {
-					if event.is_list_open() {
+					if let Event::Output(MarkupEvent::Open(Block::List(ref info))) = event {
 						// from this point on we start queueing events until
 						// the end of the list
 						self.pending.push_back(LooseItem::List {
 							loose: false,
 							index: self.queue.len(),
+							end:   info.marker_pos.line,
 						});
 						self.queue.push_back(event);
 						continue;
@@ -210,115 +211,130 @@ impl<'a> MarkdownIterator<'a> {
 				// Parse the next event in the input looking for the
 				// "loose list" criteria:
 
+				fn on_open(pending: &mut VecDeque<LooseItem>, sta: usize, end: usize) {
+					// For each list item's child block we need to check if
+					// there is a blank line between the start of the block
+					// and the end of the previous one.
+
+					// Get the range. The end range is not reliable because
+					// we haven't reach the end of the block yet, but we'll
+					// use it for now and update later at the `Close` event.
+					match pending.back_mut() {
+						Some(LooseItem::Child {
+							ref mut level,
+							ref mut line,
+							ref mut loose,
+						}) => {
+							// We already encountered children for this
+							// list item.
+							//
+							// The level will be zero if we just closed a
+							// previous child block. Non-zero means we are
+							// inside the hierarchy (the loose concept
+							// applies only to direct children).
+							if *level == 0 {
+								if sta > *line + 1 {
+									// we consume this when closing the
+									// parent list item
+									*loose = true;
+								}
+								// we probably could not even bother to
+								// save the end here
+								*line = end;
+							}
+							*level += 1;
+						}
+						_ => {
+							// This is the first child of the list item.
+							pending.push_back(LooseItem::Child {
+								level: 1,
+								line:  end,
+								loose: false,
+							});
+						}
+					}
+				}
+
+				fn on_close(pending: &mut VecDeque<LooseItem>, end: usize) {
+					// When closing a block, we just update the child's item
+					// last line number.
+					match pending.back_mut() {
+						Some(LooseItem::Child {
+							ref mut level,
+							ref mut line,
+							..
+						}) => {
+							*level -= 1;
+							*line = end;
+						}
+						_ => unreachable!("close event with no pending Child item"),
+					}
+				}
+
 				if let Some(mut event) = self.read_next() {
-					if event.is_list_open() {
-						// We have a new list, process this independently than
-						// parent lists.
+					if let Event::Output(MarkupEvent::Open(Block::List(info))) = &event {
+						on_open(&mut self.pending, info.marker_pos.line, info.marker_pos.line);
 						self.pending.push_back(LooseItem::List {
 							loose: false,
 							index: self.queue.len(),
+							end:   info.marker_pos.line,
 						});
-					} else if event.is_list_item_open() {
+					} else if let Event::Output(MarkupEvent::Open(Block::ListItem(..))) = &event {
 						// Found a list item
 						self.pending.push_back(LooseItem::ListItem {
 							index: self.queue.len(),
 						});
 					} else if let Event::Output(MarkupEvent::Open(block)) = &event {
-						// For each list item's child block we need to check if
-						// there is a blank line between the start of the block
-						// and the end of the previous one.
-
-						// Get the range. The end range is not reliable because
-						// we haven't reach the end of the block yet, but we'll
-						// use it for now and update later at the `Close` event.
 						let (sta, end) = block.line_range();
-
-						match self.pending.back_mut() {
-							Some(LooseItem::Child {
-								ref mut level,
-								ref mut line,
-								ref mut loose,
-							}) => {
-								// We already encountered children for this
-								// list item.
-								//
-								// The level will be zero if we just closed a
-								// previous child block. Non-zero means we are
-								// inside the hierarchy (the loose concept
-								// applies only to direct children).
-								if *level == 0 {
-									if sta > *line + 1 {
-										// we consume this when closing the
-										// parent list item
-										*loose = true;
-									}
-									// we probably could not even bother to
-									// save the end here
-									*line = end;
-								}
-								*level += 1;
-							}
-							_ => {
-								// This is the first child of the list item.
-								self.pending.push_back(LooseItem::Child {
-									level: 1,
-									line:  end,
-									loose: false,
-								});
-							}
-						}
+						on_open(&mut self.pending, sta, end);
 					} else if let Event::Output(MarkupEvent::Close(Block::List(ref mut close_info))) = &mut event {
-						// Close a list and update its loose information, at
-						// this point we already processed all items and their
-						// children.
-						match self.pending.pop_back() {
+						// close the list and update its loose information
+						let end = match self.pending.pop_back() {
 							// remove pending List
-							Some(LooseItem::List { loose, index }) => match self.queue[index] {
+							Some(LooseItem::List { loose, index, end }) => match self.queue[index] {
 								Event::Output(MarkupEvent::Open(ref mut block)) => match block {
 									Block::List(ref mut info) => {
 										// update the loose information on the opening event
 										info.loose = Some(loose);
 										// also update the close event info
 										close_info.loose = Some(loose);
+										end
 									}
 									_ => unreachable!("block in queue event for pending List is not a List"),
 								},
 								_ => unreachable!("queue event in pending List is not an open"),
 							},
 							_ => unreachable!("pending List and close event did not match"),
+						};
+						if self.pending.len() > 0 {
+							on_close(&mut self.pending, end);
 						}
-					} else if let Event::Output(MarkupEvent::Close(Block::ListItem(ref mut info))) = &mut event {
-						// Close a list item and update its loose information
-
-						// We store the "loose" status on the child item.
-						//
-						// It is not impossible to not have a child item in
-						// case the list item is empty, so we do that
-						// conditionally.
+					} else if let Event::Output(MarkupEvent::Close(Block::ListItem(ref mut close_info))) = &mut event {
+						// take the loose information stored on the child items
 						let loose = if let Some(LooseItem::Child { loose, .. }) = self.pending.back() {
 							let loose = *loose;
 							self.pending.pop_back();
 							loose
 						} else {
-							false
+							false // is it possible for a list item to have no children?
 						};
+						close_info.loose = Some(loose);
 
-						// Update the close event
-						info.loose = Some(loose);
-
-						// Remove the pending ListItem and update its open event
+						// remove the ListItem event and update the item information
 						match self.pending.pop_back() {
 							Some(LooseItem::ListItem { index }) => match self.queue[index] {
 								Event::Output(MarkupEvent::Open(ref mut block)) => match block {
 									Block::ListItem(ref mut info) => {
 										info.loose = Some(loose);
-
-										// If the item is loose, then the parent list is
-										// also loose.
 										if loose {
 											match self.pending.back_mut() {
-												Some(LooseItem::List { ref mut loose, .. }) => {
-													*loose = true;
+												Some(LooseItem::List {
+													ref mut loose,
+													ref mut end,
+													..
+												}) => {
+													*end = close_info.list.marker_pos.line;
+													*loose = true; // store loose on the parent list also
 												}
 												_ => unreachable!("ListItem's pending parent is not a List"),
 											}
@@ -331,20 +347,8 @@ impl<'a> MarkdownIterator<'a> {
 							_ => unreachable!("pending ListItem and close event did not match"),
 						}
 					} else if let Event::Output(MarkupEvent::Close(block)) = &event {
-						// When closing a block, we just update the child's item
-						// last line number.
 						let (_, end) = block.line_range();
-						match self.pending.back_mut() {
-							Some(LooseItem::Child {
-								ref mut level,
-								ref mut line,
-								..
-							}) => {
-								*level -= 1;
-								*line = end;
-							}
-							_ => unreachable!("close event with no pending Child item"),
-						}
+						on_close(&mut self.pending, end);
 					}
 					self.queue.push_back(event);
 				} else {
