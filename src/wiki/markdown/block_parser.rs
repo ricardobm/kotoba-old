@@ -900,7 +900,7 @@ impl<'a> BlockIterator<'a> {
 				if indent < 4 && !empty {
 					LeafState::Closed(leaf)
 				} else {
-					if indent >= 4 {
+					if indent >= 4 && !empty {
 						code.end = line.end;
 					}
 					LeafState::Open(leaf)
