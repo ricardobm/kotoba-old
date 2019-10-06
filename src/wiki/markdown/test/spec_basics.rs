@@ -14,6 +14,13 @@ mod markdown_spec_basics {
 	}
 
 	#[test]
+	fn zero_byte_should_be_replaced() {
+		test_raw("\0", "<p>\u{FFFD}</p>");
+		test_raw("    \0", "<pre><code>\u{FFFD}</code></pre>");
+		test_raw("[foo](</url/\0>)", "<p><a href=\"/url/\u{FFFD}\">foo</a></p>");
+	}
+
+	#[test]
 	fn tabs_can_be_used_instead_of_four_spaces() {
 		// example 1
 		test_raw("\tfoo\tbaz\t\tbim", "<pre><code>foo\tbaz\t\tbim</code></pre>");
