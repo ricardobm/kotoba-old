@@ -728,6 +728,7 @@ mod tests {
 			indent: 0,
 			quotes: 0,
 			loose:  None,
+			skip:   false,
 		}
 	}
 

@@ -25,6 +25,9 @@ pub struct Span<'a> {
 	pub quotes: usize,
 	/// Is this block of text inside a loose paragraph?
 	pub loose: Option<bool>,
+	/// Force an indentation skip even if it is not at the first column
+	/// of the line.
+	pub skip: bool,
 }
 
 // NOTE: both Hash and PartialEq implementations are here just to support the
@@ -67,6 +70,7 @@ impl<'a> Default for Span<'a> {
 			indent: 0,
 			quotes: 0,
 			loose:  None,
+			skip:   false,
 		}
 	}
 }
@@ -142,6 +146,7 @@ impl<'a> Span<'a> {
 			indent: self.indent,
 			quotes: self.quotes,
 			loose:  None,
+			skip:   self.skip && start == self.start.offset,
 		}
 	}
 
@@ -217,6 +222,7 @@ impl<'a> Span<'a> {
 			span:     self.clone(),
 			cursor:   self.start,
 			maxpos:   self.end,
+			skip:     self.skip,
 			next_eol: None,
 			pending:  "",
 			stripped: false,
@@ -230,6 +236,7 @@ pub struct SpanIter<'a> {
 	span:   Span<'a>,
 	cursor: Pos,
 	maxpos: Pos,
+	skip:   bool,
 
 	next_eol: Option<Pos>,
 	pending:  &'static str,
@@ -257,6 +264,7 @@ impl<'a> SpanIter<'a> {
 
 	pub fn restore_from(&mut self, iter: &SpanIter<'a>) {
 		self.cursor = iter.cursor;
+		self.skip = iter.skip;
 		self.next_eol = iter.next_eol;
 		self.pending = iter.pending;
 		self.stripped = iter.stripped;
@@ -265,6 +273,7 @@ impl<'a> SpanIter<'a> {
 	pub fn skip_to(&mut self, pos: Pos) {
 		debug_assert!(pos >= self.cursor && pos <= self.maxpos);
 		self.cursor = pos;
+		self.skip = self.skip && pos == self.cursor;
 		self.pending = "";
 		self.stripped = false;
 	}
@@ -335,11 +344,12 @@ impl<'a> SpanIter<'a> {
 	///
 	/// Does nothing if it is not at the start of a line.
 	fn skip_ignored(&mut self) {
-		if self.pending.len() > 0 || self.cursor.column != 0 || self.stripped {
+		if self.pending.len() > 0 || (self.cursor.column != 0 && !self.skip) || self.stripped {
 			return;
 		}
 
 		self.stripped = true;
+		self.skip = false;
 
 		// Strip quote markers from the source text.
 		for _ in 0..self.span.quotes {
@@ -360,7 +370,11 @@ impl<'a> SpanIter<'a> {
 
 		let max_offset = self.maxpos.offset - self.cursor.offset;
 
-		let mut indent = self.span.indent;
+		let mut indent = if self.span.indent > self.cursor.column {
+			self.span.indent - self.cursor.column
+		} else {
+			0
+		};
 		let mut indent_to_return = "";
 		let mut offset = 0;
 		let mut column = self.cursor.column;

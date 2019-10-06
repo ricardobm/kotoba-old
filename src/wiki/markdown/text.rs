@@ -195,6 +195,32 @@ impl<'a> TextBuffer<'a> {
 		self.src[self.pos.offset..].chars().next().unwrap()
 	}
 
+	/// Skip up to the specified amount of indentation width.
+	pub fn skip_indent_width(&mut self, width: usize) -> usize {
+		let mut total = 0;
+		while total < width {
+			if self.skip_if(' ') {
+				total += 1;
+			} else if self.next_char() == '\t' {
+				// if the current tab would exceed the required width we
+				// advance the column without consuming the tab, which
+				// provides the virtual effect of consuming the desired
+				// indentation width once the tab is consumed down the line
+				let tw = common::tab_width(self.column());
+				if total + tw <= width {
+					self.skip_chars(1);
+					total += tw;
+				} else {
+					self.pos.column += width - total;
+					total = width;
+				}
+			} else {
+				break;
+			}
+		}
+		total
+	}
+
 	/// Skip the next char, only if it is equal to the given one.
 	#[inline(always)]
 	pub fn skip_if(&mut self, chr: char) -> bool {

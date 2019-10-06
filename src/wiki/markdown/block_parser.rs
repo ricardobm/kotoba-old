@@ -129,9 +129,10 @@ impl fmt::Debug for Container {
 	}
 }
 
+#[derive(Debug)]
 enum CanContinue {
 	No,
-	Yes { position: Pos, indent: usize },
+	Yes { position: Pos },
 }
 
 impl Container {
@@ -185,16 +186,18 @@ impl Container {
 					CanContinue::No
 				} else if line.starts_with("> ") {
 					next.skip("> ");
-					CanContinue::Yes {
-						position: next,
-						indent:   0,
+					CanContinue::Yes { position: next }
+				} else if line.starts_with(">\t") {
+					next.skip(">");
+					if common::tab_width(next.column) == 1 {
+						next.skip("\t");
+					} else {
+						next.column += 1;
 					}
+					CanContinue::Yes { position: next }
 				} else if line.starts_with(">") {
 					next.skip(">");
-					CanContinue::Yes {
-						position: next,
-						indent:   0,
-					}
+					CanContinue::Yes { position: next }
 				} else {
 					CanContinue::No
 				}
@@ -206,47 +209,38 @@ impl Container {
 			}) => {
 				if line.text().trim().len() == 0 {
 					// List item can continue through empty lines
-					CanContinue::Yes {
-						position: line.start,
-						indent:   0,
-					}
+					CanContinue::Yes { position: line.start }
 				} else {
 					// We consider the list item continued if we can skip all
 					// of its indentation.
 					let target_indent = base_indent + text_indent;
-					let start = line.start;
-					let column = start.column;
-					let mut new_column = column;
+					let mut cursor = line.start;
 					let mut line = line.text();
 					let mut do_continue = true;
+					let start_column = cursor.column;
 					while do_continue {
 						do_continue = false;
 						if let Some(ch) = line.chars().next() {
 							if ch == ' ' || ch == '\t' {
-								let col = common::col(ch, new_column);
-								if col - column <= target_indent {
-									new_column = col;
+								let new_column = common::col(ch, cursor.column);
+								if new_column - start_column <= target_indent {
+									cursor.skip(&line[..1]);
 									line = &line[1..];
-									do_continue = new_column - column < target_indent;
+									do_continue = cursor.column - start_column < target_indent;
 								} else {
 									if ch == '\t' {
 										// advance column without really
 										// consuming the tab to simulate
 										// partially consuming it
-										new_column = column + target_indent;
+										cursor.column = start_column + target_indent;
 									}
 								}
 							}
 						}
 					}
 
-					if new_column - column == target_indent {
-						let mut next = start;
-						next.column = new_column;
-						CanContinue::Yes {
-							position: next,
-							indent:   new_column - column,
-						}
+					if cursor.column - start_column == target_indent {
+						CanContinue::Yes { position: cursor }
 					} else {
 						CanContinue::No
 					}
@@ -358,9 +352,9 @@ impl<'a> fmt::Debug for Leaf<'a> {
 #[derive(Debug)]
 enum IteratorState {
 	None,
-	Open(usize, usize, Option<Container>),
-	Text(usize, usize),
-	Empty(usize, usize),
+	Open(usize, Option<Container>),
+	Text(usize),
+	Empty(usize),
 	End,
 }
 
@@ -459,53 +453,47 @@ impl<'a> BlockIterator<'a> {
 						}
 					} else {
 						// Skip any markers for currently open blocks...
-						let (open_count, indent) = self.skip_opened();
+						let open_count = self.skip_opened();
 						// and next check for blocks to open.
-						IteratorState::Open(open_count, indent, None)
+						IteratorState::Open(open_count, None)
 					}
 				}
 
 				// State at the beginning of a line, after skipping current
 				// block markers, when checking for new blocks to open.
-				IteratorState::Open(opened, indent, None) => {
+				IteratorState::Open(opened, None) => {
 					if let Some(elem) = self.parse_container_start() {
-						IteratorState::Open(opened, indent, Some(elem))
+						IteratorState::Open(opened, Some(elem))
 					} else {
-						IteratorState::Text(opened, indent)
+						IteratorState::Text(opened)
 					}
 				}
 
 				// State when a block open has been matched...
-				IteratorState::Open(opened, indent, Some(elem)) => {
+				IteratorState::Open(opened, Some(elem)) => {
 					if let Some(inline) = std::mem::take(&mut self.inline) {
 						// ...first generate any pending inline (e.g. paragraph)
 						let inline = self.close_leaf(inline);
-						break (
-							IteratorState::Open(opened, indent, Some(elem)),
-							Some(BlockEvent::Leaf(inline)),
-						);
+						break (IteratorState::Open(opened, Some(elem)), Some(BlockEvent::Leaf(inline)));
 					} else if self.blocks.len() > opened {
 						// ...then close any non-continued open blocks
 						let closed = self.blocks.pop_back().unwrap();
-						break (
-							IteratorState::Open(opened, indent, Some(elem)),
-							Some(BlockEvent::End(closed)),
-						);
+						break (IteratorState::Open(opened, Some(elem)), Some(BlockEvent::End(closed)));
 					} else {
 						// ...finally generate the new block and go back to the
 						// empty open state to continue checking for new blocks.
 						self.blocks.push_back(elem.clone());
 						let opened = self.blocks.len();
-						break (IteratorState::Open(opened, indent, None), Some(BlockEvent::Start(elem)));
+						break (IteratorState::Open(opened, None), Some(BlockEvent::Start(elem)));
 					}
 				}
 
 				// State when a blank line is found.
-				IteratorState::Empty(opened, indent) => {
+				IteratorState::Empty(opened) => {
 					if self.blocks.len() > opened {
 						// ...then close any non-continued open blocks
 						let closed = self.blocks.pop_back().unwrap();
-						break (IteratorState::Empty(opened, indent), Some(BlockEvent::End(closed)));
+						break (IteratorState::Empty(opened), Some(BlockEvent::End(closed)));
 					} else {
 						// ...finally just reset the state for the next line
 						IteratorState::None
@@ -513,8 +501,9 @@ impl<'a> BlockIterator<'a> {
 				}
 
 				// State when matching the text content of a line
-				IteratorState::Text(opened, indent) => {
-					let cur_line = self.buffer.cur_line();
+				IteratorState::Text(opened) => {
+					let mut cur_line = self.buffer.cur_line();
+					cur_line.quotes = self.cur_quotes();
 
 					let mut do_skip = true;
 					let (next_state, elem) = if let Some(inline) = std::mem::take(&mut self.inline) {
@@ -538,7 +527,7 @@ impl<'a> BlockIterator<'a> {
 						}
 					} else if cur_line.text().trim().len() == 0 {
 						// If the line is empty, handle it
-						(IteratorState::Empty(opened, indent), None)
+						(IteratorState::Empty(opened), None)
 					} else {
 						// Parse the line as a leaf block.
 						match Self::parse_leaf(cur_line, false).unwrap() {
@@ -547,7 +536,7 @@ impl<'a> BlockIterator<'a> {
 							LeafState::ClosedAndConsumed(Leaf::Break(pos)) => {
 								if self.blocks.len() > opened {
 									let closed = self.blocks.pop_back().unwrap();
-									break (IteratorState::Text(opened, indent), Some(BlockEvent::End(closed)));
+									break (IteratorState::Text(opened), Some(BlockEvent::End(closed)));
 								} else {
 									let leaf = self.close_leaf(Leaf::Break(pos));
 									(IteratorState::None, Some(BlockEvent::Leaf(leaf)))
@@ -587,20 +576,17 @@ impl<'a> BlockIterator<'a> {
 
 	/// Skip the continuation markers for the currently open blocks.
 	///
-	/// Returns the number of blocks that can continue opened and the base
-	/// indentation of the last open block.
-	fn skip_opened(&mut self) -> (usize, usize) {
-		let mut last_indent = 0;
+	/// Returns the number of blocks that can continue open.
+	fn skip_opened(&mut self) -> usize {
 		for i in 0..self.blocks.len() {
 			let line = self.buffer.cur_line();
-			if let CanContinue::Yes { position, indent } = self.blocks[i].can_continue(line) {
-				last_indent = indent;
+			if let CanContinue::Yes { position } = self.blocks[i].can_continue(line) {
 				self.buffer.skip_to(position);
 			} else {
-				return (i, last_indent);
+				return i;
 			}
 		}
-		(self.blocks.len(), last_indent)
+		self.blocks.len()
 	}
 
 	/// Return the number of open blockquotes.
@@ -639,7 +625,9 @@ impl<'a> BlockIterator<'a> {
 				// ----------
 				// Blockquote
 				// ----------
-				self.buffer.skip_if(' ');
+
+				// Skip one optional space after the marker.
+				self.buffer.skip_indent_width(1);
 				Some(Container::BlockQuote(base_pos))
 			} else if self.is_list_start() {
 				// -----------------------
@@ -648,8 +636,7 @@ impl<'a> BlockIterator<'a> {
 
 				let marker = self.buffer.next_char();
 				self.buffer.skip_chars(1);
-				let text_indent = self.buffer.skip_indent();
-				if text_indent == 0 {
+				if self.buffer.skip_indent_width(1) == 0 {
 					// At least one space is needed after the list marker
 					None
 				} else {
@@ -770,7 +757,8 @@ impl<'a> BlockIterator<'a> {
 			// Indented code block
 			// ===================
 			if !is_inline {
-				span.indent += 4;
+				span.indent = 4 + span.start.column;
+				span.skip = true;
 				let code_block = Leaf::IndentedCode { code: span };
 				Some(LeafState::Open(code_block))
 			} else {

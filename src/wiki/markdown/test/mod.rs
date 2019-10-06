@@ -4,6 +4,7 @@ mod basics;
 
 mod spec_atx_headings;
 mod spec_autolinks;
+mod spec_basics;
 mod spec_breaks;
 mod spec_emphasis;
 mod spec_entities;
