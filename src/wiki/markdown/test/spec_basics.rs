@@ -60,4 +60,21 @@ mod markdown_spec_basics {
 		// example 11
 		test_raw("*\t*\t*\t", "<hr/>");
 	}
+
+	#[test]
+	fn block_inline_precedence() {
+		// example 12
+		test(
+			r##"
+			- `one
+			- two`
+		"##,
+			r##"
+			<ul>
+			<li>`one</li>
+			<li>two`</li>
+			</ul>
+		"##,
+		);
+	}
 }
