@@ -318,7 +318,9 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 					write!(f, " class='language-{}'", lang)?;
 				}
 				if let Some(info) = code.info {
-					write!(f, " data-info='{}'", info)?;
+					write!(f, " data-info='")?;
+					escape_html(f, info)?;
+					write!(f, "'")?;
 				}
 			} else {
 				write!(f, "code></pre")?;

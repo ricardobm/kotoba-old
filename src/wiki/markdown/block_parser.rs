@@ -446,7 +446,7 @@ impl<'a> BlockIterator<'a> {
 				IteratorState::None => {
 					if self.buffer.at_end() {
 						if let Some(inline) = std::mem::take(&mut self.inline) {
-							let inline = self.close_leaf(inline);
+							let inline = self.close_leaf(inline, true);
 							break (IteratorState::None, Some(BlockEvent::Leaf(inline)));
 						} else if self.blocks.len() > 0 {
 							let closed = self.blocks.pop_back().unwrap();
@@ -476,7 +476,7 @@ impl<'a> BlockIterator<'a> {
 				IteratorState::Open(opened, Some(elem)) => {
 					if let Some(inline) = std::mem::take(&mut self.inline) {
 						// ...first generate any pending inline (e.g. paragraph)
-						let inline = self.close_leaf(inline);
+						let inline = self.close_leaf(inline, false);
 						break (IteratorState::Open(opened, Some(elem)), Some(BlockEvent::Leaf(inline)));
 					} else if self.blocks.len() > opened {
 						// ...then close any non-continued open blocks
@@ -519,12 +519,12 @@ impl<'a> BlockIterator<'a> {
 							}
 							LeafState::ClosedAndConsumed(leaf) => {
 								// ...if that closed the block, generate it.
-								let leaf = self.close_leaf(leaf);
+								let leaf = self.close_leaf(leaf, false);
 								(IteratorState::None, Some(BlockEvent::Leaf(leaf)))
 							}
 							LeafState::Closed(leaf) => {
 								do_skip = false;
-								let leaf = self.close_leaf(leaf);
+								let leaf = self.close_leaf(leaf, false);
 								(IteratorState::None, Some(BlockEvent::Leaf(leaf)))
 							}
 						}
@@ -541,7 +541,7 @@ impl<'a> BlockIterator<'a> {
 									let closed = self.blocks.pop_back().unwrap();
 									break (IteratorState::Text(opened), Some(BlockEvent::End(closed)));
 								} else {
-									let leaf = self.close_leaf(Leaf::Break(pos));
+									let leaf = self.close_leaf(Leaf::Break(pos), false);
 									(IteratorState::None, Some(BlockEvent::Leaf(leaf)))
 								}
 							}
@@ -551,7 +551,7 @@ impl<'a> BlockIterator<'a> {
 								(IteratorState::None, None)
 							}
 							LeafState::ClosedAndConsumed(leaf) => {
-								let leaf = self.close_leaf(leaf);
+								let leaf = self.close_leaf(leaf, false);
 								(IteratorState::None, Some(BlockEvent::Leaf(leaf)))
 							}
 							LeafState::Closed(_) => unreachable!(),
@@ -799,8 +799,8 @@ impl<'a> BlockIterator<'a> {
 			// Fenced code block
 			// ===================
 			let fence = caps.name("d0").unwrap_or_else(|| caps.name("d1").unwrap()).as_str();
-			let lang = caps.name("l0");
-			let lang = if let Some(x) = lang { Some(x) } else { caps.name("l1") };
+			let lang = caps.name("w0");
+			let lang = if let Some(x) = lang { Some(x) } else { caps.name("w1") };
 			let lang = if let Some(x) = lang { x.as_str() } else { "" };
 			let lang = if lang.len() > 0 { Some(lang) } else { None };
 			let info = caps.name("i0");
@@ -1053,7 +1053,7 @@ impl<'a> BlockIterator<'a> {
 		}
 	}
 
-	fn close_leaf(&mut self, mut leaf: Leaf<'a>) -> Leaf<'a> {
+	fn close_leaf(&mut self, mut leaf: Leaf<'a>, is_eof: bool) -> Leaf<'a> {
 		if let Leaf::Paragraph { text } = leaf {
 			super::parse_link_ref(text)
 		} else if let Leaf::FencedCode {
@@ -1062,6 +1062,9 @@ impl<'a> BlockIterator<'a> {
 		{
 			if code.start == span.start {
 				code.start = span.end
+			}
+			if is_eof {
+				code.end = self.buffer.position();
 			}
 			leaf
 		} else {
