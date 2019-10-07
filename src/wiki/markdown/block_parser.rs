@@ -816,13 +816,24 @@ impl<'a> BlockIterator<'a> {
 				code: span,
 			}))
 		} else if let Some(end) = Self::match_html_start(text, is_inline) {
+			let end = if end.len() == 0 { None } else { Some(end) };
+			let is_closed = if let Some(end) = end {
+				if text.contains(end) {
+					true
+				} else {
+					false
+				}
+			} else {
+				false
+			};
 			// ===================
 			// HTML block
 			// ===================
-			Some(LeafState::Open(Leaf::HTML {
-				end:  if end.len() == 0 { None } else { Some(end) },
-				code: span,
-			}))
+			if !is_closed {
+				Some(LeafState::Open(Leaf::HTML { end: end, code: span }))
+			} else {
+				Some(LeafState::ClosedAndConsumed(Leaf::HTML { end: end, code: span }))
+			}
 		} else if let Some(row) = parse_table_row(span.clone(), true) {
 			// ===================
 			// HTML block
@@ -983,11 +994,11 @@ impl<'a> BlockIterator<'a> {
 						LeafState::Open(html)
 					}
 				} else {
-					let html = Leaf::HTML { end: None, code };
 					if empty {
-						LeafState::Closed(html)
+						LeafState::Closed(Leaf::HTML { end: None, code })
 					} else {
-						LeafState::Open(html)
+						code.end = line.end;
+						LeafState::Open(Leaf::HTML { end: None, code })
 					}
 				}
 			}
@@ -1196,27 +1207,31 @@ impl<'a> BlockIterator<'a> {
 				lazy_static! {
 					static ref RE_OPEN_OR_CLOSING_TAG: Regex = Regex::new(
 						r#"(?ix)
-							^<
-							[a-z][-a-z0-9]*              # Tag name
+							^<(
+								[a-z][-a-z0-9]*              # Tag name
 
-							# Attributes
-							(
-								\s+[_:a-z][-a-z0-9._:]*  # Attribute name
-
-								# Attribute value
+								# Attributes
 								(
-									\s*=\s*
-									(
-										[^\s"'=<>`]+     # Unquoted value
-										|
-										'[^']*'          # Single quoted value
-										|
-										"[^"]*"          # Double quoted value
-									)
-								)?
-							)*
+									\s+[_:a-z][-a-z0-9._:]*  # Attribute name
 
-							\s* /?>
+									# Attribute value
+									(
+										\s*=\s*
+										(
+											[^\s"'=<>`]+     # Unquoted value
+											|
+											'[^']*'          # Single quoted value
+											|
+											"[^"]*"          # Double quoted value
+										)
+									)?
+								)*
+
+								\s* /?>
+
+								# Closing tag
+								| / [a-z][-a-z0-9]* \s* >
+							)
 						"#
 					)
 					.unwrap();
@@ -1225,7 +1240,7 @@ impl<'a> BlockIterator<'a> {
 				if let Some(m) = RE_OPEN_OR_CLOSING_TAG.find(text_trim) {
 					// Open or closing tag should be followed only by
 					// whitespace and the end of line
-					if text_trim[m.start()..].trim().len() == 0 {
+					if text_trim[m.end()..].trim().len() == 0 {
 						return Some("");
 					}
 				}

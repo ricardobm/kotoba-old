@@ -10,6 +10,7 @@ mod spec_emphasis;
 mod spec_entities;
 mod spec_escapes;
 mod spec_fenced_code;
+mod spec_html_blocks;
 mod spec_images;
 mod spec_indented_code;
 mod spec_links;
