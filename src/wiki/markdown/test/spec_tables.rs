@@ -6,7 +6,7 @@ mod markdown_spec_tables {
 	use super::*;
 
 	#[test]
-	fn should_parse() {
+	fn example_198_should_parse() {
 		// example 198
 		test(
 			r##"
@@ -68,7 +68,7 @@ mod markdown_spec_tables {
 	}
 
 	#[test]
-	fn should_parse_199() {
+	fn example_199_dont_need_to_match_length() {
 		// example 199
 		test(
 			r##"
@@ -96,7 +96,7 @@ mod markdown_spec_tables {
 	}
 
 	#[test]
-	fn should_parse_200() {
+	fn example_200_pipe_can_be_escaped() {
 		// example 200
 		test(
 			r##"
@@ -126,7 +126,7 @@ mod markdown_spec_tables {
 	}
 
 	#[test]
-	fn should_parse_201() {
+	fn example_201_breaks_on_new_block() {
 		// example 201
 		test(
 			r##"
@@ -158,7 +158,7 @@ mod markdown_spec_tables {
 	}
 
 	#[test]
-	fn should_parse_202() {
+	fn example_202_breaks_on_empty_line() {
 		// example 202
 		test(
 			r##"
@@ -194,7 +194,7 @@ mod markdown_spec_tables {
 	}
 
 	#[test]
-	fn should_parse_203() {
+	fn example_203_header_row_must_match_delimiter() {
 		// example 203
 		test(
 			r##"
@@ -211,7 +211,7 @@ mod markdown_spec_tables {
 	}
 
 	#[test]
-	fn should_parse_204() {
+	fn example_204_body_rows_can_vary_in_length() {
 		// example 204
 		test(
 			r##"
@@ -244,7 +244,7 @@ mod markdown_spec_tables {
 	}
 
 	#[test]
-	fn should_parse_205() {
+	fn example_205_empty_body() {
 		// example 205
 		test(
 			r##"
@@ -265,7 +265,7 @@ mod markdown_spec_tables {
 	}
 
 	#[test]
-	fn should_parse_with_no_head() {
+	fn example_with_no_head() {
 		test(
 			r##"
 				| --- | --- |
