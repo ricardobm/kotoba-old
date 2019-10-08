@@ -61,7 +61,7 @@ mod markdown_spec_indented_code {
 	#[test]
 	fn cannot_interrupt_a_paragraph() {
 		// example 83
-		test_raw("Foo\n    bar", "<p>Foo\n    bar</p>");
+		test_raw("Foo\n    bar", "<p>Foo\nbar</p>");
 	}
 
 	#[test]

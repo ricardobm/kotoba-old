@@ -78,7 +78,7 @@ mod markdown_spec_setext_headings {
 		test_raw("Foo\n   ----      ", "<h2>Foo</h2>");
 
 		// example 57 - four spaces is too much
-		test_raw("Foo\n    ---", "<p>Foo\n    ---</p>");
+		test_raw("Foo\n    ---", "<p>Foo\n---</p>");
 	}
 
 	#[test]

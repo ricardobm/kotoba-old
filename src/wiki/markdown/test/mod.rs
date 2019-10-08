@@ -15,6 +15,7 @@ mod spec_images;
 mod spec_indented_code;
 mod spec_link_refs;
 mod spec_links;
+mod spec_paragraphs;
 mod spec_raw_html;
 mod spec_setext_headings;
 

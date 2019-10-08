@@ -93,7 +93,7 @@ mod markdown_spec_atx_headings {
 		test_raw("    # foo", "<pre><code># foo</code></pre>");
 
 		// example 40
-		test_raw("foo\n    # bar", "<p>foo\n    # bar</p>");
+		test_raw("foo\n    # bar", "<p>foo\n# bar</p>");
 	}
 
 	#[test]

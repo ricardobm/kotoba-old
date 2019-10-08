@@ -38,6 +38,10 @@ impl<'a> TextNode<'a> {
 			iter: self.span.iter(),
 			mode: self.mode,
 			link: None,
+
+			// a TextNode inside a paragraph is not necessarily at the start
+			// of the line (and paragraphs blocks are trimmed anyway)
+			new_line: false,
 		}
 	}
 }
@@ -99,9 +103,10 @@ pub enum TextSpan<'a> {
 }
 
 pub struct TextNodeIterator<'a> {
-	iter: SpanIter<'a>,
-	mode: TextMode,
-	link: Option<(Range, Option<TextSpan<'a>>)>,
+	iter:     SpanIter<'a>,
+	mode:     TextMode,
+	link:     Option<(Range, Option<TextSpan<'a>>)>,
+	new_line: bool,
 }
 
 impl<'a> Iterator for TextNodeIterator<'a> {
@@ -121,6 +126,13 @@ impl<'a> Iterator for TextNodeIterator<'a> {
 				"#
 			)
 			.unwrap();
+			static ref RE_TRAILING_SPACES: Regex = Regex::new(
+				r#"(?x)
+					^(?P<spaces>[\s&&[^\n\r]]*)(?P<eol>\n|\r\n?)
+				"#
+			)
+			.unwrap();
+			static ref RE_SPACES: Regex = Regex::new(r#"^[\s&&[^\n\r]]+"#).unwrap();
 		}
 
 		let (has_escapes, has_entities, has_links) = match self.mode {
@@ -140,6 +152,7 @@ impl<'a> Iterator for TextNodeIterator<'a> {
 		let chunk = self.iter.chunk();
 		match self.iter.next_char() {
 			Some('\\') if has_escapes => {
+				self.new_line = false;
 				if RE_VALID_ESCAPE.is_match(chunk) {
 					self.iter.skip_bytes(1);
 					next_char_escaped(&mut self.iter)
@@ -151,42 +164,79 @@ impl<'a> Iterator for TextNodeIterator<'a> {
 					Some(TextSpan::Char('\\'))
 				}
 			}
-			Some('\r') if is_inline_code => {
+			Some('\r') => {
 				self.iter.skip_char();
 				if let Some('\n') = self.iter.next_char() {
 					self.iter.skip_char();
 				}
-				Some(TextSpan::Text(" "))
+				self.new_line = true;
+				Some(TextSpan::Text(if is_inline_code { " " } else { "\n" }))
 			}
-			Some('\n') if is_inline_code => {
+			Some('\n') => {
 				self.iter.skip_char();
-				Some(TextSpan::Text(" "))
+				self.new_line = true;
+				Some(TextSpan::Text(if is_inline_code { " " } else { "\n" }))
 			}
-			Some('&') if has_entities => parse_entity(&mut self.iter),
-			Some(c) if needs_escaping(c) => next_char_escaped(&mut self.iter),
+			Some('&') if has_entities => {
+				self.new_line = false;
+				parse_entity(&mut self.iter)
+			}
+			Some(c) if needs_escaping(c) => {
+				self.new_line = false;
+				next_char_escaped(&mut self.iter)
+			}
 			Some(_) => {
-				let link_value = if has_links { self.next_link() } else { None };
-				let link_index = link_value.as_ref().map(|x| Some(x.0.start)).unwrap_or(None);
-				if let Some(0) = link_index {
-					let (range, elem) = link_value.unwrap();
-					self.iter.skip_bytes(range.end);
-					Some(elem)
+				// NOTE: we use `has_links` below to detect paragraphs, so we
+				// can handle the space trimming and hard breaks in markdown.
+				if let Some(caps) = if has_links {
+					// are we at a line's trailing space in a paragraph?
+					RE_TRAILING_SPACES.captures(chunk)
 				} else {
-					let limit = chunk
-						.find(|c| is_special_char(c, is_inline_code))
-						.unwrap_or(chunk.len());
-					let limit = if let Some(index) = link_index {
-						std::cmp::min(limit, index)
+					None
+				} {
+					// convert 2 or more trailing spaces to a hard break
+					let spaces = caps.name("spaces").unwrap().as_str();
+					self.iter.skip_bytes(caps.get(0).unwrap().as_str().len());
+					self.new_line = true;
+					if spaces.chars().count() >= 2 {
+						Some(TextSpan::LineBreak)
 					} else {
-						limit
-					};
-					let chunk = &chunk[..limit];
-					if limit == 0 {
-						next_char_escaped(&mut self.iter)
+						Some(TextSpan::Text("\n"))
+					}
+				} else if let Some(m) = if has_links && self.new_line {
+					// is this leading space in a paragraph?
+					RE_SPACES.find(chunk)
+				} else {
+					None
+				} {
+					// skip the leading space but generate no text
+					self.iter.skip_bytes(m.as_str().len());
+					Some(TextSpan::Text(""))
+				} else {
+					// generate either a GFM autolink or the next chunk of raw
+					// text
+					self.new_line = false;
+					let link_value = if has_links { self.next_link() } else { None };
+					let link_index = link_value.as_ref().map(|x| Some(x.0.start)).unwrap_or(None);
+					if let Some(0) = link_index {
+						let (range, elem) = link_value.unwrap();
+						self.iter.skip_bytes(range.end);
+						Some(elem)
 					} else {
+						let limit = chunk.find(is_special_char).unwrap_or(chunk.len());
+						let limit = if let Some(index) = link_index {
+							std::cmp::min(limit, index)
+						} else {
+							limit
+						};
 						let chunk = &chunk[..limit];
-						self.iter.skip_bytes(limit);
-						Some(TextSpan::Text(chunk))
+						if limit == 0 {
+							next_char_escaped(&mut self.iter)
+						} else {
+							let chunk = &chunk[..limit];
+							self.iter.skip_bytes(limit);
+							Some(TextSpan::Text(chunk))
+						}
 					}
 				}
 			}
@@ -221,7 +271,6 @@ impl<'a> TextNodeIterator<'a> {
 		let chunk = self.iter.chunk();
 		let previous = self.iter.previous_char();
 		if let Some((range, link)) = parse_autolink_extension(chunk, previous) {
-			println!("found link in {:?} at {:?} -- {:?}", chunk, range, link);
 			let abs_range = Range {
 				start: range.start + offset,
 				end:   range.end + offset,
@@ -325,7 +374,7 @@ fn needs_escaping(chr: char) -> bool {
 
 /// Check if a character needs special handling as an inline.
 #[inline]
-fn is_special_char(chr: char, include_eol: bool) -> bool {
+fn is_special_char(chr: char) -> bool {
 	match chr {
 		// escapes
 		'\\' => true,
@@ -340,8 +389,8 @@ fn is_special_char(chr: char, include_eol: bool) -> bool {
 		// links
 		'[' | '!' => true,
 		// line breaks
-		'\r' | '\n' => include_eol,
-		_ => false,
+		'\r' | '\n' => true,
+		c => c.is_whitespace(),
 	}
 }
 
@@ -420,8 +469,8 @@ fn parse_autolink_extension<'a>(chunk: &'a str, previous: Option<char>) -> Optio
 		let start = link.start();
 		if start == 0 {
 			match previous {
-				None | Some('*') | Some('_') | Some('~') | Some('(') => { },
-				Some(c) if c.is_whitespace() => { },
+				None | Some('*') | Some('_') | Some('~') | Some('(') => {}
+				Some(c) if c.is_whitespace() => {}
 				_ => {
 					// autolinks are only acceptable after spaces or one of the
 					// characters above

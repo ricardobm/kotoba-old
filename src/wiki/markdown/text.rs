@@ -296,7 +296,7 @@ impl<'a> TextBuffer<'a> {
 				new_pos.skip(&src[..index]);
 
 				let bytes = src.as_bytes();
-				if (bytes[index] as char) == '\r' && index < bytes.len() && (bytes[index + 1] as char) == '\n' {
+				if (bytes[index] as char) == '\r' && index < bytes.len() - 1 && (bytes[index + 1] as char) == '\n' {
 					(new_pos, 2)
 				} else {
 					(new_pos, 1)

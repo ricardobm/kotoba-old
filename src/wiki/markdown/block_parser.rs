@@ -1130,6 +1130,8 @@ impl<'a> BlockIterator<'a> {
 			} else {
 				Leaf::Paragraph { text: span.clone() }
 			}
+		} else if let Leaf::Paragraph { text } = leaf {
+			Leaf::Paragraph { text: text.trimmed() }
 		} else if let Leaf::FencedCode {
 			ref span, ref mut code, ..
 		} = &mut leaf

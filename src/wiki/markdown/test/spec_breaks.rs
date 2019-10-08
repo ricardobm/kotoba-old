@@ -79,13 +79,13 @@ mod markdown_spec_thematic_breaks {
 		test_raw("\t___", "<pre><code>___</code></pre>");
 
 		// example 19
-		test_raw("Foo 1\n    ***", "<p>Foo 1\n    ***</p>");
-		test_raw("Foo 2\n    ---", "<p>Foo 2\n    ---</p>");
-		test_raw("Foo 3\n    ___", "<p>Foo 3\n    ___</p>");
+		test_raw("Foo 1\n    ***", "<p>Foo 1\n***</p>");
+		test_raw("Foo 2\n    ---", "<p>Foo 2\n---</p>");
+		test_raw("Foo 3\n    ___", "<p>Foo 3\n___</p>");
 
-		test_raw("Bar 1\n\t***", "<p>Bar 1\n\t***</p>");
-		test_raw("Bar 2\n\t---", "<p>Bar 2\n\t---</p>");
-		test_raw("Bar 3\n\t___", "<p>Bar 3\n\t___</p>");
+		test_raw("Bar 1\n\t***", "<p>Bar 1\n***</p>");
+		test_raw("Bar 2\n\t---", "<p>Bar 2\n---</p>");
+		test_raw("Bar 3\n\t___", "<p>Bar 3\n___</p>");
 
 		test_raw("Baz 1\n   ***", "<p>Baz 1</p>\n<hr/>");
 		test_raw("Baz 2\n   - - -", "<p>Baz 2</p>\n<hr/>");
