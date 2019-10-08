@@ -182,6 +182,7 @@ impl Container {
 				let mut next = line.start;
 				let line = line.text();
 				next.skip(&line[..bytes]);
+				let line = &line[bytes..];
 				if indent > 3 {
 					CanContinue::No
 				} else if line.starts_with("> ") {
@@ -436,6 +437,8 @@ impl<'a> BlockIterator<'a> {
 		// Loop until a generating state is found. Returns the new state and
 		// the next Event.
 		let (state, next) = loop {
+			dbg_print!("");
+			dbg_print!("  LINE : {:?} - {:?}", self.buffer.position(), self.buffer.cur_line());
 			dbg_print!(" STATE : {:?}", self.state);
 
 			// Match the current state and return the next state.
@@ -469,7 +472,10 @@ impl<'a> BlockIterator<'a> {
 				// State at the beginning of a line, after skipping current
 				// block markers, when checking for new blocks to open.
 				IteratorState::Open(opened, None) => {
-					if let Some(elem) = self.parse_container_start() {
+					if self.inline.is_none() && opened < self.blocks.len() {
+						let closed = self.blocks.pop_back().unwrap();
+						break (IteratorState::Open(opened, None), Some(BlockEvent::End(closed)));
+					} else if let Some(elem) = self.parse_container_start() {
 						IteratorState::Open(opened, Some(elem))
 					} else {
 						IteratorState::Text(opened)
@@ -512,6 +518,21 @@ impl<'a> BlockIterator<'a> {
 					let mut cur_line = self.buffer.cur_line();
 					cur_line.quotes = self.cur_quotes();
 
+					// Only paragraph continuations can keep blocks open (the
+					// lazyness rule):
+					let is_p = if let Some(Leaf::Paragraph { .. }) = self.inline {
+						true
+					} else {
+						false
+					};
+					if self.inline.is_some() && !is_p {
+						if self.blocks.len() > opened {
+							let inline = std::mem::take(&mut self.inline);
+							let inline = self.close_leaf(inline.unwrap(), true);
+							break (IteratorState::Open(opened, None), Some(BlockEvent::Leaf(inline)));
+						}
+					}
+
 					let mut do_skip = true;
 					let (next_state, elem) = if let Some(inline) = std::mem::take(&mut self.inline) {
 						// If there is a current leaf block open, append text
@@ -529,7 +550,8 @@ impl<'a> BlockIterator<'a> {
 							LeafState::Closed(leaf) => {
 								do_skip = false;
 								let leaf = self.close_leaf(leaf, false);
-								(IteratorState::None, Some(BlockEvent::Leaf(leaf)))
+								// we did not consume the line, so return to the open state
+								(IteratorState::Open(opened, None), Some(BlockEvent::Leaf(leaf)))
 							}
 						}
 					} else if cur_line.text().trim().len() == 0 {
@@ -539,7 +561,7 @@ impl<'a> BlockIterator<'a> {
 						// Parse the line as a leaf block.
 						match Self::parse_leaf(cur_line, false).unwrap() {
 							// We need to handle semantic breaks exceptionally
-							// because they can close block level items.
+							// because they can close block level items. TODO: do we need this?
 							LeafState::ClosedAndConsumed(Leaf::Break(pos)) => {
 								if self.blocks.len() > opened {
 									let closed = self.blocks.pop_back().unwrap();
@@ -646,7 +668,7 @@ impl<'a> BlockIterator<'a> {
 				// List marker (unordered)
 				// -----------------------
 
-				let marker = self.buffer.next_char();
+				let marker = self.buffer.next_char().unwrap();
 				self.buffer.skip_chars(1);
 				if self.buffer.skip_indent_width(1) == 0 {
 					// At least one space is needed after the list marker
@@ -673,11 +695,11 @@ impl<'a> BlockIterator<'a> {
 
 				// Note that the spec limits the list index to 9 digits to
 				// prevent overflow in browsers.
-				let mut index = self.buffer.next_char().to_digit(10).unwrap() as usize;
+				let mut index = self.buffer.next_char().unwrap().to_digit(10).unwrap() as usize;
 				self.buffer.skip_chars(1);
 				for _ in 0..8 {
 					if !self.buffer.at_end() {
-						let next = self.buffer.next_char();
+						let next = self.buffer.next_char().unwrap();
 						if let Some(digit) = next.to_digit(10) {
 							index = index * 10 + (digit as usize);
 							self.buffer.skip_chars(1);
@@ -689,7 +711,7 @@ impl<'a> BlockIterator<'a> {
 				if self.buffer.cur_text().starts_with(|ch| ch == '.' || ch == ')') {
 					// From here, the parsing is the same as for the unordered
 					// case.
-					let marker = self.buffer.next_char();
+					let marker = self.buffer.next_char().unwrap();
 					self.buffer.skip_chars(1);
 
 					let text_indent = self.buffer.skip_indent();

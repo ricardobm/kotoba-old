@@ -188,11 +188,10 @@ impl<'a> TextBuffer<'a> {
 		self.pos = pos;
 	}
 
-	/// Return the next charater at the current offset. Panics at the end of
-	/// the input.
+	/// Return the next charater at the current offset.
 	#[inline(always)]
-	pub fn next_char(&self) -> char {
-		self.src[self.pos.offset..].chars().next().unwrap()
+	pub fn next_char(&self) -> Option<char> {
+		self.src[self.pos.offset..].chars().next()
 	}
 
 	/// Skip up to the specified amount of indentation width.
@@ -201,7 +200,7 @@ impl<'a> TextBuffer<'a> {
 		while total < width {
 			if self.skip_if(' ') {
 				total += 1;
-			} else if self.next_char() == '\t' {
+			} else if self.next_char() == Some('\t') {
 				// if the current tab would exceed the required width we
 				// advance the column without consuming the tab, which
 				// provides the virtual effect of consuming the desired
