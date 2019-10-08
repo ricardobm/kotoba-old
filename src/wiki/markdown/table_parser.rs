@@ -3,11 +3,11 @@ use std::fmt;
 use super::Span;
 
 pub enum Row<'a> {
-	Delimiter(usize),
+	Delimiter(Vec<TableAlign>),
 	Content(TableRow<'a>),
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum TableAlign {
 	Normal,
 	Left,
@@ -19,9 +19,9 @@ impl TableAlign {
 	pub fn fmt_attr(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
 			TableAlign::Normal => Ok(()),
-			TableAlign::Left => write!(f, " align='left'"),
-			TableAlign::Right => write!(f, " align='right'"),
-			TableAlign::Center => write!(f, " align='center'"),
+			TableAlign::Left => write!(f, " align=\"left\""),
+			TableAlign::Right => write!(f, " align=\"right\""),
+			TableAlign::Center => write!(f, " align=\"center\""),
 		}
 	}
 }
@@ -54,8 +54,11 @@ pub fn parse_table_row<'a>(line: Span<'a>, check_delimiter: bool) -> Option<Row<
 	}
 
 	let mut is_delim = check_delimiter;
-	let iter = RowIterator { cursor: source.clone() };
 	let mut count = 0;
+	let iter = RowIterator {
+		cursor: source.clone(),
+		align:  check_delimiter,
+	};
 	for (text, _) in iter {
 		count += 1;
 		if is_delim {
@@ -66,7 +69,11 @@ pub fn parse_table_row<'a>(line: Span<'a>, check_delimiter: bool) -> Option<Row<
 	if count > 1 || (sta_delim && end_delim) {
 		// We have a table
 		let row = if is_delim {
-			Row::Delimiter(count)
+			let iter = RowIterator {
+				cursor: source.clone(),
+				align:  check_delimiter,
+			};
+			Row::Delimiter(iter.map(|c| c.1).collect())
 		} else {
 			Row::Content(TableRow {
 				length: count,
@@ -80,9 +87,17 @@ pub fn parse_table_row<'a>(line: Span<'a>, check_delimiter: bool) -> Option<Row<
 }
 
 impl<'a> TableRow<'a> {
+	pub fn from_line(line: Span<'a>) -> TableRow<'a> {
+		TableRow {
+			source: line,
+			length: 1,
+		}
+	}
+
 	pub fn iter(&self) -> RowIterator<'a> {
 		RowIterator {
 			cursor: self.source.clone(),
+			align:  false,
 		}
 	}
 
@@ -94,6 +109,7 @@ impl<'a> TableRow<'a> {
 #[derive(Clone)]
 pub struct RowIterator<'a> {
 	cursor: Span<'a>,
+	align:  bool,
 }
 
 impl<'a> RowIterator<'a> {
@@ -109,13 +125,14 @@ impl<'a> Iterator for RowIterator<'a> {
 		if self.cursor.len() == 0 {
 			None
 		} else {
+			let mut offset = 0;
 			let cell = loop {
-				let text = self.cursor.text();
+				let text = &self.cursor.text()[offset..];
 				if let Some(index) = text.find("\\|") {
-					self.cursor = self.cursor.sub(index + 2..);
+					offset += index + 2;
 				} else if let Some(index) = text.find('|') {
-					let cell = self.cursor.sub(..index);
-					self.cursor = self.cursor.sub(index + 1..);
+					let cell = self.cursor.sub(..offset + index);
+					self.cursor = self.cursor.sub(offset + index + 1..);
 					break cell;
 				} else {
 					let cell = self.cursor.sub(..);
@@ -126,20 +143,23 @@ impl<'a> Iterator for RowIterator<'a> {
 
 			let mut align = TableAlign::Normal;
 			let mut cell = cell.trimmed();
-			let text = cell.text();
-			if text != ":" {
-				if text.starts_with(":") {
-					align = TableAlign::Left;
-					cell = cell.sub_from_text(text[1..].trim_start());
-				}
+			if self.align {
+				let mut text = cell.text();
+				if text != ":" {
+					if text.starts_with(":") {
+						align = TableAlign::Left;
+						cell = cell.sub_from_text(text[1..].trim_start());
+						text = cell.text();
+					}
 
-				if text.ends_with(":") && !text.ends_with("\\:") {
-					align = match align {
-						TableAlign::Normal => TableAlign::Right,
-						TableAlign::Left => TableAlign::Center,
-						_ => unreachable!(),
-					};
-					cell = cell.sub_from_text(text[..text.len() - 1].trim_end());
+					if text.ends_with(":") && !text.ends_with("\\:") {
+						align = match align {
+							TableAlign::Normal => TableAlign::Right,
+							TableAlign::Left => TableAlign::Center,
+							_ => unreachable!(),
+						};
+						cell = cell.sub_from_text(text[..text.len() - 1].trim_end());
+					}
 				}
 			}
 

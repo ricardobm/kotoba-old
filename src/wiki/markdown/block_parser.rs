@@ -11,7 +11,7 @@ use regex::Regex;
 use super::common;
 use super::Span;
 
-use super::table_parser::{parse_table_row, Row, TableRow};
+use super::table_parser::{parse_table_row, Row, TableAlign, TableRow};
 
 use super::{Pos, TextBuffer};
 
@@ -310,7 +310,7 @@ pub enum Leaf<'a> {
 		span: Span<'a>,
 		head: Option<TableRow<'a>>,
 		body: Vec<TableRow<'a>>,
-		cols: Option<usize>,
+		cols: Option<Vec<TableAlign>>,
 	},
 }
 
@@ -848,16 +848,20 @@ impl<'a> BlockIterator<'a> {
 			} else {
 				Some(LeafState::ClosedAndConsumed(Leaf::HTML { end: end, code: span }))
 			}
-		} else if let Some(row) = parse_table_row(span.clone(), true) {
+		} else if let Some(row) = if !is_inline {
+			parse_table_row(span.clone(), true)
+		} else {
+			None
+		} {
 			// ===================
 			// HTML block
 			// ===================
 			let table = match row {
-				Row::Delimiter(count) => Leaf::Table {
+				Row::Delimiter(cols) => Leaf::Table {
 					span: span,
 					head: None,
 					body: Vec::new(),
-					cols: Some(count),
+					cols: Some(cols),
 				},
 				Row::Content(row) => Leaf::Table {
 					span: span,
@@ -977,13 +981,15 @@ impl<'a> BlockIterator<'a> {
 				mut body,
 				mut cols,
 			} => {
+				// the number of columns is only set when we parse the
+				// separator row
 				let has_separator = cols.is_some();
 				if let Some(row) = parse_table_row(line_trim, !has_separator) {
 					let mut is_valid = true;
 					match row {
-						Row::Delimiter(count) => {
-							if count == head.as_ref().unwrap().len() {
-								cols = Some(count);
+						Row::Delimiter(delim_cols) => {
+							if delim_cols.len() == head.as_ref().unwrap().len() {
+								cols = Some(delim_cols);
 							} else {
 								// delimiter line must match the number of
 								// cells in the header
@@ -1004,21 +1010,22 @@ impl<'a> BlockIterator<'a> {
 						span.end = line.end;
 						LeafState::Open(Leaf::Table { span, head, body, cols })
 					} else {
-						if empty {
-							LeafState::Closed(Leaf::Paragraph { text: span })
-						} else {
-							span.end = line.end;
-							LeafState::Open(Leaf::Paragraph { text: span })
-						}
+						self.append_link_ref_or_paragraph(Leaf::Paragraph { text: span }, line, opened)
 					}
 				} else {
 					if has_separator && (head.is_some() || body.len() > 0) {
-						LeafState::Closed(Leaf::Table { span, head, body, cols })
-					} else if empty {
-						LeafState::Closed(Leaf::Paragraph { text: span })
+						// we have a proper table
+						if empty {
+							LeafState::Closed(Leaf::Table { span, head, body, cols })
+						} else {
+							// after we have a valid table, rows with no table
+							// syntax are valid
+							span.end = line.end;
+							body.push(TableRow::from_line(line));
+							LeafState::Open(Leaf::Table { span, head, body, cols })
+						}
 					} else {
-						span.end = line.end;
-						LeafState::Open(Leaf::Paragraph { text: span })
+						self.append_link_ref_or_paragraph(Leaf::Paragraph { text: span }, line, opened)
 					}
 				}
 			}

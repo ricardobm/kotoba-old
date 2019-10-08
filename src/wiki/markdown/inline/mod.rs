@@ -36,7 +36,7 @@ pub enum Elem<'a> {
 	/// Images.
 	Image(Image<'a>),
 	/// Raw HTML to generate verbatim.
-	HTML(Span<'a>),
+	HTML(TextNode<'a>),
 }
 
 #[derive(Clone, Debug)]
@@ -58,7 +58,7 @@ impl InlineTag {
 
 use self::emphasis::Delim;
 
-pub fn parse_inline<'a>(span: &Span<'a>, refs: &LinkReferenceMap<'a>) -> Vec<Elem<'a>> {
+pub fn parse_inline<'a>(span: &Span<'a>, refs: &LinkReferenceMap<'a>, is_table: bool) -> Vec<Elem<'a>> {
 	let mut iter = span.iter();
 	let mut helper = ParserHelper::new(iter.pos());
 	while !iter.at_end() {
@@ -78,7 +78,8 @@ pub fn parse_inline<'a>(span: &Span<'a>, refs: &LinkReferenceMap<'a>) -> Vec<Ele
 				}
 				Some('`') => {
 					let (code, delim) = inline_code::parse(&iter);
-					if let Some(code) = code {
+					if let Some(mut code) = code {
+						code.text.is_table = is_table;
 						iter.skip_to(code.range.end);
 						helper.push_elem(start, iter.pos(), Elem::Code(code));
 					} else {
@@ -86,12 +87,12 @@ pub fn parse_inline<'a>(span: &Span<'a>, refs: &LinkReferenceMap<'a>) -> Vec<Ele
 					}
 				}
 				Some('<') => {
-					if let Some(elem) = parse_left_angle_bracket(&mut iter) {
+					if let Some(elem) = parse_left_angle_bracket(&mut iter, is_table) {
 						helper.push_elem(start, iter.pos(), elem);
 					}
 				}
 				Some('[') => {
-					if let Some(link) = link::parse(&iter, refs) {
+					if let Some(link) = link::parse(&iter, refs, is_table) {
 						iter.skip_to(link.range.end);
 						helper.push_elem(start, iter.pos(), Elem::Link(link));
 					} else {
@@ -99,7 +100,7 @@ pub fn parse_inline<'a>(span: &Span<'a>, refs: &LinkReferenceMap<'a>) -> Vec<Ele
 					}
 				}
 				Some('!') => {
-					if let Some(img) = link::parse_image(&iter, refs) {
+					if let Some(img) = link::parse_image(&iter, refs, is_table) {
 						iter.skip_to(img.range.end);
 						helper.push_elem(start, iter.pos(), Elem::Image(img));
 					} else {
@@ -128,12 +129,14 @@ pub fn parse_inline<'a>(span: &Span<'a>, refs: &LinkReferenceMap<'a>) -> Vec<Ele
 	helper.to_result(&span)
 }
 
-fn parse_left_angle_bracket<'a>(iter: &mut SpanIter<'a>) -> Option<Elem<'a>> {
+fn parse_left_angle_bracket<'a>(iter: &mut SpanIter<'a>, is_table: bool) -> Option<Elem<'a>> {
 	debug_assert!(if let Some('<') = iter.next_char() { true } else { false });
 	if let Some(link) = autolink::parse(iter) {
 		Some(Elem::AutoLink(link))
 	} else if let Some(span) = raw_html::parse(iter) {
-		Some(Elem::HTML(span))
+		let mut text = TextNode::new(span, TextMode::Raw);
+		text.is_table = is_table;
+		Some(Elem::HTML(text))
 	} else {
 		iter.skip_char();
 		None

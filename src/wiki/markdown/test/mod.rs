@@ -18,6 +18,7 @@ mod spec_links;
 mod spec_paragraphs;
 mod spec_raw_html;
 mod spec_setext_headings;
+mod spec_tables;
 
 fn test(input: &str, expected: &str) {
 	let input = common::text(input);

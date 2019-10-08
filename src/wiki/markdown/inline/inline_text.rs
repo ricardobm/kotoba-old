@@ -26,11 +26,19 @@ pub enum TextMode {
 pub struct TextNode<'a> {
 	span: Span<'a>,
 	mode: TextMode,
+
+	/// If this is true, will parse `\|` sequences as escapes even on code
+	/// and raw blocks.
+	pub is_table: bool,
 }
 
 impl<'a> TextNode<'a> {
 	pub fn new(span: Span<'a>, mode: TextMode) -> TextNode {
-		TextNode { span, mode }
+		TextNode {
+			span,
+			mode,
+			is_table: false,
+		}
 	}
 
 	pub fn iter(&self) -> TextNodeIterator<'a> {
@@ -42,6 +50,8 @@ impl<'a> TextNode<'a> {
 			// a TextNode inside a paragraph is not necessarily at the start
 			// of the line (and paragraphs blocks are trimmed anyway)
 			new_line: false,
+
+			is_table: self.is_table,
 		}
 	}
 }
@@ -107,6 +117,7 @@ pub struct TextNodeIterator<'a> {
 	mode:     TextMode,
 	link:     Option<(Range, Option<TextSpan<'a>>)>,
 	new_line: bool,
+	is_table: bool,
 }
 
 impl<'a> Iterator for TextNodeIterator<'a> {
@@ -143,6 +154,11 @@ impl<'a> Iterator for TextNodeIterator<'a> {
 			TextMode::WithLinks => (true, true, true),
 		};
 
+		let is_raw = match self.mode {
+			TextMode::Raw => true,
+			_ => false,
+		};
+
 		let is_inline_code = match self.mode {
 			TextMode::InlineCode => true,
 			_ => false,
@@ -155,10 +171,21 @@ impl<'a> Iterator for TextNodeIterator<'a> {
 				self.new_line = false;
 				if RE_VALID_ESCAPE.is_match(chunk) {
 					self.iter.skip_bytes(1);
-					next_char_escaped(&mut self.iter)
+					next_char_escaped(&mut self.iter, false)
 				} else if let Some(m) = RE_HARD_BREAK.find(chunk) {
 					self.iter.skip_bytes(m.end());
 					Some(TextSpan::LineBreak)
+				} else {
+					self.iter.skip_char();
+					Some(TextSpan::Char('\\'))
+				}
+			}
+			Some('\\') if self.is_table => {
+				self.new_line = false;
+				if chunk.starts_with("\\|") {
+					self.iter.skip_char();
+					self.iter.skip_char();
+					Some(TextSpan::Char('|'))
 				} else {
 					self.iter.skip_char();
 					Some(TextSpan::Char('\\'))
@@ -181,9 +208,9 @@ impl<'a> Iterator for TextNodeIterator<'a> {
 				self.new_line = false;
 				parse_entity(&mut self.iter)
 			}
-			Some(c) if needs_escaping(c) => {
+			Some(c) if !is_raw && needs_escaping(c) => {
 				self.new_line = false;
-				next_char_escaped(&mut self.iter)
+				next_char_escaped(&mut self.iter, false)
 			}
 			Some(_) => {
 				// NOTE: we use `has_links` below to detect paragraphs, so we
@@ -231,7 +258,7 @@ impl<'a> Iterator for TextNodeIterator<'a> {
 						};
 						let chunk = &chunk[..limit];
 						if limit == 0 {
-							next_char_escaped(&mut self.iter)
+							next_char_escaped(&mut self.iter, is_raw)
 						} else {
 							let chunk = &chunk[..limit];
 							self.iter.skip_bytes(limit);
@@ -331,10 +358,10 @@ fn parse_entity<'a>(iter: &mut SpanIter<'a>) -> Option<TextSpan<'a>> {
 		return Some(txt);
 	}
 
-	next_char_escaped(iter)
+	next_char_escaped(iter, false)
 }
 
-fn next_char_escaped<'a>(iter: &mut SpanIter<'a>) -> Option<TextSpan<'a>> {
+fn next_char_escaped<'a>(iter: &mut SpanIter<'a>, is_raw: bool) -> Option<TextSpan<'a>> {
 	let chunk = iter.chunk();
 	let mut chars = chunk.char_indices();
 	let (_, next) = chars.next().unwrap();
@@ -342,7 +369,7 @@ fn next_char_escaped<'a>(iter: &mut SpanIter<'a>) -> Option<TextSpan<'a>> {
 
 	let source = &chunk[..size];
 	iter.skip_bytes(size);
-	if let Some(entity) = super::html_entity(next) {
+	if let Some(entity) = if is_raw { None } else { super::html_entity(next) } {
 		Some(TextSpan::Entity {
 			source: source,
 			entity: entity,

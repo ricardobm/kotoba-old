@@ -7,7 +7,13 @@ use super::{Block, HeaderLevel, LinkReferenceMap, MarkupEvent};
 pub fn output<'a>(f: &mut fmt::Formatter, event: &MarkupEvent<'a>, refs: &LinkReferenceMap<'a>) -> fmt::Result {
 	match event {
 		MarkupEvent::Inline(span) => {
-			for elem in parse_inline(span, refs) {
+			for elem in parse_inline(span, refs, false) {
+				fmt_inline(f, elem)?;
+			}
+			Ok(())
+		}
+		MarkupEvent::InlineCell(span) => {
+			for elem in parse_inline(span, refs, true) {
 				fmt_inline(f, elem)?;
 			}
 			Ok(())
@@ -133,10 +139,8 @@ fn fmt_inline<'a>(f: &mut fmt::Formatter, elem: Elem<'a>) -> fmt::Result {
 			f.write_str("/>")?;
 		}
 
-		Elem::HTML(span) => {
-			for it in span.iter() {
-				f.write_str(it)?;
-			}
+		Elem::HTML(text) => {
+			fmt_text(f, text)?;
 		}
 	}
 	Ok(())
@@ -267,7 +271,7 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 			if let Some(start) = list.ordered {
 				write!(f, "ol")?;
 				if open && start > 1 {
-					write!(f, " start='{}'", start)?;
+					write!(f, " start=\"{}\"", start)?;
 				}
 			} else {
 				write!(f, "ul")?;
@@ -278,7 +282,7 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 			if open {
 				write!(f, "li")?;
 				if let Some(task) = item.task {
-					write!(f, "><input type='checkbox'")?;
+					write!(f, "><input type=\"checkbox\"")?;
 					if task {
 						write!(f, " checked")?;
 					}
@@ -315,12 +319,12 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 			if open {
 				write!(f, "pre><code")?;
 				if let Some(lang) = code.language {
-					write!(f, " class='language-{}'", lang)?;
+					write!(f, " class=\"language-{}\"", lang)?;
 				}
 				if let Some(info) = code.info {
-					write!(f, " data-info='")?;
+					write!(f, " data-info=\"")?;
 					escape_html(f, info)?;
-					write!(f, "'")?;
+					write!(f, "\"")?;
 				}
 			} else {
 				write!(f, "code></pre")?;

@@ -286,7 +286,7 @@ mod markdown_spec_fenced_code {
 				```
 			"##,
 			r##"
-				<pre><code class='language-ruby'>def foo(x)
+				<pre><code class="language-ruby">def foo(x)
 					return 3
 				end
 				</code></pre>
@@ -303,7 +303,7 @@ mod markdown_spec_fenced_code {
 				~~~~~~~
 			"##,
 			r##"
-				<pre><code class='language-ruby' data-info='startline=&apos;3&apos; $%@#$&amp;'>def foo(x)
+				<pre><code class="language-ruby" data-info="startline=&apos;3&apos; $%@#$&amp;">def foo(x)
 					return 4
 				end
 				</code></pre>
@@ -317,7 +317,7 @@ mod markdown_spec_fenced_code {
 				````
 			"##,
 			r##"
-				<pre><code data-info=';'></code></pre>
+				<pre><code data-info=";"></code></pre>
 			"##,
 		);
 
@@ -341,7 +341,7 @@ mod markdown_spec_fenced_code {
 				~~~
 			"##,
 			r##"
-				<pre><code class='language-aa' data-info='``` ~~~'>foo
+				<pre><code class="language-aa" data-info="``` ~~~">foo
 				</code></pre>
 			"##,
 		);

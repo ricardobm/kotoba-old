@@ -415,7 +415,10 @@ impl<'a> MarkdownIterator<'a> {
 										}
 									}
 								}
-								MarkupEvent::Code(_) | MarkupEvent::Inline(_) | MarkupEvent::Raw(_) => {
+								MarkupEvent::Code(_)
+								| MarkupEvent::Inline(_)
+								| MarkupEvent::InlineCell(_)
+								| MarkupEvent::Raw(_) => {
 									// don't care about text
 								}
 							}
@@ -636,13 +639,17 @@ impl<'a> MarkdownIterator<'a> {
 					TagMode::Start => {
 						let block = Block::TableHead(table.clone());
 						let event = Event::Output(MarkupEvent::Open(block));
-						break (IteratorState::TableBody(table, None, TagMode::Start), Some(event));
+						break (IteratorState::TableHead(table, head, TagMode::Content), Some(event));
 					}
 					TagMode::Content => IteratorState::TableRow(table, TableSection::Head, None, head, TagMode::Start),
 					TagMode::End => {
 						let block = Block::TableHead(table.clone());
-						let event = Event::Output(MarkupEvent::Close(block));
-						break (IteratorState::TableBody(table, None, TagMode::Start), Some(event));
+						let event = Some(Event::Output(MarkupEvent::Close(block)));
+						if table.has_body() {
+							break (IteratorState::TableBody(table, None, TagMode::Start), event);
+						} else {
+							break (IteratorState::Table(table, TagMode::End), event);
+						}
 					}
 				},
 
@@ -650,7 +657,7 @@ impl<'a> MarkdownIterator<'a> {
 					TagMode::Start => {
 						let block = Block::TableBody(table.clone());
 						let event = Event::Output(MarkupEvent::Open(block));
-						break (IteratorState::TableBody(table, None, TagMode::Start), Some(event));
+						break (IteratorState::TableBody(table, None, TagMode::Content), Some(event));
 					}
 					TagMode::Content => {
 						if let Some(mut body) = body {
@@ -706,12 +713,12 @@ impl<'a> MarkdownIterator<'a> {
 						};
 						let event = Event::Output(MarkupEvent::Open(block));
 						break (
-							IteratorState::TableRow(table, section, body, row, TagMode::Content),
+							IteratorState::TableCell(table, section, body, row, cell, TagMode::Content),
 							Some(event),
 						);
 					}
 					TagMode::Content => {
-						let event = Event::Output(MarkupEvent::Inline(cell.text.clone()));
+						let event = Event::Output(MarkupEvent::InlineCell(cell.text.clone()));
 						let state = IteratorState::TableCell(table, section, body, row, cell, TagMode::End);
 						break (state, Some(event));
 					}

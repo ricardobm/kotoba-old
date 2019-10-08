@@ -91,6 +91,8 @@ impl<'a> Event<'a> {
 pub enum MarkupEvent<'a> {
 	/// Generated for inline blocks in the output.
 	Inline(Span<'a>),
+	/// Generated for inline blocks inside a table in the output.
+	InlineCell(Span<'a>),
 	/// Generated for raw HTML in the output.
 	Raw(Span<'a>),
 	/// Generated for raw text in the output.
@@ -379,7 +381,7 @@ impl<'a> TableInfo<'a> {
 		span: Span<'a>,
 		head: Option<table_parser::TableRow<'a>>,
 		body: Vec<table_parser::TableRow<'a>>,
-		cols: usize,
+		cols: Vec<table_parser::TableAlign>,
 	) -> TableInfo<'a> {
 		TableInfo {
 			inner: Rc::new(TableInner {
@@ -395,27 +397,37 @@ impl<'a> TableInfo<'a> {
 		let (sta, end) = (self.inner.span.start, self.inner.span.end);
 		(sta.line, end.line)
 	}
+
+	pub fn has_body(&self) -> bool {
+		self.inner.body.len() > 0
+	}
 }
 
 struct TableInner<'a> {
 	span: Span<'a>,
 	head: Option<table_parser::TableRow<'a>>,
 	body: Vec<table_parser::TableRow<'a>>,
-	cols: usize,
+	cols: Vec<TableAlign>,
 }
 
 impl<'a> TableInfo<'a> {
 	/// Number of columns in the table.
 	pub fn cols(&self) -> usize {
-		self.inner.cols
+		self.inner.cols.len()
+	}
+
+	/// Alignment for a table column.
+	pub fn alignment(&self, col: usize) -> TableAlign {
+		self.inner.cols[col]
 	}
 
 	/// Table header row.
 	pub fn head(&self) -> Option<TableRow<'a>> {
 		self.inner.head.as_ref().map(|x| TableRow {
 			table: self.clone(),
-			cols:  self.inner.cols,
+			cols:  self.inner.cols.len(),
 			iter:  x.iter(),
+			cur:   0,
 		})
 	}
 
@@ -463,6 +475,7 @@ pub struct TableRow<'a> {
 	table: TableInfo<'a>,
 	iter:  table_parser::RowIterator<'a>,
 	cols:  usize,
+	cur:   usize,
 }
 
 impl<'a> TableRow<'a> {
@@ -485,19 +498,17 @@ impl<'a> Iterator for TableRow<'a> {
 	type Item = TableCell<'a>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if self.cols == 0 {
+		if self.cur >= self.cols {
 			None
 		} else {
-			self.cols -= 1;
-			self.iter
-				.next()
-				.map(|(text, align)| TableCell { text, align })
-				.or_else(|| {
-					Some(TableCell {
-						text:  Span::default(),
-						align: TableAlign::Normal,
-					})
+			let align = self.table.alignment(self.cur);
+			self.cur += 1;
+			self.iter.next().map(|(text, _)| TableCell { text, align }).or_else(|| {
+				Some(TableCell {
+					text:  Span::default(),
+					align: align,
 				})
+			})
 		}
 	}
 }
@@ -516,15 +527,16 @@ impl<'a> TableBody<'a> {
 
 	/// Number of columns in the table.
 	pub fn cols(&self) -> usize {
-		self.table.inner.cols
+		self.table.cols()
 	}
 
 	/// Return a table row.
 	pub fn row(&self, index: usize) -> TableRow<'a> {
 		TableRow {
 			table: self.table.clone(),
-			cols:  self.table.inner.cols,
+			cols:  self.table.cols(),
 			iter:  self.table.inner.body[index].iter(),
+			cur:   0,
 		}
 	}
 
@@ -557,8 +569,9 @@ impl<'a> Iterator for TableBodyIter<'a> {
 			self.next += 1;
 			Some(TableRow {
 				table: self.table.clone(),
-				cols:  self.table.inner.cols,
+				cols:  self.table.cols(),
 				iter:  self.table.inner.body[next].iter(),
+				cur:   0,
 			})
 		} else {
 			None
