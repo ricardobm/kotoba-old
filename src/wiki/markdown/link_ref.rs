@@ -3,7 +3,16 @@ use super::{Span, SpanIter};
 
 /// Parse a link reference definition.
 ///
-/// Returns either a [Leaf::LinkReference] or a [Leaf::Paragraph].
+/// If `allow_partial` is true, this will parse partial link reference
+/// definitions as valid.
+///
+/// Returns the parsed link reference definition and a boolean indicating
+/// whether is it a complete definition. An incomplete definition may happen
+/// if `allow_partial` is true, or for a valid link reference that has no
+/// title.
+///
+/// Note that if `allow_partial` is true, the returned link reference fields
+/// other than [span] may be garbage.
 ///
 /// The basic syntax for a reference definition is:
 ///
@@ -30,33 +39,76 @@ use super::{Span, SpanIter};
 /// Per the spec, no blank lines are allowed and the base indentation
 /// should be at most 3 spaces. This function assumes that the [Span] is
 /// coming from a [Paragraph] and as such those conditions are already met.
-pub fn parse_link_ref<'a>(span: Span<'a>) -> Leaf<'a> {
+pub fn parse_link_ref<'a>(span: Span<'a>, allow_partial: bool) -> Option<(Leaf<'a>, bool)> {
 	let mut iter = span.iter();
+	let partial_ref = Some((
+		Leaf::LinkReference {
+			span:  span.clone(),
+			url:   Span::default(),
+			label: Span::default(),
+			title: None,
+		},
+		false,
+	));
+
 	iter.skip_spaces(false);
-	if let Some(label) = parse_link_label(&mut iter) {
+	if let Some((label, closed)) = parse_link_label(&mut iter, allow_partial) {
+		if !closed {
+			debug_assert!(iter.at_end());
+			return partial_ref;
+		}
+
 		if let Some(':') = iter.next_char() {
 			iter.skip_char();
 			iter.skip_spaces(true);
-			if let Some(dest) = parse_link_destination(&mut iter) {
-				iter.skip_spaces(true);
-				let title = parse_link_title(&mut iter);
+			if let Some((dest, closed)) = parse_link_destination(&mut iter, allow_partial) {
+				if !closed {
+					debug_assert!(iter.at_end());
+					return partial_ref;
+				}
+
+				// link reference title must be separated by space
+				if let Some(chr) = iter.next_char() {
+					if !chr.is_whitespace() {
+						return None;
+					}
+				}
 
 				iter.skip_spaces(true);
-				if iter.at_end() {
-					return Leaf::LinkReference {
-						url:   dest,
-						label: label,
-						title: title,
-					};
+				if let Some((title, closed)) = parse_link_title(&mut iter, allow_partial) {
+					if !closed {
+						debug_assert!(iter.at_end());
+						return partial_ref;
+					}
+
+					iter.skip_spaces(true);
+					if !iter.at_end() {
+						return None;
+					}
+
+					let complete = title.is_some();
+					return Some((
+						Leaf::LinkReference {
+							span:  span,
+							url:   dest,
+							label: label,
+							title: title,
+						},
+						complete,
+					));
 				}
 			}
+		} else {
+			// since we iterate chunks by line, we will never have a break
+			// between the `]` and `:` in a link reference
+			return None;
 		}
 	}
 
-	Leaf::Paragraph { text: span }
+	None
 }
 
-fn parse_link_label<'a>(iter: &mut SpanIter<'a>) -> Option<Span<'a>> {
+fn parse_link_label<'a>(iter: &mut SpanIter<'a>, allow_partial: bool) -> Option<(Span<'a>, bool)> {
 	// A link label begins with a left bracket (`[`) and ends with the
 	// first right bracket (`]`) that is not backslash-escaped. Between
 	// these brackets there must be at least one non-whitespace character.
@@ -100,7 +152,11 @@ fn parse_link_label<'a>(iter: &mut SpanIter<'a>) -> Option<Span<'a>> {
 				}
 
 				None => {
-					return None;
+					return if allow_partial {
+						Some((Span::default(), false))
+					} else {
+						None
+					};
 				}
 			}
 
@@ -112,16 +168,16 @@ fn parse_link_label<'a>(iter: &mut SpanIter<'a>) -> Option<Span<'a>> {
 		if is_empty {
 			None
 		} else {
-			Some(iter.span().sub_pos(label_start..label_end))
+			Some((iter.span().sub_pos(label_start..label_end), true))
 		}
 	} else {
 		None
 	}
 }
 
-fn parse_link_destination<'a>(iter: &mut SpanIter<'a>) -> Option<Span<'a>> {
+fn parse_link_destination<'a>(iter: &mut SpanIter<'a>, allow_partial: bool) -> Option<(Span<'a>, bool)> {
 	// A link destination consists of either
-	let (start, end) = if let Some('<') = iter.next_char() {
+	let (start, end, allow_empty) = if let Some('<') = iter.next_char() {
 		// - a sequence of zero or more characters between an opening `<` and a
 		//   closing `>` that contains no line breaks or unescaped `<` or `>`
 		//   characters, or
@@ -149,11 +205,15 @@ fn parse_link_destination<'a>(iter: &mut SpanIter<'a>) -> Option<Span<'a>> {
 					iter.skip_char();
 				}
 				None => {
-					return None;
+					return if allow_partial {
+						Some((Span::default(), false))
+					} else {
+						None
+					};
 				}
 			}
 		};
-		(start, end)
+		(start, end, true)
 	} else {
 		// - a nonempty sequence of characters that does not start with `<`, does
 		//   not include ASCII space or control characters, and includes parentheses
@@ -191,18 +251,26 @@ fn parse_link_destination<'a>(iter: &mut SpanIter<'a>) -> Option<Span<'a>> {
 			}
 		};
 		if paren != 0 {
-			return None;
+			return if allow_partial {
+				Some((Span::default(), false))
+			} else {
+				None
+			};
 		}
-		(start, end)
+		(start, end, false)
 	};
-	if start == end {
-		None
+	if start == end && !allow_empty {
+		if allow_partial {
+			Some((Span::default(), false))
+		} else {
+			None
+		}
 	} else {
-		Some(iter.span().sub_pos(start..end))
+		Some((iter.span().sub_pos(start..end), true))
 	}
 }
 
-fn parse_link_title<'a>(iter: &mut SpanIter<'a>) -> Option<Span<'a>> {
+fn parse_link_title<'a>(iter: &mut SpanIter<'a>, allow_partial: bool) -> Option<(Option<Span<'a>>, bool)> {
 	// A link title consists of either
 	let (start, end) = if let Some('\'') | Some('"') = iter.next_char() {
 		// - a sequence of zero or more characters between straight
@@ -230,7 +298,7 @@ fn parse_link_title<'a>(iter: &mut SpanIter<'a>) -> Option<Span<'a>> {
 					iter.skip_char();
 				}
 				None => {
-					return None;
+					return if allow_partial { Some((None, false)) } else { None };
 				}
 			}
 		};
@@ -265,14 +333,16 @@ fn parse_link_title<'a>(iter: &mut SpanIter<'a>) -> Option<Span<'a>> {
 					iter.skip_char();
 				}
 				None => {
-					return None;
+					return if allow_partial { Some((None, false)) } else { None };
 				}
 			}
 		};
 		(start, end)
+	} else if iter.at_end() {
+		return Some((None, true));
 	} else {
 		return None;
 	};
 
-	Some(iter.span().sub_pos(start..end))
+	Some((Some(iter.span().sub_pos(start..end)), true))
 }

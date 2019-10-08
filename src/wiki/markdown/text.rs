@@ -82,19 +82,19 @@ impl Pos {
 	pub fn skip_spaces(&mut self, buffer: &str, include_eol: bool) {
 		let text = &buffer[self.offset..];
 		let mut chars = text.char_indices();
-		let mut offset = 0;
+		let mut offset = None;
 		let mut column = self.column;
 		while let Some((index, chr)) = chars.next() {
 			if chr.is_whitespace() && (include_eol || (chr != '\r' && chr != '\n')) {
 				self.was_cr = chr == '\r';
 				column = if chr == '\t' { common::tab(column) } else { column + 1 };
 			} else {
-				offset = index;
+				offset = Some(index);
 				break;
 			}
 		}
 		self.column = column;
-		self.offset += offset;
+		self.offset += offset.unwrap_or(text.len());
 	}
 
 	pub fn skip_len(&mut self, buffer: &str, len: usize) {

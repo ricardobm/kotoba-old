@@ -739,7 +739,7 @@ impl<'a> MarkdownIterator<'a> {
 		match leaf {
 			Leaf::Paragraph { text } => LeafOrReference::Leaf(Block::Paragraph(text.clone()), text, SpanMode::Text),
 			Leaf::HTML { code, .. } => LeafOrReference::Leaf(Block::HTML(code.clone()), code, SpanMode::Raw),
-			Leaf::LinkReference { url, label, title } => LeafOrReference::Reference(LinkReference {
+			Leaf::LinkReference { url, label, title, .. } => LeafOrReference::Reference(LinkReference {
 				label: label,
 				title: title,
 				url:   url,

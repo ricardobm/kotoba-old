@@ -352,10 +352,11 @@ impl<'a> SpanIter<'a> {
 		self.skip = false;
 
 		// Strip quote markers from the source text.
+		let buffer = &self.span.buffer[..self.maxpos.offset];
 		for _ in 0..self.span.quotes {
 			let mut start = self.cursor;
-			start.skip_spaces(self.span.buffer, false);
-			if start.skip_if(self.span.buffer, "> ") || start.skip_if(self.span.buffer, ">") {
+			start.skip_spaces(buffer, false);
+			if start.skip_if(buffer, "> ") || start.skip_if(buffer, ">") {
 				if start.offset <= self.maxpos.offset {
 					self.cursor = start;
 				} else {
@@ -429,7 +430,9 @@ impl<'a> SpanIter<'a> {
 	}
 
 	pub fn skip_spaces(&mut self, include_eol: bool) {
-		self.cursor.skip_spaces(self.span.buffer, include_eol);
+		let mut pos = self.cursor;
+		pos.skip_spaces(&self.span.buffer[..self.maxpos.offset], include_eol);
+		self.skip_to(pos);
 	}
 
 	pub fn previous_char(&self) -> Option<char> {

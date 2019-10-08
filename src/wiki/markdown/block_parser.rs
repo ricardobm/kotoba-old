@@ -265,6 +265,8 @@ pub enum Leaf<'a> {
 	},
 	/// Link reference definition.
 	LinkReference {
+		/// Full reference span.
+		span: Span<'a>,
 		/// Link target.
 		url: Span<'a>,
 		/// Link label, not including the `[]` delimiters.
@@ -317,7 +319,9 @@ impl<'a> fmt::Debug for Leaf<'a> {
 		match self {
 			Leaf::Paragraph { text } => write!(f, "<p>{}</p>", text),
 			Leaf::HTML { code, .. } => write!(f, "<html>\n{}\n</html>", code),
-			Leaf::LinkReference { url, label, title } => write!(f, "<a href={:?} title={:?}>{}</a>", url, title, label),
+			Leaf::LinkReference { url, label, title, .. } => {
+				write!(f, "<a href={:?} title={:?}>{}</a>", url, title, label)
+			}
 			Leaf::IndentedCode { code } => write!(f, "<code>\n{}\n</code>", code),
 			Leaf::FencedCode { code, lang, info, .. } => {
 				write!(f, "<code lang={:?} info={:?}>\n{}\n</code>", lang, info, code)
@@ -815,6 +819,16 @@ impl<'a> BlockIterator<'a> {
 				span: span.clone(),
 				code: span,
 			}))
+		} else if let Some((link_ref, complete)) = if is_inline {
+			None
+		} else {
+			super::parse_link_ref(span.clone(), true)
+		} {
+			if complete {
+				Some(LeafState::ClosedAndConsumed(link_ref))
+			} else {
+				Some(LeafState::Open(link_ref))
+			}
 		} else if let Some(end) = Self::match_html_start(text, is_inline) {
 			let end = if end.len() == 0 { None } else { Some(end) };
 			let is_closed = if let Some(end) = end {
@@ -863,58 +877,12 @@ impl<'a> BlockIterator<'a> {
 	}
 
 	fn append_leaf(&mut self, mut leaf: Leaf<'a>, line: Span<'a>, opened: usize) -> LeafState<'a> {
-		lazy_static! {
-			static ref RE_SETEXT_HEADER: Regex = Regex::new(r"^[ ]{0,3}([-]{1,}|[=]{1,})\s*$").unwrap();
-		}
-
 		let line_trim = line.trimmed();
 		let empty = line_trim.text().len() == 0;
 		let (indent, _) = common::indent_width(line.text(), line.start.column);
 		match leaf {
-			Leaf::Paragraph { mut text } => {
-				// A setext headings cannot be interpreted as block constructs
-				// other than paragraphs, so the following is OK
-				//
-				//     heading
-				//     -------
-				//
-				//     > heading
-				//     > -------
-				//
-				//     - heading
-				//       -------
-				//
-				// while the following is not
-				//
-				//     > not a heading
-				//     ---------------
-				//
-				//     - not a heading
-				//     ---------------
-
-				let can_be_setext = self.blocks.len() == opened;
-				if empty {
-					LeafState::Closed(Leaf::Paragraph { text })
-				} else if can_be_setext && RE_SETEXT_HEADER.is_match(line.text()) {
-					// re-interpret the paragraph as a Setext heading
-					let level = if line.text().trim().chars().next().unwrap() == '=' {
-						1
-					} else {
-						2
-					};
-					let header = Leaf::Header {
-						level,
-						text: text.trimmed(),
-					};
-					LeafState::ClosedAndConsumed(header)
-				} else {
-					if let Some(_) = Self::parse_leaf(line.clone(), true) {
-						LeafState::Closed(Leaf::Paragraph { text })
-					} else {
-						text.end = line.end;
-						LeafState::Open(Leaf::Paragraph { text })
-					}
-				}
+			Leaf::LinkReference { .. } | Leaf::Paragraph { .. } => {
+				self.append_link_ref_or_paragraph(leaf, line, opened)
 			}
 			Leaf::IndentedCode { ref mut code } => {
 				if indent < 4 && !empty {
@@ -1058,15 +1026,110 @@ impl<'a> BlockIterator<'a> {
 			// Those are closed as soon as they are parsed, so they will never
 			// be appended to:
 			Leaf::Break(..) | Leaf::Header { .. } => unreachable!(),
+		}
+	}
 
-			// Those are parsed when closing, so they would not occur either.
-			Leaf::LinkReference { .. } => unreachable!(),
+	fn append_link_ref_or_paragraph(&mut self, leaf: Leaf<'a>, line: Span<'a>, opened: usize) -> LeafState<'a> {
+		lazy_static! {
+			static ref RE_SETEXT_HEADER: Regex = Regex::new(r"^[ ]{0,3}([-]{1,}|[=]{1,})\s*$").unwrap();
+		}
+
+		let line_trim = line.trimmed();
+		let empty = line_trim.text().len() == 0;
+
+		match leaf {
+			Leaf::LinkReference { ref span, .. } => {
+				// append a line to a link reference:
+				if empty {
+					// empty line closes the link reference
+					LeafState::Closed(leaf)
+				} else {
+					// try to append and check if the line is still a valid
+					// link reference
+					let mut appended = span.clone();
+					appended.end = line.end;
+					if let Some((leaf, complete)) = super::parse_link_ref(appended, true) {
+						if complete {
+							LeafState::ClosedAndConsumed(leaf)
+						} else {
+							LeafState::Open(leaf)
+						}
+					} else {
+						// The link reference could still be valid before
+						// appending this last line, so we try again with the
+						// span
+						if let Some((leaf, _)) = super::parse_link_ref(span.clone(), false) {
+							LeafState::Closed(leaf)
+						} else {
+							// if it is not valid, fall back to a paragraph
+							let p = Leaf::Paragraph { text: span.clone() };
+							// we need to reparse it, because of setext headings
+							self.append_link_ref_or_paragraph(p, line, opened)
+						}
+					}
+				}
+			}
+			Leaf::Paragraph { mut text } => {
+				// A setext headings cannot be interpreted as block constructs
+				// other than paragraphs, so the following is OK
+				//
+				//     heading
+				//     -------
+				//
+				//     > heading
+				//     > -------
+				//
+				//     - heading
+				//       -------
+				//
+				// while the following is not
+				//
+				//     > not a heading
+				//     ---------------
+				//
+				//     - not a heading
+				//     ---------------
+				let can_be_setext = self.blocks.len() == opened;
+
+				let mut appended = text.clone();
+				appended.end = line.end;
+
+				if empty {
+					LeafState::Closed(Leaf::Paragraph { text })
+				} else if can_be_setext && RE_SETEXT_HEADER.is_match(line.text()) {
+					// re-interpret the paragraph as a Setext heading
+					let level = if line.text().trim().chars().next().unwrap() == '=' {
+						1
+					} else {
+						2
+					};
+					let header = Leaf::Header {
+						level,
+						text: text.trimmed(),
+					};
+					LeafState::ClosedAndConsumed(header)
+				} else {
+					if let Some(_) = Self::parse_leaf(line.clone(), true) {
+						LeafState::Closed(Leaf::Paragraph { text })
+					} else {
+						text.end = line.end;
+						LeafState::Open(Leaf::Paragraph { text })
+					}
+				}
+			}
+			_ => unreachable!(),
 		}
 	}
 
 	fn close_leaf(&mut self, mut leaf: Leaf<'a>, is_eof: bool) -> Leaf<'a> {
-		if let Leaf::Paragraph { text } = leaf {
-			super::parse_link_ref(text)
+		if let Leaf::LinkReference { ref span, .. } = leaf {
+			// do a final parse of the link reference, now requiring that it is
+			// complete
+			if let Some((leaf, _)) = super::parse_link_ref(span.clone(), false) {
+				leaf
+			} else {
+				Leaf::Paragraph { text: span.clone() }
+			}
 		} else if let Leaf::FencedCode {
 			ref span, ref mut code, ..
 		} = &mut leaf

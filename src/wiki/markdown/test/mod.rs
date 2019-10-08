@@ -13,6 +13,7 @@ mod spec_fenced_code;
 mod spec_html_blocks;
 mod spec_images;
 mod spec_indented_code;
+mod spec_link_refs;
 mod spec_links;
 mod spec_raw_html;
 mod spec_setext_headings;
