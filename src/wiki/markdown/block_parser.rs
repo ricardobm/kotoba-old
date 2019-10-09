@@ -691,7 +691,7 @@ impl<'a> BlockIterator<'a> {
 					// If the list begins with a code block, we don't consider
 					// it part of the list item's indentation.
 					let is_code = text_indent >= INDENTED_CODE_INDENT + 2;
-					let text_indent = if is_code { 0 } else { text_indent };
+					let text_indent = if is_code { 2 } else { text_indent };
 					let task = self.parse_list_task();
 					let list_info = ListInfo {
 						marker,
@@ -761,7 +761,7 @@ impl<'a> BlockIterator<'a> {
 						// If the list begins with a code block, we don't consider
 						// it part of the list item's indentation.
 						let is_code = text_indent >= INDENTED_CODE_INDENT + marker_width;
-						let text_indent = if is_code { 0 } else { text_indent };
+						let text_indent = if is_code { marker_width } else { text_indent };
 						let task = self.parse_list_task();
 						let list_info = ListInfo {
 							marker,
