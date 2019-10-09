@@ -572,8 +572,7 @@ mod markdown_spec_lists {
 				<li>
 				<p>A paragraph
 				with two lines.</p>
-				<pre><code>indented code
-				</code></pre>
+				<pre><code>indented code</code></pre>
 				<blockquote>
 				<p>A block quote.</p>
 				</blockquote>

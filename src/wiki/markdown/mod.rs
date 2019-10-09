@@ -267,7 +267,7 @@ impl<'a> MarkdownIterator<'a> {
 							*level -= 1;
 							*line = end;
 						}
-						_ => unreachable!("close event with no pending Child item"),
+						ref ev @ _ => unreachable!("close event with no pending Child item: {:?}", ev),
 					}
 				}
 
@@ -300,11 +300,13 @@ impl<'a> MarkdownIterator<'a> {
 										close_info.loose = Some(loose);
 										end
 									}
-									_ => unreachable!("block in queue event for pending List is not a List"),
+									ref ev @ _ => {
+										unreachable!("block in queue event for pending List is not a List: {:?}", ev)
+									}
 								},
-								_ => unreachable!("queue event in pending List is not an open"),
+								ref ev @ _ => unreachable!("queue event in pending List is not an open: {:?}", ev),
 							},
-							_ => unreachable!("pending List and close event did not match"),
+							ref ev @ _ => unreachable!("pending List and close event did not match: {:?}", ev),
 						};
 						if self.pending.len() > 0 {
 							on_close(&mut self.pending, end);
@@ -583,17 +585,22 @@ impl<'a> MarkdownIterator<'a> {
 				IteratorState::HandleLeafOrBreak(leaf) => IteratorState::HandleLeaf(leaf),
 
 				// Start handling of a `BlockEvent::Leaf(leaf)` event
-				IteratorState::HandleLeaf(leaf) => match Self::parse_leaf(leaf) {
-					LeafOrReference::Leaf(block, text, mode) => {
-						let event = Event::Output(MarkupEvent::Open(block.clone()));
-						break (IteratorState::LeafInline(block, text, mode), Some(event));
+				IteratorState::HandleLeaf(leaf) => {
+					if let Some(ParentContainer::List(_)) = self.parents.back() {
+						break self.close_list(IteratorState::HandleLeaf(leaf));
 					}
-					LeafOrReference::Reference(link_ref) => {
-						let event = Event::Reference(link_ref);
-						break (IteratorState::Start, Some(event));
+					match Self::parse_leaf(leaf) {
+						LeafOrReference::Leaf(block, text, mode) => {
+							let event = Event::Output(MarkupEvent::Open(block.clone()));
+							break (IteratorState::LeafInline(block, text, mode), Some(event));
+						}
+						LeafOrReference::Reference(link_ref) => {
+							let event = Event::Reference(link_ref);
+							break (IteratorState::Start, Some(event));
+						}
+						LeafOrReference::Table(table) => IteratorState::Table(table, TagMode::Start),
 					}
-					LeafOrReference::Table(table) => IteratorState::Table(table, TagMode::Start),
-				},
+				}
 
 				// Generates the text of a leaf block.
 				IteratorState::LeafInline(block, span, mode) => {
