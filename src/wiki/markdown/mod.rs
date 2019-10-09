@@ -60,7 +60,7 @@ pub fn to_html<'a>(iter: MarkdownIterator<'a>) -> util::Result<String> {
 				MarkupEvent::Open(Block::Paragraph(span)) => last_was_close || !(span.loose == Some(false)),
 				MarkupEvent::Close(Block::Paragraph(_)) => false,
 				MarkupEvent::Close(Block::ListItem(info)) => {
-					(!last_was_paragraph && !is_empty_item) || info.list.loose == Some(true)
+					(!last_was_paragraph || info.list.loose == Some(true)) && !is_empty_item
 				}
 				MarkupEvent::Open(..) => true,
 				MarkupEvent::Close(block) => block.is_container(),
