@@ -16,6 +16,7 @@ mod spec_images;
 mod spec_indented_code;
 mod spec_link_refs;
 mod spec_links;
+mod spec_lists;
 mod spec_paragraphs;
 mod spec_raw_html;
 mod spec_setext_headings;
@@ -29,5 +30,11 @@ fn test(input: &str, expected: &str) {
 
 fn test_raw(input: &str, expected: &str) {
 	let result = to_html(parse_markdown(input)).unwrap();
+	assert_eq!(result, expected);
+}
+
+fn test_raw_in(input: &str, expected: &str) {
+	let result = to_html(parse_markdown(input)).unwrap();
+	let expected = common::text(expected);
 	assert_eq!(result, expected);
 }
