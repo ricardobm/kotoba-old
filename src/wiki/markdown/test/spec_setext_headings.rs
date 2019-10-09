@@ -6,7 +6,7 @@ mod markdown_spec_setext_headings {
 	use super::*;
 
 	#[test]
-	fn should_parse() {
+	fn example_50_basic_parsing() {
 		// example 50
 		test(
 			r##"
@@ -21,8 +21,11 @@ mod markdown_spec_setext_headings {
 				<h2>Foo <em>bar</em></h2>
 			"##,
 		);
+	}
 
-		// example 51 - can span more than one line
+	#[test]
+	fn example_51_can_span_more_than_one_line() {
+		// example 51
 		test(
 			r##"
 				Foo *bar
@@ -37,13 +40,13 @@ mod markdown_spec_setext_headings {
 	}
 
 	#[test]
-	fn should_trim_content() {
+	fn example_52_should_trim_content() {
 		// example 52
 		test_raw("  Foo *bar\nbaz*\t\n====", "<h1>Foo <em>bar\nbaz</em></h1>");
 	}
 
 	#[test]
-	fn should_allow_any_length_of_underline() {
+	fn example_53_should_allow_any_length_of_underline() {
 		// example 53
 		test(
 			r##"
@@ -61,28 +64,37 @@ mod markdown_spec_setext_headings {
 	}
 
 	#[test]
-	fn can_be_indented() {
+	fn example_54_can_be_indented() {
 		// example 54
 		test_raw(
 			"   Foo\n---\n\n  Foo\n-----\n\n  Foo\n  ===",
 			"<h2>Foo</h2>\n<h2>Foo</h2>\n<h1>Foo</h1>",
 		);
+	}
 
-		// example 55 - four spaces is too much
+	#[test]
+	fn example_55_four_spaces_is_too_much() {
+		// example 55
 		test_raw(
 			"    Foo\n    ---\n\n    Foo\n---",
 			"<pre><code>Foo\n---\n\nFoo</code></pre>\n<hr/>",
 		);
+	}
 
-		// example 56 - underline can be indented and have trailing spaces
+	#[test]
+	fn example_56_underline_can_be_indented_and_have_trailing_spaces() {
+		// example 56
 		test_raw("Foo\n   ----      ", "<h2>Foo</h2>");
+	}
 
+	#[test]
+	fn example_57_four_spaces_is_too_much_in_underline() {
 		// example 57 - four spaces is too much
 		test_raw("Foo\n    ---", "<p>Foo\n---</p>");
 	}
 
 	#[test]
-	fn dont_allow_internal_spaces_in_underline() {
+	fn example_58_dont_allow_internal_spaces_in_underline() {
 		// example 58
 		test(
 			r##"
@@ -102,16 +114,18 @@ mod markdown_spec_setext_headings {
 	}
 
 	#[test]
-	fn trailing_spaces_or_backslash_do_not_cause_a_line_break() {
+	fn example_59_trailing_spaces_do_not_cause_a_line_break() {
 		// example 59
 		test_raw("Foo  \n-----", "<h2>Foo</h2>");
+	}
 
+	fn example_60_backslash_does_not_cause_a_line_break() {
 		// example 60
 		test_raw("Foo\\\n----", "<h2>Foo\\</h2>");
 	}
 
 	#[test]
-	fn has_precedence_over_inlines() {
+	fn example_61_has_precedence_over_inlines() {
 		// example 61
 		test(
 			r##"
@@ -133,7 +147,7 @@ mod markdown_spec_setext_headings {
 	}
 
 	#[test]
-	fn cannot_be_a_lazy_continuation() {
+	fn example_62_cannot_be_a_lazy_continuation() {
 		// example 62
 		test(
 			r##"
@@ -147,7 +161,9 @@ mod markdown_spec_setext_headings {
 				<hr/>
 			"##,
 		);
+	}
 
+	fn example_63_cannot_be_a_lazy_continuation() {
 		// example 63
 		test(
 			r##"
@@ -163,7 +179,9 @@ mod markdown_spec_setext_headings {
 				</blockquote>
 			"##,
 		);
+	}
 
+	fn example_64_cannot_be_a_lazy_continuation() {
 		// example 64
 		test(
 			r##"
@@ -180,7 +198,7 @@ mod markdown_spec_setext_headings {
 	}
 
 	#[test]
-	fn does_not_require_blank_lines_but_takes_whole_paragraph() {
+	fn example_65_does_not_require_blank_lines() {
 		// example 65
 		test(
 			r##"
@@ -193,7 +211,9 @@ mod markdown_spec_setext_headings {
 				Bar</h2>
 			"##,
 		);
+	}
 
+	fn example_66_consumes_whole_paragraph() {
 		// example 66
 		test(
 			r##"
@@ -214,7 +234,7 @@ mod markdown_spec_setext_headings {
 	}
 
 	#[test]
-	fn cannot_be_empty() {
+	fn example_67_cannot_be_empty() {
 		// example 67
 		test(
 			r##"
@@ -227,7 +247,7 @@ mod markdown_spec_setext_headings {
 	}
 
 	#[test]
-	fn should_not_be_interpretable_as_blocks() {
+	fn example_68_should_not_be_interpretable_as_blocks() {
 		// example 68
 		test(
 			r##"
@@ -239,7 +259,9 @@ mod markdown_spec_setext_headings {
 				<hr/>
 			"##,
 		);
+	}
 
+	fn example_69_should_not_be_interpretable_as_blocks() {
 		// example 69
 		test(
 			r##"
@@ -253,10 +275,14 @@ mod markdown_spec_setext_headings {
 				<hr/>
 			"##,
 		);
+	}
 
+	fn example_70_should_not_be_interpretable_as_blocks() {
 		// example 70
 		test_raw("    foo\n---", "<pre><code>foo</code></pre>\n<hr/>");
+	}
 
+	fn example_71_should_not_be_interpretable_as_blocks() {
 		// example 71
 		test(
 			r##"
@@ -270,7 +296,9 @@ mod markdown_spec_setext_headings {
 				<hr/>
 			"##,
 		);
+	}
 
+	fn example_72_should_not_be_interpretable_as_blocks() {
 		// example 72
 		test(
 			r##"
@@ -284,7 +312,7 @@ mod markdown_spec_setext_headings {
 	}
 
 	#[test]
-	fn should_handle_multiline() {
+	fn example_73_should_handle_multiline() {
 		// example 73
 		test(
 			r##"
@@ -300,7 +328,9 @@ mod markdown_spec_setext_headings {
 				<p>baz</p>
 			"##,
 		);
+	}
 
+	fn example_74_should_handle_multiline() {
 		// example 74
 		test(
 			r##"
@@ -318,7 +348,9 @@ mod markdown_spec_setext_headings {
 				<p>baz</p>
 			"##,
 		);
+	}
 
+	fn example_75_should_handle_multiline() {
 		// example 75
 		test(
 			r##"
@@ -334,7 +366,9 @@ mod markdown_spec_setext_headings {
 				<p>baz</p>
 			"##,
 		);
+	}
 
+	fn example_76_should_handle_multiline() {
 		// example 76
 		test(
 			r##"
