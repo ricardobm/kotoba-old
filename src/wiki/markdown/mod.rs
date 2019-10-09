@@ -25,7 +25,7 @@ mod inline;
 
 use util;
 
-dbg_flag!(true);
+dbg_flag!(false);
 
 /// Parse the input string as markdown, returning an iterator of [Element].
 pub fn parse_markdown<'a>(input: &'a str) -> MarkdownIterator<'a> {

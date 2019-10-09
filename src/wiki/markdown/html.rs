@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fmt::Write;
 
-use super::inline::{parse_inline, CodeNode, Elem, TextNode, TextOrChar, TextSpan};
+use super::inline::{parse_inline, CodeNode, Elem, TextMode, TextNode, TextOrChar, TextSpan};
 use super::{Block, HeaderLevel, LinkReferenceMap, MarkupEvent};
 
 pub fn output<'a>(f: &mut fmt::Formatter, event: &MarkupEvent<'a>, refs: &LinkReferenceMap<'a>) -> fmt::Result {
@@ -324,9 +324,9 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 				if let Some(lang) = code.language {
 					write!(f, " class=\"language-{}\"", lang)?;
 				}
-				if let Some(info) = code.info {
+				if let Some(ref info) = code.info {
 					write!(f, " data-info=\"")?;
-					escape_html(f, info)?;
+					fmt_text(f, TextNode::new(info.clone(), TextMode::WithEscapes))?;
 					write!(f, "\"")?;
 				}
 			} else {

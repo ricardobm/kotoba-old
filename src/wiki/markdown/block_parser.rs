@@ -287,7 +287,7 @@ pub enum Leaf<'a> {
 		/// If the info string starts with a language tag, this will be it.
 		lang: Option<&'a str>,
 		/// Remaining info string, after extracting the language tag.
-		info: Option<&'a str>,
+		info: Option<Span<'a>>,
 	},
 	/// Thematic break.
 	Break(Pos),
@@ -912,7 +912,7 @@ impl<'a> BlockIterator<'a> {
 			Some(LeafState::Open(Leaf::FencedCode {
 				fence,
 				lang,
-				info,
+				info: info.map(|x| span.sub_from_text(x)),
 				span: span.clone(),
 				code: span,
 			}))

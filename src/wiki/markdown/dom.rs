@@ -355,7 +355,7 @@ pub struct FencedCodeInfo<'a> {
 	///
 	/// This contains any text after the opening fence, except for the
 	/// language tag.
-	pub info: Option<&'a str>,
+	pub info: Option<Span<'a>>,
 }
 
 impl<'a> fmt::Debug for FencedCodeInfo<'a> {
@@ -364,7 +364,7 @@ impl<'a> fmt::Debug for FencedCodeInfo<'a> {
 		if let Some(language) = self.language {
 			write!(f, "{} ", language)?;
 		}
-		if let Some(info) = self.info {
+		if let Some(ref info) = self.info {
 			write!(f, "{:?}", info)?;
 		}
 		write!(f, "{:?}", self.code)?;
