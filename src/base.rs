@@ -54,12 +54,9 @@ macro_rules! dbg_print {
 	($($arg:tt)*) => (
 		if cfg!(debug_assertions) {
 			if DEBUG_ENABLED {
-				use ::std::io::Write;
-				let stderr = ::std::io::stderr();
-				let mut err = ::std::io::BufWriter::new(stderr.lock());
-				write!(&mut err, "[{}:{:03}]\t", file!(), line!()).unwrap();
-				write!(&mut err, $($arg)*).unwrap();
-				write!(&mut err, "\n").unwrap();
+				eprint!("[{}:{:03}]\t", file!(), line!());
+				eprint!($($arg)*);
+				eprint!("\n");
 			}
 		}
 	)
