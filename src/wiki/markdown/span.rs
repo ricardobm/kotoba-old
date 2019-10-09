@@ -145,7 +145,7 @@ impl<'a> Span<'a> {
 			end:    self.start.advance(self.buffer, end),
 			indent: self.indent,
 			quotes: self.quotes,
-			loose:  None,
+			loose:  self.loose,
 			skip:   self.skip && start == self.start.offset,
 		}
 	}
@@ -197,7 +197,7 @@ impl<'a> fmt::Display for Span<'a> {
 
 impl<'a> fmt::Debug for Span<'a> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "{:?}", self.text())
+		write!(f, "<span i={} q={}>{:?}</span>", self.indent, self.quotes, self.text())
 	}
 }
 
@@ -418,6 +418,11 @@ impl<'a> SpanIter<'a> {
 		self.chunk().chars().next()
 	}
 
+	/// Returns the indentation width of the current text, without consuming it.
+	pub fn next_indent_width(&self) -> usize {
+		self.cursor.next_indent_width(self.buffer())
+	}
+
 	pub fn skip_char(&mut self) -> bool {
 		let len = self.chunk().len();
 		if len > 0 {
@@ -431,12 +436,21 @@ impl<'a> SpanIter<'a> {
 
 	pub fn skip_spaces(&mut self, include_eol: bool) {
 		let mut pos = self.cursor;
-		pos.skip_spaces(&self.span.buffer[..self.maxpos.offset], include_eol);
+		pos.skip_spaces(&self.buffer(), include_eol);
 		self.skip_to(pos);
 	}
 
 	pub fn previous_char(&self) -> Option<char> {
 		self.span.buffer[..self.cursor.offset].chars().last()
+	}
+
+	/// Skip up to the specified amount of indentation width.
+	pub fn skip_indent_width(&mut self, width: usize) -> usize {
+		self.cursor.skip_indent_width(self.buffer(), width)
+	}
+
+	fn buffer(&self) -> &'a str {
+		&self.span.buffer[..self.maxpos.offset]
 	}
 
 	//=========================================

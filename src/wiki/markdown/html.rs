@@ -270,7 +270,7 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 		Block::List(list) => {
 			if let Some(start) = list.ordered {
 				write!(f, "ol")?;
-				if open && start > 1 {
+				if open && start != 1 {
 					write!(f, " start=\"{}\"", start)?;
 				}
 			} else {
@@ -299,7 +299,7 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 			}
 		}
 
-		Block::Header(level, _text) => {
+		Block::Header(level, _text, _end) => {
 			write!(f, "{}", header(*level))?;
 		}
 

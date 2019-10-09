@@ -244,6 +244,17 @@ mod markdown_spec_setext_headings {
 				<p>====</p>
 			"##,
 		);
+
+		test(
+			r##"
+				-
+			"##,
+			r##"
+				<ul>
+				<li></li>
+				</ul>
+			"##,
+		);
 	}
 
 	#[test]

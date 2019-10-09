@@ -2,11 +2,11 @@ use super::*;
 
 // spell-checker: disable
 
-mod markdown_spec_lists {
+mod markdown_spec_list_items {
 	use super::*;
 
 	#[test]
-	fn example_231() {
+	fn example_231_non_list_sample() {
 		// example 231
 		test(
 			r##"
@@ -29,7 +29,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_232() {
+	fn example_232_list_sample() {
 		// example 232
 		test_raw_in(
 			"1.  A paragraph\n    with two lines.\n\n        indented code\n\n    > A block quote.",
@@ -49,7 +49,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_233() {
+	fn example_233_list_content_indent_out() {
 		// example 233
 		test_raw_in(
 			"- one\n\n two",
@@ -63,7 +63,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_234() {
+	fn example_234_list_content_indent_in() {
 		// example 234
 		test_raw_in(
 			"- one\n\n  two",
@@ -79,7 +79,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_235() {
+	fn example_235_list_content_text_indent_out() {
 		// example 235
 		test_raw_in(
 			" -    one\n\n     two",
@@ -93,7 +93,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_236() {
+	fn example_236_list_content_text_indent_in() {
 		// example 236
 		test_raw_in(
 			" -    one\n\n      two",
@@ -109,7 +109,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_237() {
+	fn example_237_embedded_indentation_in() {
 		// example 237
 		test_raw_in(
 			"   > > 1.  one\n>>\n>>     two",
@@ -129,7 +129,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_238() {
+	fn example_238_embedded_indentation_out() {
 		// example 238
 		test_raw_in(
 			">>- one\n>>\n  >  > two",
@@ -147,7 +147,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_239() {
+	fn example_239_needs_space_after_marker() {
 		// example 239
 		test_raw_in(
 			"-one\n\n2.two",
@@ -159,7 +159,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_240() {
+	fn example_240_child_blocks_can_be_separated() {
 		// example 240
 		test_raw_in(
 			"- foo\n\n\n  bar",
@@ -175,7 +175,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_241() {
+	fn example_241_supports_any_block() {
 		// example 241
 		test_raw_in(
 			"1.  foo\n\n    ```\n    bar\n    ```\n\n    baz\n\n    > bam",
@@ -183,7 +183,8 @@ mod markdown_spec_lists {
 				<ol>
 				<li>
 				<p>foo</p>
-				<pre><code>bar</code></pre>
+				<pre><code>bar
+				</code></pre>
 				<p>baz</p>
 				<blockquote>
 				<p>bam</p>
@@ -195,7 +196,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_242() {
+	fn example_242_child_indented_code_preserves_new_lines() {
 		// example 242
 		test_raw_in(
 			"- Foo\n\n      bar\n\n\n      baz",
@@ -214,7 +215,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_243() {
+	fn example_243_ordered_digits_max_length_ok() {
 		// example 243
 		test_raw_in(
 			"123456789. ok",
@@ -227,7 +228,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_244() {
+	fn example_244_ordered_digits_max_length_not_ok() {
 		// example 244
 		test_raw_in(
 			"1234567890. not ok",
@@ -238,7 +239,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_245() {
+	fn example_245_ordered_may_start_with_zero() {
 		// example 245
 		test_raw_in(
 			"0. ok",
@@ -251,7 +252,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_246() {
+	fn example_246_ordered_left_zeroes() {
 		// example 246
 		test_raw_in(
 			"003. ok",
@@ -264,7 +265,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_247() {
+	fn example_247_ordered_cannot_be_negative() {
 		// example 247
 		test_raw_in(
 			"-1. not ok",
@@ -275,7 +276,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_248() {
+	fn example_248_indented_code_inside_list() {
 		// example 248
 		test_raw_in(
 			"- foo\n\n      bar",
@@ -291,7 +292,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_249() {
+	fn example_249_indented_code_inside_list() {
 		// example 249
 		test_raw_in(
 			"  10.  foo\n\n           bar",
@@ -307,7 +308,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_250() {
+	fn example_250_indented_code_first_child() {
 		// example 250
 		test_raw_in(
 			"    indented code\n\nparagraph\n\n    more code",
@@ -320,7 +321,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_251() {
+	fn example_251_indented_code_continuation() {
 		// example 251
 		test_raw_in(
 			"1.     indented code\n\n   paragraph\n\n       more code",
@@ -337,7 +338,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_252() {
+	fn example_252_indented_code_additional_space() {
 		// example 252
 		test_raw_in(
 			"1.      indented code\n\n   paragraph\n\n       more code",
@@ -354,7 +355,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_253() {
+	fn example_253_base_indentation() {
 		// example 253
 		test_raw_in(
 			"   foo\n\nbar",
@@ -366,7 +367,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_254() {
+	fn example_254_base_indentation() {
 		// example 254
 		test_raw_in(
 			"-    foo\n\n  bar",
@@ -380,7 +381,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_255() {
+	fn example_255_base_indentation() {
 		// example 255
 		test_raw_in(
 			"-  foo\n\n   bar",
@@ -396,7 +397,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_256() {
+	fn example_256_starting_with_blank_line() {
 		// example 256
 		test_raw_in(
 			"-\n  foo\n-\n  ```\n  bar\n  ```\n-\n      baz",
@@ -404,7 +405,8 @@ mod markdown_spec_lists {
 				<ul>
 				<li>foo</li>
 				<li>
-				<pre><code>bar</code></pre>
+				<pre><code>bar
+				</code></pre>
 				</li>
 				<li>
 				<pre><code>baz</code></pre>
@@ -415,7 +417,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_257() {
+	fn example_257_blank_line_spaces_dont_change_indentation() {
 		// example 257
 		test_raw_in(
 			"-   \n  foo",
@@ -428,7 +430,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_258() {
+	fn example_258_empty_list_item_can_begin_with_at_most_one_line() {
 		// example 258
 		test_raw_in(
 			"-\n\n  foo",
@@ -442,7 +444,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_259() {
+	fn example_259_empty_bullet_item() {
 		// example 259
 		test_raw_in(
 			"- foo\n-\n- bar",
@@ -457,7 +459,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_260() {
+	fn example_260_empty_bullet_item_with_spaces() {
 		// example 260
 		test_raw_in(
 			"- foo\n-   \n- bar",
@@ -472,7 +474,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_261() {
+	fn example_261_empty_ordered_item() {
 		// example 261
 		test_raw_in(
 			"1. foo\n2.\n3. bar",
@@ -487,7 +489,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_262() {
+	fn example_262_list_item_can_be_empty() {
 		// example 262
 		test_raw_in(
 			"*",
@@ -509,7 +511,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_263() {
+	fn example_263_empty_list_item_cannot_interrupt_paragraph() {
 		// example 263
 		test_raw_in(
 			"foo\n*\n\nfoo\n1.",
@@ -523,7 +525,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_264() {
+	fn example_264_indented_one_space() {
 		// example 264
 		test_raw_in(
 			" 1.  A paragraph\n     with two lines.\n\n         indented code\n\n     > A block quote.",
@@ -543,7 +545,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_265() {
+	fn example_265_indented_two_spaces() {
 		// example 265
 		test_raw_in(
 			"  1.  A paragraph\n      with two lines.\n\n          indented code\n\n      > A block quote.",
@@ -563,7 +565,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_266() {
+	fn example_266_indented_three_spaces() {
 		// example 266
 		test_raw_in(
 			"   1.  A paragraph\n       with two lines.\n\n           indented code\n\n       > A block quote.",
@@ -583,7 +585,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_267() {
+	fn example_267_four_spaces_gives_a_code_block() {
 		// example 267
 		test_raw(
 			"    1.  A paragraph\n        with two lines.\n\n            indented code\n\n        > A block quote.",
@@ -592,7 +594,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_268() {
+	fn example_268_lazy_continuation() {
 		// example 268
 		test_raw_in(
 			"  1.  A paragraph\nwith two lines.\n\n          indented code\n\n      > A block quote.",
@@ -612,7 +614,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_269() {
+	fn example_269_lazy_continuation_with_partially_deleted_indentation() {
 		// example 269
 		test_raw_in(
 			"  1.  A paragraph\n    with two lines.",
@@ -626,7 +628,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_270() {
+	fn example_270_nested_lazyness() {
 		// example 270
 		test_raw_in(
 			"> 1. > Blockquote\ncontinued here.",
@@ -646,7 +648,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_271() {
+	fn example_271_nested_lazyness() {
 		// example 271
 		test_raw_in(
 			"> 1. > Blockquote\n> continued here.",
@@ -666,7 +668,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_272() {
+	fn example_272_sublist_must_be_indented_by_two() {
 		// example 272
 		test_raw_in(
 			"- foo\n  - bar\n    - baz\n      - boo",
@@ -691,7 +693,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_273() {
+	fn example_273_sublist_indent_by_one_is_not_enough() {
 		// example 273
 		test_raw_in(
 			"- foo\n - bar\n  - baz\n   - boo",
@@ -707,7 +709,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_274() {
+	fn example_274_list_marker_width_affects_sublist_indent() {
 		// example 274
 		test_raw_in(
 			"10) foo\n    - bar",
@@ -724,7 +726,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_275() {
+	fn example_275_list_marker_width_affects_sublist_indent() {
 		// example 275
 		test_raw_in(
 			"10) foo\n   - bar",
@@ -740,7 +742,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_276() {
+	fn example_276_list_can_be_first_item_in_an_item() {
 		// example 276
 		test_raw_in(
 			"- - foo",
@@ -757,7 +759,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_277() {
+	fn example_277_list_can_be_first_item_in_an_item() {
 		// example 277
 		test_raw_in(
 			"1. - 2. foo",
@@ -778,7 +780,7 @@ mod markdown_spec_lists {
 	}
 
 	#[test]
-	fn example_278() {
+	fn example_278_list_item_can_contain_heading() {
 		// example 278
 		test_raw_in(
 			"- # Foo\n- Bar\n  ---\n  baz",

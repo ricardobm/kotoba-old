@@ -52,12 +52,16 @@ pub fn to_html<'a>(iter: MarkdownIterator<'a>) -> util::Result<String> {
 	let mut output = String::new();
 	let mut first = true;
 	let mut last_was_paragraph = false;
+	let mut is_empty_item = false;
+	let mut last_was_close = false;
 	for markup in document {
 		if !first {
 			let break_line = match &markup {
-				MarkupEvent::Open(Block::Paragraph(span)) => !(span.loose == Some(false)),
+				MarkupEvent::Open(Block::Paragraph(span)) => last_was_close || !(span.loose == Some(false)),
 				MarkupEvent::Close(Block::Paragraph(_)) => false,
-				MarkupEvent::Close(Block::ListItem(info)) => !last_was_paragraph || info.list.loose == Some(true),
+				MarkupEvent::Close(Block::ListItem(info)) => {
+					(!last_was_paragraph && !is_empty_item) || info.list.loose == Some(true)
+				}
 				MarkupEvent::Open(..) => true,
 				MarkupEvent::Close(block) => block.is_container(),
 				_ => false,
@@ -69,6 +73,16 @@ pub fn to_html<'a>(iter: MarkdownIterator<'a>) -> util::Result<String> {
 		write!(output, "{}", MarkupWithLinks(&markup, &references))?;
 		first = false;
 		last_was_paragraph = if let MarkupEvent::Close(Block::Paragraph(_)) = markup {
+			true
+		} else {
+			false
+		};
+		is_empty_item = if let MarkupEvent::Open(Block::ListItem(_)) = markup {
+			true
+		} else {
+			false
+		};
+		last_was_close = if let MarkupEvent::Close(_) = markup {
 			true
 		} else {
 			false
@@ -318,7 +332,8 @@ impl<'a> MarkdownIterator<'a> {
 							self.pending.pop_back();
 							loose
 						} else {
-							false // is it possible for a list item to have no children?
+							// empty list item
+							false
 						};
 						close_info.loose = Some(loose);
 
@@ -490,11 +505,18 @@ impl<'a> MarkdownIterator<'a> {
 							//   it, or if we'll have to close and generate a
 							//   new list.
 							//
-							let (is_new_list, has_list) = match self.parents.iter().last() {
+							let (is_new_list, has_list) = match self.parents.iter_mut().last() {
 								None => (true, false),
 								Some(ParentContainer::BlockQuote(..)) => (true, false),
 								Some(ParentContainer::ListItem(..)) => (true, false),
-								Some(ParentContainer::List(info)) => (!info.is_next_same_list(&item_info), true),
+								Some(ParentContainer::List(ref mut info)) => {
+									if !info.is_next_same_list(&item_info) {
+										(true, true)
+									} else {
+										info.base_indent = item_info.base_indent;
+										(false, true)
+									}
+								}
 							};
 
 							if is_new_list {
@@ -768,7 +790,7 @@ impl<'a> MarkdownIterator<'a> {
 				LeafOrReference::Leaf(Block::FencedCode(info), code, SpanMode::Code)
 			}
 			Leaf::Break(pos) => LeafOrReference::Leaf(Block::Break(pos), Span::default(), SpanMode::Code),
-			Leaf::Header { level, text } => {
+			Leaf::Header { level, text, span } => {
 				let level = match level {
 					1 => HeaderLevel::H1,
 					2 => HeaderLevel::H2,
@@ -778,7 +800,7 @@ impl<'a> MarkdownIterator<'a> {
 					6 => HeaderLevel::H6,
 					_ => unreachable!(),
 				};
-				LeafOrReference::Leaf(Block::Header(level, text.clone()), text, SpanMode::Text)
+				LeafOrReference::Leaf(Block::Header(level, text.clone(), span.end), text, SpanMode::Text)
 			}
 			Leaf::Table { span, head, body, cols } => {
 				let info = TableInfo::new(span, head, body, cols.unwrap());

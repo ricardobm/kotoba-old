@@ -54,6 +54,8 @@ impl<'a> fmt::Debug for BlockEvent<'a> {
 	}
 }
 
+const INDENTED_CODE_INDENT: usize = 4;
+
 /// Information for a list.
 #[derive(Clone)]
 pub struct ListInfo {
@@ -62,14 +64,21 @@ pub struct ListInfo {
 	pub ordered: Option<usize>,
 	/// The character that was used to mark this list item.
 	pub marker: char,
-	/// Relative indentation of the content of this list item.
+	/// Relative indentation of the text content in relation to [base_indent].
+	///
+	/// Together with [base_indent], this forms the base indentation necessary
+	/// for a list item.
 	pub text_indent: usize,
-	/// Indentation of the list marker.
+	/// Indentation consumed by the list marker itself.
+	///
+	/// This level of indentation is removed from child lines.
 	pub base_indent: usize,
 	/// Contains the task state if this is a task item.
 	pub task: Option<bool>,
 	/// Position of the marker.
 	pub marker_pos: Pos,
+	/// Check for an empty list item.
+	pub is_empty: bool,
 }
 
 impl fmt::Debug for ListInfo {
@@ -103,7 +112,7 @@ impl ListInfo {
 			false
 		} else if self.marker != next.marker {
 			false
-		} else if next.base_indent >= 2 {
+		} else if next.base_indent >= self.base_indent + 2 {
 			false
 		} else {
 			true
@@ -175,9 +184,9 @@ impl Container {
 	///
 	/// Returns `true` if the container is continued, the number of bytes
 	/// to skip and an optional target column.
-	fn can_continue<'a>(&self, line: Span<'a>) -> CanContinue {
+	fn can_continue<'a>(&mut self, line: Span<'a>) -> CanContinue {
 		match self {
-			&Container::BlockQuote(..) => {
+			Container::BlockQuote(..) => {
 				let (indent, bytes) = common::indent_width(line.text(), line.start.column);
 				let mut next = line.start;
 				let line = line.text();
@@ -203,47 +212,28 @@ impl Container {
 					CanContinue::No
 				}
 			}
-			&Container::ListItem(ListInfo {
+			Container::ListItem(ListInfo {
 				base_indent,
 				text_indent,
+				ref mut is_empty,
 				..
 			}) => {
 				if line.text().trim().len() == 0 {
 					// List item can continue through empty lines
-					CanContinue::Yes { position: line.start }
-				} else {
-					// We consider the list item continued if we can skip all
-					// of its indentation.
-					let target_indent = base_indent + text_indent;
-					let mut cursor = line.start;
-					let mut line = line.text();
-					let mut do_continue = true;
-					let start_column = cursor.column;
-					while do_continue {
-						do_continue = false;
-						if let Some(ch) = line.chars().next() {
-							if ch == ' ' || ch == '\t' {
-								let new_column = common::col(ch, cursor.column);
-								if new_column - start_column <= target_indent {
-									cursor.skip(&line[..1]);
-									line = &line[1..];
-									do_continue = cursor.column - start_column < target_indent;
-								} else {
-									if ch == '\t' {
-										// advance column without really
-										// consuming the tab to simulate
-										// partially consuming it
-										cursor.column = start_column + target_indent;
-									}
-								}
-							}
-						}
-					}
-
-					if cursor.column - start_column == target_indent {
-						CanContinue::Yes { position: cursor }
+					if !*is_empty {
+						CanContinue::Yes { position: line.start }
 					} else {
 						CanContinue::No
+					}
+				} else {
+					// For a list item to continue, we need to skip its indent
+					*is_empty = false;
+					let target_indent = *base_indent + *text_indent;
+					let mut iter = line.iter();
+					if iter.skip_indent_width(target_indent) < target_indent {
+						CanContinue::No
+					} else {
+						CanContinue::Yes { position: iter.pos() }
 					}
 				}
 			}
@@ -305,6 +295,8 @@ pub enum Leaf<'a> {
 		level: u8,
 		/// Header text.
 		text: Span<'a>,
+		/// Full header span.
+		span: Span<'a>,
 	},
 	/// Table element.
 	Table {
@@ -328,7 +320,7 @@ impl<'a> fmt::Debug for Leaf<'a> {
 				write!(f, "<code lang={:?} info={:?}>\n{}\n</code>", lang, info, code)
 			}
 			Leaf::Break(..) => write!(f, "<hr/>"),
-			Leaf::Header { level, text } => write!(f, "<h{0}>{1}</h{0}>", level, text),
+			Leaf::Header { level, text, .. } => write!(f, "<h{0}>{1}</h{0}>", level, text),
 			Leaf::Table { head, body, .. } => {
 				write!(f, "<table>")?;
 				if let Some(head) = head {
@@ -517,6 +509,7 @@ impl<'a> BlockIterator<'a> {
 				IteratorState::Text(opened) => {
 					let mut cur_line = self.buffer.cur_line();
 					cur_line.quotes = self.cur_quotes();
+					cur_line.indent = self.buffer.column();
 
 					// Only paragraph continuations can keep blocks open (the
 					// lazyness rule):
@@ -649,9 +642,8 @@ impl<'a> BlockIterator<'a> {
 		let result = {
 			// Skip optional indentation before the element
 			let base_indent = self.buffer.skip_indent();
-			let base_column = self.buffer.column();
 			let base_pos = self.buffer.position();
-			if base_indent > 3 {
+			if base_indent >= INDENTED_CODE_INDENT {
 				// We can have at most 3 spaces before becoming an indented
 				// code block.
 				None
@@ -670,21 +662,44 @@ impl<'a> BlockIterator<'a> {
 
 				let marker = self.buffer.next_char().unwrap();
 				self.buffer.skip_chars(1);
-				if self.buffer.skip_indent_width(1) == 0 {
-					// At least one space is needed after the list marker
+				if self.buffer.cur_line().trimmed().text().len() == 0 {
+					// empty list start (cannot interrupt a paragraph)
+					if self.can_start_empty_list_item(base_indent) {
+						let list_info = ListInfo {
+							marker,
+							text_indent: 0,
+							base_indent: base_indent + 2,
+							task: None,
+							marker_pos: base_pos,
+							ordered: None,
+							is_empty: true,
+						};
+						Some(Container::ListItem(list_info))
+					} else {
+						None
+					}
+				} else if self.buffer.skip_indent_width(1) == 0 {
+					// at least one space is needed after the list marker
 					None
 				} else {
-					// The actual indent also considers the list item itself.
-					let text_indent = self.buffer.column() - base_column;
+					// The base indent of the list is the indentation of the
+					// list marker plus its width.
+					let base_indent = base_indent + 2;
+					// Additional indentation of the list's content.
+					let text_indent = self.buffer.next_indent_width();
+					// If the list begins with a code block, we don't consider
+					// it part of the list item's indentation.
+					let is_code = text_indent >= INDENTED_CODE_INDENT;
+					let text_indent = if is_code { 0 } else { text_indent };
 					let task = self.parse_list_task();
 					let list_info = ListInfo {
 						marker,
 						text_indent,
 						base_indent,
 						task,
-
 						marker_pos: base_pos,
 						ordered: None,
+						is_empty: false,
 					};
 					Some(Container::ListItem(list_info))
 				}
@@ -695,6 +710,7 @@ impl<'a> BlockIterator<'a> {
 
 				// Note that the spec limits the list index to 9 digits to
 				// prevent overflow in browsers.
+				let marker_base = self.buffer.column();
 				let mut index = self.buffer.next_char().unwrap().to_digit(10).unwrap() as usize;
 				self.buffer.skip_chars(1);
 				for _ in 0..8 {
@@ -713,21 +729,44 @@ impl<'a> BlockIterator<'a> {
 					// case.
 					let marker = self.buffer.next_char().unwrap();
 					self.buffer.skip_chars(1);
-
-					let text_indent = self.buffer.skip_indent();
-					if text_indent == 0 {
+					if self.buffer.cur_line().trimmed().text().len() == 0 {
+						// empty list start (cannot interrupt a paragraph)
+						if self.can_start_empty_list_item(base_indent) {
+							let list_info = ListInfo {
+								marker,
+								text_indent: 0,
+								base_indent: base_indent + self.buffer.column() - marker_base,
+								task: None,
+								marker_pos: base_pos,
+								ordered: Some(index),
+								is_empty: true,
+							};
+							Some(Container::ListItem(list_info))
+						} else {
+							None
+						}
+					} else if self.buffer.skip_indent_width(1) == 0 {
+						// at least one space is needed after the list marker
 						None
 					} else {
-						let text_indent = self.buffer.column() - base_column;
+						// The base indent of the list is the indentation of the
+						// list marker plus its width.
+						let base_indent = base_indent + self.buffer.column() - marker_base;
+						// Additional indentation of the list's content.
+						let text_indent = self.buffer.next_indent_width();
+						// If the list begins with a code block, we don't consider
+						// it part of the list item's indentation.
+						let is_code = text_indent >= INDENTED_CODE_INDENT;
+						let text_indent = if is_code { 0 } else { text_indent };
 						let task = self.parse_list_task();
 						let list_info = ListInfo {
 							marker,
 							text_indent,
 							base_indent,
 							task,
-
 							marker_pos: base_pos,
 							ordered: Some(index),
+							is_empty: false,
 						};
 						Some(Container::ListItem(list_info))
 					}
@@ -744,6 +783,18 @@ impl<'a> BlockIterator<'a> {
 			self.buffer.restore(start_pos);
 		}
 		result
+	}
+
+	fn can_start_empty_list_item(&self, base_indent: usize) -> bool {
+		if let Some(Leaf::Paragraph { .. }) = self.inline {
+			if let Some(Container::ListItem(info)) = self.blocks.iter().last() {
+				base_indent < info.base_indent + 2
+			} else {
+				false
+			}
+		} else {
+			true
+		}
 	}
 
 	fn parse_list_task(&mut self) -> Option<bool> {
@@ -810,6 +861,7 @@ impl<'a> BlockIterator<'a> {
 			let lvl = caps.name("h").unwrap().as_str().len() as u8;
 			let sta = caps.name("s").unwrap().end();
 			let end = caps.name("e").unwrap().start();
+			let full_span = span.clone();
 			span.start.skip(&text[..sta]);
 			span.end = span.start;
 			span.end.skip(&text[sta..end]);
@@ -818,6 +870,7 @@ impl<'a> BlockIterator<'a> {
 			let leaf = Leaf::Header {
 				level: lvl,
 				text:  span,
+				span:  full_span,
 			};
 			Some(LeafState::ClosedAndConsumed(leaf))
 		} else if let Some(caps) = RE_CODE_FENCE.captures(text) {
@@ -833,7 +886,7 @@ impl<'a> BlockIterator<'a> {
 			let info = if let Some(x) = info { Some(x) } else { caps.name("i1") };
 			let info = if let Some(x) = info { x.as_str().trim() } else { "" };
 			let info = if info.len() > 0 { Some(info) } else { None };
-			span.indent = indent;
+			span.indent += indent;
 			Some(LeafState::Open(Leaf::FencedCode {
 				fence,
 				lang,
@@ -956,6 +1009,8 @@ impl<'a> BlockIterator<'a> {
 							info,
 						})
 					} else {
+						// we put the code end at the exact end of the line to
+						// get correct behavior in indented blocks.
 						code.end = line.end;
 						span.end = line.end;
 						LeafState::Open(Leaf::FencedCode {
@@ -1132,9 +1187,12 @@ impl<'a> BlockIterator<'a> {
 					} else {
 						2
 					};
+					let mut full_span = text.clone();
+					full_span.end = line.end;
 					let header = Leaf::Header {
 						level,
 						text: text.trimmed(),
+						span: full_span,
 					};
 					LeafState::ClosedAndConsumed(header)
 				} else {

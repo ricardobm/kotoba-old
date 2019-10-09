@@ -148,7 +148,7 @@ pub enum Block<'a> {
 	// Leaf elements
 	// ========================
 	Break(Pos),
-	Header(HeaderLevel, Span<'a>),
+	Header(HeaderLevel, Span<'a>, Pos),
 	Paragraph(Span<'a>),
 	HTML(Span<'a>),
 	Code(Span<'a>),
@@ -181,7 +181,7 @@ impl<'a> Block<'a> {
 			Block::List(info) => (info.marker_pos.line, info.marker_pos.line),
 			Block::ListItem(info) => (info.list.marker_pos.line, info.list.marker_pos.line),
 			Block::Break(pos) => (pos.line, pos.line),
-			Block::Header(_lvl, span) => (span.start.line, span.end.line),
+			Block::Header(_lvl, span, end) => (span.start.line, end.line),
 			Block::Paragraph(span) => (span.start.line, span.end.line),
 			Block::HTML(span) => (span.start.line, span.end.line),
 			Block::Code(span) => (span.start.line, span.end.line),
@@ -216,7 +216,7 @@ impl<'a> fmt::Debug for Block<'a> {
 			Block::List(info) => write!(f, "List{:?}", info),
 			Block::ListItem(info) => write!(f, "ListItem{:?}", info),
 			Block::Break(..) => write!(f, "Break"),
-			Block::Header(h, s) => write!(f, "Header({}, {:?})", *h as u8, s),
+			Block::Header(h, s, e) => write!(f, "Header({}, {:?}, {:?})", *h as u8, s, e),
 			Block::Paragraph(s) => write!(f, "Paragraph({:?})", s),
 			Block::HTML(s) => write!(f, "HTML({:?})", s),
 			Block::Code(s) => write!(f, "Code({:?})", s),

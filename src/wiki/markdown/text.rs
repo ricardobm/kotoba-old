@@ -46,6 +46,12 @@ impl Pos {
 		out
 	}
 
+	/// Return the next charater at the current offset.
+	#[inline(always)]
+	pub fn next_char(&self, buffer: &str) -> Option<char> {
+		buffer[self.offset..].chars().next()
+	}
+
 	pub fn next_line(&self, buffer: &str) -> Pos {
 		let text = &buffer[self.offset..];
 		if let Some(index) = text.find(|c| c == '\n' || c == '\r') {
@@ -140,6 +146,38 @@ impl Pos {
 			}
 		}
 	}
+
+	/// Skip up to the specified amount of indentation width.
+	pub fn skip_indent_width(&mut self, buffer: &str, width: usize) -> usize {
+		let mut total = 0;
+		while total < width {
+			if self.skip_if(buffer, " ") {
+				total += 1;
+			} else if self.next_char(buffer) == Some('\t') {
+				// if the current tab would exceed the required width we
+				// advance the column without consuming the tab, which
+				// provides the virtual effect of consuming the desired
+				// indentation width once the tab is consumed down the line
+				let tw = common::tab_width(self.column);
+				if total + tw <= width {
+					self.skip_char('\t');
+					total += tw;
+				} else {
+					self.column += width - total;
+					total = width;
+				}
+			} else {
+				break;
+			}
+		}
+		total
+	}
+
+	/// Returns the indentation width of the current text, without consuming it.
+	pub fn next_indent_width(&self, buffer: &str) -> usize {
+		let (columns, _) = common::indent_width(&buffer[self.offset..], self.column);
+		columns
+	}
 }
 
 #[derive(Clone)]
@@ -191,33 +229,12 @@ impl<'a> TextBuffer<'a> {
 	/// Return the next charater at the current offset.
 	#[inline(always)]
 	pub fn next_char(&self) -> Option<char> {
-		self.src[self.pos.offset..].chars().next()
+		self.pos.next_char(self.src)
 	}
 
 	/// Skip up to the specified amount of indentation width.
 	pub fn skip_indent_width(&mut self, width: usize) -> usize {
-		let mut total = 0;
-		while total < width {
-			if self.skip_if(' ') {
-				total += 1;
-			} else if self.next_char() == Some('\t') {
-				// if the current tab would exceed the required width we
-				// advance the column without consuming the tab, which
-				// provides the virtual effect of consuming the desired
-				// indentation width once the tab is consumed down the line
-				let tw = common::tab_width(self.column());
-				if total + tw <= width {
-					self.skip_chars(1);
-					total += tw;
-				} else {
-					self.pos.column += width - total;
-					total = width;
-				}
-			} else {
-				break;
-			}
-		}
-		total
+		self.pos.skip_indent_width(self.src, width)
 	}
 
 	/// Skip the next char, only if it is equal to the given one.
@@ -234,6 +251,15 @@ impl<'a> TextBuffer<'a> {
 	/// `true` when at the end of input.
 	pub fn at_end(&self) -> bool {
 		self.pos.offset >= self.src.len()
+	}
+
+	/// Returns the indentation width of the current text, without consuming it.
+	pub fn next_indent_width(&self) -> usize {
+		self.pos.next_indent_width(self.src)
+	}
+
+	pub fn next_line_pos(&mut self) -> Pos {
+		self.eol_pos(true)
 	}
 
 	/// Skip indentation of the current line and return the indentation width.

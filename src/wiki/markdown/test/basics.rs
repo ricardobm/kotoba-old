@@ -34,17 +34,53 @@ mod markdown_basics {
 	fn should_support_lists() {
 		test(
 			r#"
-			- Item 1
-			- Item 2
-			- Item 3
-		"#,
+				- Item 1
+				- Item 2
+				- Item 3
+			"#,
 			r#"
-			<ul>
-			<li>Item 1</li>
-			<li>Item 2</li>
-			<li>Item 3</li>
-			</ul>
-		"#,
+				<ul>
+				<li>Item 1</li>
+				<li>Item 2</li>
+				<li>Item 3</li>
+				</ul>
+			"#,
+		);
+
+		test(
+			r#"
+				- Item 1
+				  - Sub 1a
+				  - Sub 1b
+				- Item 2
+				  - Sub 2a
+				  - Sub 2b
+				- Item 3
+				  - Sub 3a
+				  - Sub 3b
+			"#,
+			r#"
+				<ul>
+				<li>Item 1
+				<ul>
+				<li>Sub 1a</li>
+				<li>Sub 1b</li>
+				</ul>
+				</li>
+				<li>Item 2
+				<ul>
+				<li>Sub 2a</li>
+				<li>Sub 2b</li>
+				</ul>
+				</li>
+				<li>Item 3
+				<ul>
+				<li>Sub 3a</li>
+				<li>Sub 3b</li>
+				</ul>
+				</li>
+				</ul>
+			"#,
 		);
 	}
 
