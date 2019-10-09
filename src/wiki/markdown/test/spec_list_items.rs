@@ -796,4 +796,58 @@ mod markdown_spec_list_items {
 			"#,
 		);
 	}
+
+	#[test]
+	fn example_279_task_list() {
+		// example 279
+		test(
+			r##"
+				- [ ] foo
+				- [x] bar
+			"##,
+			r##"
+				<ul>
+				<li><input type="checkbox" disabled/> foo</li>
+				<li><input type="checkbox" disabled checked/> bar</li>
+				</ul>
+			"##,
+		);
+
+		test(
+			r##"
+				1. [ ] foo
+				2. [x] bar
+			"##,
+			r##"
+				<ol>
+				<li><input type="checkbox" disabled/> foo</li>
+				<li><input type="checkbox" disabled checked/> bar</li>
+				</ol>
+			"##,
+		);
+	}
+
+	#[test]
+	fn example_280_task_list_nesting() {
+		// example 280
+		test(
+			r##"
+				- [x] foo
+				  - [ ] bar
+				  - [x] baz
+				- [ ] bim
+			"##,
+			r##"
+				<ul>
+				<li><input type="checkbox" disabled checked/> foo
+				<ul>
+				<li><input type="checkbox" disabled/> bar</li>
+				<li><input type="checkbox" disabled checked/> baz</li>
+				</ul>
+				</li>
+				<li><input type="checkbox" disabled/> bim</li>
+				</ul>
+			"##,
+		);
+	}
 }

@@ -262,6 +262,8 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 		}
 	}
 
+	let mut closed = false;
+
 	match block {
 		Block::BlockQuote(..) => {
 			write!(f, "blockquote")?;
@@ -282,11 +284,12 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 			if open {
 				write!(f, "li")?;
 				if let Some(task) = item.task {
-					write!(f, "><input type=\"checkbox\"")?;
+					write!(f, "><input type=\"checkbox\" disabled")?;
 					if task {
 						write!(f, " checked")?;
 					}
-					write!(f, "/")?;
+					write!(f, "/> ")?;
+					closed = true;
 				}
 			} else {
 				write!(f, "li")?;
@@ -362,7 +365,7 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 		}
 	}
 
-	if !no_tag {
+	if !no_tag && !closed {
 		if is_single_tag {
 			if open {
 				write!(f, "/>")?;

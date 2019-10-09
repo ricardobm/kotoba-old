@@ -6,7 +6,7 @@ mod markdown_spec_ {
 	use super::*;
 
 	#[test]
-	fn should_() {
+	fn example_00() {
 		// example 00
 		test(
 			r##"
@@ -17,11 +17,21 @@ mod markdown_spec_ {
 	}
 
 	#[test]
-	fn should_() {
+	fn example_00() {
 		// example 00
 		test_raw(
 			"",
 			"",
+		);
+	}
+
+	#[test]
+	fn example_00() {
+		// example 00
+		test_raw_in(
+			"",
+			r##"
+			"##,
 		);
 	}
 }
