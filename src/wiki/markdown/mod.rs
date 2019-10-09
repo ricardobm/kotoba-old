@@ -25,7 +25,7 @@ mod inline;
 
 use util;
 
-dbg_flag!(false);
+dbg_flag!(true);
 
 /// Parse the input string as markdown, returning an iterator of [Element].
 pub fn parse_markdown<'a>(input: &'a str) -> MarkdownIterator<'a> {
@@ -293,8 +293,17 @@ impl<'a> MarkdownIterator<'a> {
 							index: self.queue.len(),
 							end:   info.marker_pos.line,
 						});
-					} else if let Event::Output(MarkupEvent::Open(Block::ListItem(..))) = &event {
+					} else if let Event::Output(MarkupEvent::Open(Block::ListItem(info))) = &event {
 						// Found a list item
+						match self.pending.back_mut() {
+							Some(LooseItem::List { end, ref mut loose, .. }) => {
+								if info.list.marker_pos.line > *end + 1 {
+									*loose = true;
+								}
+							}
+							ref ev @ _ => unreachable!("parent when opening a list item is not a List: {:?}", ev),
+						}
+
 						self.pending.push_back(LooseItem::ListItem {
 							index: self.queue.len(),
 						});
@@ -327,34 +336,36 @@ impl<'a> MarkdownIterator<'a> {
 						}
 					} else if let Event::Output(MarkupEvent::Close(Block::ListItem(ref mut close_info))) = &mut event {
 						// take the loose information stored on the child items
-						let loose = if let Some(LooseItem::Child { loose, .. }) = self.pending.back() {
-							let loose = *loose;
-							self.pending.pop_back();
-							loose
-						} else {
-							// empty list item
-							false
-						};
-						close_info.loose = Some(loose);
+						let (item_loose, item_end) =
+							if let Some(LooseItem::Child { loose, line, .. }) = self.pending.back() {
+								let loose = *loose;
+								let line = *line;
+								self.pending.pop_back();
+								(loose, line)
+							} else {
+								// empty list item
+								(false, close_info.list.marker_pos.line)
+							};
+						close_info.loose = Some(item_loose);
 
 						// remove the ListItem event and update the item information
 						match self.pending.pop_back() {
 							Some(LooseItem::ListItem { index }) => match self.queue[index] {
 								Event::Output(MarkupEvent::Open(ref mut block)) => match block {
 									Block::ListItem(ref mut info) => {
-										info.loose = Some(loose);
-										if loose {
-											match self.pending.back_mut() {
-												Some(LooseItem::List {
-													ref mut loose,
-													ref mut end,
-													..
-												}) => {
-													*end = close_info.list.marker_pos.line;
+										info.loose = Some(item_loose);
+										match self.pending.back_mut() {
+											Some(LooseItem::List {
+												ref mut loose,
+												ref mut end,
+												..
+											}) => {
+												*end = item_end;
+												if item_loose {
 													*loose = true; // store loose on the parent list also
 												}
-												_ => unreachable!("ListItem's pending parent is not a List"),
 											}
+											_ => unreachable!("ListItem's pending parent is not a List"),
 										}
 									}
 									_ => unreachable!("block in queue event for pending ListItem is not ListItem"),
@@ -579,8 +590,8 @@ impl<'a> MarkdownIterator<'a> {
 					}
 
 					let event = match block {
-						Container::BlockQuote(..) => match self.parents.pop_back() {
-							Some(ParentContainer::BlockQuote(pos)) => {
+						Container::BlockQuote(pos) => match self.parents.pop_back() {
+							Some(ParentContainer::BlockQuote(_)) => {
 								Self::close_container_event(ParentContainer::BlockQuote(pos))
 							}
 							_ => unreachable!(),
@@ -781,9 +792,12 @@ impl<'a> MarkdownIterator<'a> {
 				url:   url,
 			}),
 			Leaf::IndentedCode { code } => LeafOrReference::Leaf(Block::Code(code.clone()), code, SpanMode::Code),
-			Leaf::FencedCode { code, lang, info, .. } => {
+			Leaf::FencedCode {
+				code, lang, info, span, ..
+			} => {
 				let info = FencedCodeInfo {
 					code:     code.clone(),
+					span:     span.clone(),
 					info:     info,
 					language: lang,
 				};

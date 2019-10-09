@@ -130,7 +130,7 @@ pub enum Container {
 impl fmt::Debug for Container {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
-			Container::BlockQuote(..) => write!(f, "BlockQuote"),
+			Container::BlockQuote(pos) => write!(f, "BlockQuote({:?})", pos),
 			Container::ListItem(info) => write!(f, "ListItem{:?}", info),
 		}
 	}
@@ -188,18 +188,18 @@ impl Container {
 	/// to skip and an optional target column.
 	fn can_continue<'a>(&mut self, line: Span<'a>) -> CanContinue {
 		match self {
-			Container::BlockQuote(..) => {
+			Container::BlockQuote(ref mut pos) => {
 				let (indent, bytes) = common::indent_width(line.text(), line.start.column);
 				let mut next = line.start;
-				let line = line.text();
-				next.skip(&line[..bytes]);
-				let line = &line[bytes..];
-				if indent > 3 {
+				let line_text = line.text();
+				next.skip(&line_text[..bytes]);
+				let line_text = &line_text[bytes..];
+				let can_continue = if indent > 3 {
 					CanContinue::No
-				} else if line.starts_with("> ") {
+				} else if line_text.starts_with("> ") {
 					next.skip("> ");
 					CanContinue::Yes { position: next }
-				} else if line.starts_with(">\t") {
+				} else if line_text.starts_with(">\t") {
 					next.skip(">");
 					if common::tab_width(next.column) == 1 {
 						next.skip("\t");
@@ -207,12 +207,16 @@ impl Container {
 						next.column += 1;
 					}
 					CanContinue::Yes { position: next }
-				} else if line.starts_with(">") {
+				} else if line_text.starts_with(">") {
 					next.skip(">");
 					CanContinue::Yes { position: next }
 				} else {
 					CanContinue::No
+				};
+				if let CanContinue::Yes { .. } = can_continue {
+					*pos = line.end;
 				}
+				can_continue
 			}
 			Container::ListItem(ListInfo {
 				base_indent,

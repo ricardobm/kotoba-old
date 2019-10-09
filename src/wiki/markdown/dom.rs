@@ -185,7 +185,7 @@ impl<'a> Block<'a> {
 			Block::Paragraph(span) => (span.start.line, span.end.line),
 			Block::HTML(span) => (span.start.line, span.end.line),
 			Block::Code(span) => (span.start.line, span.end.line),
-			Block::FencedCode(info) => (info.code.start.line, info.code.end.line),
+			Block::FencedCode(info) => (info.span.start.line, info.span.end.line),
 			Block::Table(info) => info.line_range(),
 			Block::TableHead(info) => {
 				let (sta, _) = info.line_range();
@@ -345,6 +345,8 @@ impl ListItemInfo {
 pub struct FencedCodeInfo<'a> {
 	/// Text for the code block. This should be interpreted as raw text.
 	pub code: Span<'a>,
+	/// Full text span of the code block.
+	pub span: Span<'a>,
 	/// Language tag, if available.
 	///
 	/// This represents the first word after the opening fence.
