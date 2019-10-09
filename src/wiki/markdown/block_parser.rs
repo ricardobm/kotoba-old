@@ -66,12 +66,10 @@ pub struct ListInfo {
 	pub marker: char,
 	/// Relative indentation of the text content in relation to [base_indent].
 	///
-	/// Together with [base_indent], this forms the base indentation necessary
-	/// for a list item.
+	/// Together with [base_indent], this forms the base indentation for any
+	/// of the list item's children.
 	pub text_indent: usize,
-	/// Indentation consumed by the list marker itself.
-	///
-	/// This level of indentation is removed from child lines.
+	/// Indentation of just the list marker itself.
 	pub base_indent: usize,
 	/// Contains the task state if this is a task item.
 	pub task: Option<bool>,
@@ -112,7 +110,7 @@ impl ListInfo {
 			false
 		} else if self.marker != next.marker {
 			false
-		} else if next.base_indent >= self.base_indent + 2 {
+		} else if next.base_indent >= self.base_indent + self.text_indent {
 			false
 		} else {
 			true
@@ -159,12 +157,16 @@ impl Container {
 			&Container::BlockQuote(..) => Ok(()),
 			&Container::ListItem(ListInfo {
 				base_indent,
+				text_indent,
 				ordered,
 				task,
 				..
 			}) => {
 				if base_indent > 0 {
-					write!(f, " indent=\"{}\"", base_indent)?;
+					write!(f, " base-indent=\"{}\"", base_indent)?;
+				}
+				if text_indent > 0 {
+					write!(f, " text-indent=\"{}\"", text_indent)?;
 				}
 				if let Some(index) = ordered {
 					if index != 1 {
@@ -667,8 +669,8 @@ impl<'a> BlockIterator<'a> {
 					if self.can_start_empty_list_item(base_indent) {
 						let list_info = ListInfo {
 							marker,
-							text_indent: 0,
-							base_indent: base_indent + 2,
+							text_indent: 2,
+							base_indent: base_indent,
 							task: None,
 							marker_pos: base_pos,
 							ordered: None,
@@ -684,12 +686,11 @@ impl<'a> BlockIterator<'a> {
 				} else {
 					// The base indent of the list is the indentation of the
 					// list marker plus its width.
-					let base_indent = base_indent + 2;
 					// Additional indentation of the list's content.
-					let text_indent = self.buffer.next_indent_width();
+					let text_indent = 2 + self.buffer.next_indent_width();
 					// If the list begins with a code block, we don't consider
 					// it part of the list item's indentation.
-					let is_code = text_indent >= INDENTED_CODE_INDENT;
+					let is_code = text_indent >= INDENTED_CODE_INDENT + 2;
 					let text_indent = if is_code { 0 } else { text_indent };
 					let task = self.parse_list_task();
 					let list_info = ListInfo {
@@ -736,8 +737,8 @@ impl<'a> BlockIterator<'a> {
 						if self.can_start_empty_list_item(base_indent) {
 							let list_info = ListInfo {
 								marker,
-								text_indent: 0,
-								base_indent: base_indent + self.buffer.column() - marker_base,
+								text_indent: self.buffer.column() - marker_base,
+								base_indent: base_indent,
 								task: None,
 								marker_pos: base_pos,
 								ordered: Some(index),
@@ -753,12 +754,13 @@ impl<'a> BlockIterator<'a> {
 					} else {
 						// The base indent of the list is the indentation of the
 						// list marker plus its width.
-						let base_indent = base_indent + self.buffer.column() - marker_base;
+						let base_indent = base_indent;
+						let marker_width = self.buffer.column() - marker_base;
 						// Additional indentation of the list's content.
-						let text_indent = self.buffer.next_indent_width();
+						let text_indent = self.buffer.next_indent_width() + marker_width;
 						// If the list begins with a code block, we don't consider
 						// it part of the list item's indentation.
-						let is_code = text_indent >= INDENTED_CODE_INDENT;
+						let is_code = text_indent >= INDENTED_CODE_INDENT + marker_width;
 						let text_indent = if is_code { 0 } else { text_indent };
 						let task = self.parse_list_task();
 						let list_info = ListInfo {
