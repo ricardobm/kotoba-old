@@ -729,7 +729,9 @@ impl<'a> BlockIterator<'a> {
 					// case.
 					let marker = self.buffer.next_char().unwrap();
 					self.buffer.skip_chars(1);
-					if self.buffer.cur_line().trimmed().text().len() == 0 {
+					if index != 1 && !self.can_start_indexed_list(base_indent, index) {
+						None
+					} else if self.buffer.cur_line().trimmed().text().len() == 0 {
 						// empty list start (cannot interrupt a paragraph)
 						if self.can_start_empty_list_item(base_indent) {
 							let list_info = ListInfo {
@@ -783,6 +785,20 @@ impl<'a> BlockIterator<'a> {
 			self.buffer.restore(start_pos);
 		}
 		result
+	}
+
+	fn can_start_indexed_list(&self, base_indent: usize, start_index: usize) -> bool {
+		if start_index == 1 {
+			true
+		} else if let Some(Leaf::Paragraph { .. }) = self.inline {
+			if let Some(Container::ListItem(info)) = self.blocks.iter().last() {
+				base_indent < info.base_indent + 2
+			} else {
+				false
+			}
+		} else {
+			true
+		}
 	}
 
 	fn can_start_empty_list_item(&self, base_indent: usize) -> bool {
