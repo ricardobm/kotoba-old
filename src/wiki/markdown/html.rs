@@ -326,7 +326,7 @@ fn fmt_block_tags<'a>(block: &Block<'a>, open: bool, f: &mut fmt::Formatter) -> 
 				}
 				if let Some(ref info) = code.info {
 					write!(f, " data-info=\"")?;
-					fmt_text(f, TextNode::new(info.clone(), TextMode::WithEscapes))?;
+					fmt_text(f, TextNode::new(info.clone(), TextMode::WithEscapesAndEntities))?;
 					write!(f, "\"")?;
 				}
 			} else {
