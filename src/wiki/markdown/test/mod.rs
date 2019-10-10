@@ -14,6 +14,7 @@ mod spec_fenced_code;
 mod spec_html_blocks;
 mod spec_images;
 mod spec_indented_code;
+mod spec_inline_code;
 mod spec_inlines;
 mod spec_link_refs;
 mod spec_links;
