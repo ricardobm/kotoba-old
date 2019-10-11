@@ -6,7 +6,7 @@ mod markdown_spec_link_refs {
 	use super::*;
 
 	#[test]
-	fn should_parse() {
+	fn example_161_should_parse() {
 		// example 161
 		test(
 			r##"
@@ -18,13 +18,19 @@ mod markdown_spec_link_refs {
 				<p><a href="/url" title="title">foo</a></p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_162_should_parse() {
 		// example 162
 		test_raw(
 			"   [foo]: \n      /url  \n           'the title'  \n\n[foo]",
 			r#"<p><a href="/url" title="the title">foo</a></p>"#,
 		);
+	}
 
+	#[test]
+	fn example_163_should_parse() {
 		// example 163
 		test(
 			r##"
@@ -39,7 +45,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn title_can_be_multiline() {
+	fn example_164_can_be_multiline() {
 		// example 164
 		test(
 			r##"
@@ -53,7 +59,10 @@ mod markdown_spec_link_refs {
 				<p><a href="my url" title="title">Foo bar</a></p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_165_can_be_multiline() {
 		// example 165
 		test(
 			r##"
@@ -73,7 +82,10 @@ mod markdown_spec_link_refs {
 				">foo</a></p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_166_can_be_multiline() {
 		// example 166
 		test(
 			r##"
@@ -92,7 +104,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn title_can_be_omitted() {
+	fn example_167_title_can_be_omitted() {
 		// example 167
 		test(
 			r##"
@@ -108,7 +120,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn destination_cannot_be_omitted() {
+	fn example_168_destination_cannot_be_omitted() {
 		// example 168
 		test(
 			r##"
@@ -121,6 +133,10 @@ mod markdown_spec_link_refs {
 				<p>[foo]</p>
 			"##,
 		);
+	}
+
+	#[test]
+	fn example_169_destination_cannot_be_omitted() {
 
 		// example 169
 		test(
@@ -136,7 +152,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn title_must_be_separated_by_space() {
+	fn example_170_title_must_be_separated_by_space() {
 		// example 170
 		test(
 			r##"
@@ -152,7 +168,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn title_and_destination_can_contain_escapes() {
+	fn example_171_title_and_destination_can_contain_escapes() {
 		// example 171
 		test(
 			r##"
@@ -167,7 +183,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn link_can_come_before_definition() {
+	fn example_172_link_can_come_before_definition() {
 		// example 172
 		test(
 			r##"
@@ -182,7 +198,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn first_definition_takes_precedence() {
+	fn example_173_first_definition_takes_precedence() {
 		// example 173
 		test(
 			r##"
@@ -210,7 +226,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn label_matching_is_case_insensitive() {
+	fn example_174_label_matching_is_case_insensitive() {
 		// example 174
 		test(
 			r##"
@@ -222,7 +238,10 @@ mod markdown_spec_link_refs {
 				<p><a href="/url">Foo</a></p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_175_label_matching_is_case_insensitive() {
 		// example 175
 		test(
 			r##"
@@ -237,7 +256,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn generates_empty_markup() {
+	fn example_176_generates_empty_markup() {
 		// example 176
 		test(
 			r##"
@@ -246,7 +265,10 @@ mod markdown_spec_link_refs {
 			r##"
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_177_generates_empty_markup() {
 		// example 177
 		test(
 			r##"
@@ -262,7 +284,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn is_not_one_of_these() {
+	fn example_178_is_not_one_of_these() {
 		// example 178
 		test(
 			r##"
@@ -272,7 +294,10 @@ mod markdown_spec_link_refs {
 				<p>[foo]: /url &quot;title&quot; ok</p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_179_is_not_one_of_these() {
 		// example 179
 		test(
 			r##"
@@ -283,7 +308,10 @@ mod markdown_spec_link_refs {
 				<p>&quot;title&quot; ok</p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_180_is_not_one_of_these() {
 		// example 180
 		test_raw(
 			"    [foo]: /url \"title\"\n\n[foo]",
@@ -293,7 +321,10 @@ mod markdown_spec_link_refs {
 			"	[foo]: /url \"title\"\n\n[foo]",
 			"<pre><code>[foo]: /url &quot;title&quot;</code></pre>\n<p>[foo]</p>",
 		);
+	}
 
+	#[test]
+	fn example_181_is_not_one_of_these() {
 		// example 181
 		test(
 			r##"
@@ -312,7 +343,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn cannot_interrupt_paragraph() {
+	fn example_182_cannot_interrupt_paragraph() {
 		// example 182
 		test(
 			r##"
@@ -330,7 +361,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn does_not_need_blank_lines() {
+	fn example_183_does_not_need_blank_lines() {
 		// example 183
 		test(
 			r##"
@@ -345,7 +376,10 @@ mod markdown_spec_link_refs {
 				</blockquote>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_184_does_not_need_blank_lines() {
 		// example 184
 		test(
 			r##"
@@ -359,7 +393,10 @@ mod markdown_spec_link_refs {
 				<p><a href="/url">foo</a></p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_185_does_not_need_blank_lines() {
 		// example 185
 		test(
 			r##"
@@ -375,7 +412,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn can_appear_sequentially() {
+	fn example_186_can_appear_sequentially() {
 		// example 186
 		test(
 			r##"
@@ -397,7 +434,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn can_occur_in_container() {
+	fn example_187_can_occur_in_container() {
 		// example 187
 		test(
 			r##"
@@ -414,7 +451,7 @@ mod markdown_spec_link_refs {
 	}
 
 	#[test]
-	fn does_not_depend_on_usage() {
+	fn example_188_does_not_depend_on_usage() {
 		// example 188
 		test(
 			r##"
