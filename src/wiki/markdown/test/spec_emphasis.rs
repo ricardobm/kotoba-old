@@ -1617,7 +1617,7 @@ mod markdown_spec_emphasis {
 				_foo [bar_](/url)
 			"##,
 			r##"
-				_foo [bar_](/url)
+				<p>_foo <a href="/url">bar_</a></p>
 			"##,
 		);
 	}

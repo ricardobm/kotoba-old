@@ -181,7 +181,10 @@ struct Container<'a> {
 
 impl<'a> Container<'a> {
 	fn can_be_closed_by(&self, delim: &Delim<'a>) -> bool {
-		if self.delim.token.len() > 0 && delim.can_close && delim.token.starts_with(self.delim.token) {
+		if self.delim.token.len() > 0
+			&& delim.can_close
+			&& self.delim.token.chars().next() == delim.token.chars().next()
+		{
 			if delim.can_open || self.delim.can_close {
 				// if one of the delimiters can both open and close emphasis,
 				// then the sum of the lengths of the delimiter runs containing
@@ -245,52 +248,64 @@ impl<'a> ParserHelper<'a> {
 		// close any parent emphasis containers that can be closed by the
 		// delimiter.
 		while delim.token.len() > 0 && self.parent().can_be_closed_by(&delim) {
-			// pop the parent container, turn it into a tag and append to the
-			// previous parent
-			let p = self.parents.pop_back().unwrap();
-			let tag = if p.delim.token.len() == 1 {
+			let par = self.parent();
+
+			// Length of the matching delimiter (1 - emphasis, 2 - strong).
+			//
+			// We always prefer `<strong>` over `<em>`, so if possible we match
+			// a length 2.
+			let len = std::cmp::min(2, std::cmp::min(delim.token.len(), par.delim.token.len()));
+			debug_assert!(len > 0 && len <= 2);
+			let tag = if len == 1 {
 				InlineTag::Emphasis
 			} else {
 				InlineTag::Strong
 			};
-			let tag = Parsed::Tag(tag, p.children);
-			self.parent().children.push_back(tag);
-			// consume the used token from the delimiter
-			let skip_len = p.delim.token.len();
-			delim_pos.skip(&delim.token[..skip_len]);
-			delim.token = &delim.token[skip_len..];
+
+			// Take all the current children of the container and place them in
+			// the emphasis tag.
+			let mut children = VecDeque::new();
+			children.append(&mut par.children);
+			let tag = Parsed::Tag(tag, children);
+
+			// Consume the tokens:
+
+			delim_pos.skip(&delim.token[..len]);
+			delim.token = &delim.token[len..];
+			par.delim.token = &par.delim.token[..par.delim.token.len() - len];
+
+			if par.delim.token.len() == 0 {
+				// The whole parent container token has been matched, so we
+				// pop the parent and append the tag to the previous parent
+				self.parents.pop_back();
+				self.parent().children.push_back(tag);
+			} else {
+				// The open delimiter still has not been matched completely, so
+				// we pop the tag bag as a child of the current parent
+				par.children.push_back(tag);
+			}
 		}
 
-		while delim.token.len() > 0 && delim.can_open {
-			let token = if delim.token.len() == 2 {
-				// an interpretation `<strong>...</strong>` is always preferred
-				// to `<em><em>...</em></em>`
-				delim.token
-			} else {
-				// an interpretation `<em><strong>...</strong></em>` is always
-				// preferred to `<strong><em>...</em></strong>`
-				&delim.token[..1]
-			};
-			delim.token = &delim.token[token.len()..];
-			let mut open_delim = delim.clone();
-			open_delim.token = token;
+		if delim.token.len() > 0 && delim.can_open {
+			// push the whole delimiter as a parent, we'll break it up when
+			// matching
 			self.parents.push_back(Container {
-				delim:     open_delim,
+				delim:     delim,
 				delim_pos: delim_pos,
 				children:  Default::default(),
 			});
-			delim_pos.skip(token);
-		}
-
-		self.cursor = delim_pos;
-
-		// push any remaining delimiter as plain text and move the cursor to
-		// the new end
-		if end > delim_pos {
-			self.push_text(end);
 		} else {
-			debug_assert!(delim.token == "");
+			// push the unmatched delimiter as plain text and move the
+			// cursor to the new end position.
+			if end > delim_pos {
+				self.cursor = delim_pos;
+				self.push_text(end);
+			} else {
+				debug_assert!(delim.token == "");
+			}
 		}
+
+		self.cursor = end;
 	}
 
 	fn to_result(mut self, span: &Span<'a>) -> Vec<Elem<'a>> {
