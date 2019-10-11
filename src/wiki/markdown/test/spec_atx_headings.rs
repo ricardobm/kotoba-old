@@ -6,7 +6,7 @@ mod markdown_spec_atx_headings {
 	use super::*;
 
 	#[test]
-	fn should_parse() {
+	fn example_32_should_parse() {
 		// example 32
 		test(
 			r##"
@@ -26,10 +26,16 @@ mod markdown_spec_atx_headings {
 				<h6>foo</h6>
 			"##,
 		);
+	}
 
-		// example 33 - more than six `#` is not a heading
+	#[test]
+	fn example_33_more_than_six_is_not_a_heading() {
+		// example 33
 		test("####### foo", "<p>####### foo</p>");
+	}
 
+	#[test]
+	fn example_34_should_require_at_least_one_space() {
 		// example 34 - should require at least one space
 		test(
 			r##"
@@ -51,7 +57,7 @@ mod markdown_spec_atx_headings {
 	}
 
 	#[test]
-	fn should_not_parse_escaped() {
+	fn example_35_should_not_parse_escaped() {
 		// example 35
 		test(
 			r##"
@@ -64,7 +70,7 @@ mod markdown_spec_atx_headings {
 	}
 
 	#[test]
-	fn should_parse_content_as_inlines() {
+	fn example_36_should_parse_content_as_inlines() {
 		// example 36
 		test(
 			r##"
@@ -77,27 +83,33 @@ mod markdown_spec_atx_headings {
 	}
 
 	#[test]
-	fn should_trim_spaces() {
+	fn example_37_should_trim_spaces() {
 		// example 37
 		test_raw("#\t              foo\t                 ", "<h1>foo</h1>");
 	}
 
 	#[test]
-	fn should_allow_indentation() {
+	fn example_38_should_allow_indentation() {
 		// example 38
 		test_raw(" ### foo", "<h3>foo</h3>");
 		test_raw("  ## foo", "<h2>foo</h2>");
 		test_raw("   # foo", "<h1>foo</h1>");
+	}
 
+	#[test]
+	fn example_39_should_allow_indentation() {
 		// example 39
 		test_raw("    # foo", "<pre><code># foo</code></pre>");
+	}
 
+	#[test]
+	fn example_40_should_allow_indentation() {
 		// example 40
 		test_raw("foo\n    # bar", "<p>foo\n# bar</p>");
 	}
 
 	#[test]
-	fn should_allow_closing_sequence() {
+	fn example_41_should_allow_closing_sequence() {
 		// example 41
 		test(
 			r##"
@@ -109,8 +121,11 @@ mod markdown_spec_atx_headings {
 				<h3>bar</h3>
 			"##,
 		);
+	}
 
-		// example 42 - closing does not need to be the same length
+	#[test]
+	fn example_42_closing_does_not_need_to_be_same_length() {
+		// example 42
 		test(
 			r##"
 				# foo ##################################
@@ -121,18 +136,30 @@ mod markdown_spec_atx_headings {
 				<h5>foo</h5>
 			"##,
 		);
+	}
 
-		// example 43 - spaces are allowed after the closing
+	#[test]
+	fn example_43_spaces_are_allowed_after_closing() {
+		// example 43
 		test_raw("### foo ###     ", "<h3>foo</h3>");
+	}
 
-		// example 44 - `#` sequence in the middle is not a closing sequence
+	#[test]
+	fn example_44_hash_sequence_in_the_middle() {
+		// example 44
 		test("### foo ### b", "<h3>foo ### b</h3>");
+	}
 
-		// example 45 - closing sequence must be preceded by a space
+	#[test]
+	fn example_45_closing_must_be_preceeded_by_a_space() {
+		// example 45
 		test_raw("# foo 1#", "<h1>foo 1#</h1>");
 		test_raw("# foo 2 #", "<h1>foo 2</h1>");
 		test_raw("# foo 3\t#", "<h1>foo 3</h1>");
+	}
 
+	#[test]
+	fn example_46_backslash_escapes_do_not_count() {
 		// example 46 - backslash escaped characters do not count
 		test(
 			r##"
@@ -149,7 +176,7 @@ mod markdown_spec_atx_headings {
 	}
 
 	#[test]
-	fn dont_require_blank_lines_and_can_interrupt_paragraphs() {
+	fn example_47_dont_require_blank_lines() {
 		// example 47
 		test(
 			r##"
@@ -163,7 +190,10 @@ mod markdown_spec_atx_headings {
 				<hr/>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_48_can_interrupt_paragraphs() {
 		// example 48
 		test(
 			r##"
@@ -180,7 +210,7 @@ mod markdown_spec_atx_headings {
 	}
 
 	#[test]
-	fn can_be_empty() {
+	fn example_49_can_be_empty() {
 		// example 49
 		test(
 			r##"
