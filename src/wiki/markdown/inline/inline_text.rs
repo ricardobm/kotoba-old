@@ -173,6 +173,7 @@ impl<'a> Iterator for TextNodeIterator<'a> {
 					self.iter.skip_bytes(1);
 					next_char_escaped(&mut self.iter, false)
 				} else if let Some(m) = RE_HARD_BREAK.find(chunk) {
+					self.new_line = true;
 					self.iter.skip_bytes(m.end());
 					Some(TextSpan::LineBreak)
 				} else {

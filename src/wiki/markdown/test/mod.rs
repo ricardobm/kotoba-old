@@ -23,6 +23,7 @@ mod spec_paragraphs;
 mod spec_raw_html;
 mod spec_setext_headings;
 mod spec_tables;
+mod spec_thematic_breaks;
 
 fn test(input: &str, expected: &str) {
 	let input = common::text(input);
