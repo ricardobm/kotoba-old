@@ -9,7 +9,6 @@ mod spec_blockquotes;
 mod spec_breaks;
 mod spec_emphasis;
 mod spec_entities;
-mod spec_escapes;
 mod spec_fenced_code;
 mod spec_html_blocks;
 mod spec_images;
