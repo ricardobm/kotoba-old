@@ -128,7 +128,7 @@ mod markdown_spec_thematic_breaks {
 	}
 
 	#[test]
-	fn example_end_spaces_are_allowed_at_the_end() {
+	fn example_24_example_end_spaces_are_allowed_at_the_end() {
 		// example 24
 		test("- - - -    ", "<hr/>");
 	}

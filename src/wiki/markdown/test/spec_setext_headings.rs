@@ -119,6 +119,7 @@ mod markdown_spec_setext_headings {
 		test_raw("Foo  \n-----", "<h2>Foo</h2>");
 	}
 
+	#[test]
 	fn example_60_backslash_does_not_cause_a_line_break() {
 		// example 60
 		test_raw("Foo\\\n----", "<h2>Foo\\</h2>");
@@ -163,6 +164,7 @@ mod markdown_spec_setext_headings {
 		);
 	}
 
+	#[test]
 	fn example_63_cannot_be_a_lazy_continuation() {
 		// example 63
 		test(
@@ -181,6 +183,7 @@ mod markdown_spec_setext_headings {
 		);
 	}
 
+	#[test]
 	fn example_64_cannot_be_a_lazy_continuation() {
 		// example 64
 		test(
@@ -213,6 +216,7 @@ mod markdown_spec_setext_headings {
 		);
 	}
 
+	#[test]
 	fn example_66_consumes_whole_paragraph() {
 		// example 66
 		test(
@@ -272,6 +276,7 @@ mod markdown_spec_setext_headings {
 		);
 	}
 
+	#[test]
 	fn example_69_should_not_be_interpretable_as_blocks() {
 		// example 69
 		test(
@@ -288,11 +293,13 @@ mod markdown_spec_setext_headings {
 		);
 	}
 
+	#[test]
 	fn example_70_should_not_be_interpretable_as_blocks() {
 		// example 70
 		test_raw("    foo\n---", "<pre><code>foo</code></pre>\n<hr/>");
 	}
 
+	#[test]
 	fn example_71_should_not_be_interpretable_as_blocks() {
 		// example 71
 		test(
@@ -309,6 +316,7 @@ mod markdown_spec_setext_headings {
 		);
 	}
 
+	#[test]
 	fn example_72_should_not_be_interpretable_as_blocks() {
 		// example 72
 		test(
@@ -341,6 +349,7 @@ mod markdown_spec_setext_headings {
 		);
 	}
 
+	#[test]
 	fn example_74_should_handle_multiline() {
 		// example 74
 		test(
@@ -361,6 +370,7 @@ mod markdown_spec_setext_headings {
 		);
 	}
 
+	#[test]
 	fn example_75_should_handle_multiline() {
 		// example 75
 		test(
@@ -379,6 +389,7 @@ mod markdown_spec_setext_headings {
 		);
 	}
 
+	#[test]
 	fn example_76_should_handle_multiline() {
 		// example 76
 		test(
