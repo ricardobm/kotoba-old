@@ -247,8 +247,34 @@ impl<'a> ParserHelper<'a> {
 
 		// close any parent emphasis containers that can be closed by the
 		// delimiter.
-		while delim.token.len() > 0 && self.parent().can_be_closed_by(&delim) {
+		while delim.token.len() > 0 {
+			// Look for the closest parent that can be closed by this delimiter
+			for i in (0..self.parents.len()).rev() {
+				if self.parents[i].can_be_closed_by(&delim) {
+					// pop any unmatched parent tags, generating their
+					// delimiters as text
+					while i < self.parents.len() - 1 {
+						let mut cur = self.parents.pop_back().unwrap();
+						let par = self.parent();
+						// push the delimiter text
+						let txt_sta = cur.delim_pos;
+						let txt_end = {
+							let mut p = cur.delim_pos;
+							p.skip(cur.delim.token);
+							p
+						};
+						par.children.push_back(Parsed::Text(txt_sta, txt_end));
+						// push all the current node's children
+						par.children.append(&mut cur.children);
+					}
+					break;
+				}
+			}
+
 			let par = self.parent();
+			if !par.can_be_closed_by(&delim) {
+				break;
+			}
 
 			// Length of the matching delimiter (1 - emphasis, 2 - strong).
 			//
