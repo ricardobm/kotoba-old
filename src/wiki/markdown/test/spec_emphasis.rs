@@ -1712,4 +1712,60 @@ mod markdown_spec_emphasis {
 			"##,
 		);
 	}
+
+	#[test]
+	fn example_491_supports_strikethrough() {
+		// example 491
+		test(
+			r##"
+				~~Hi~~ Hello, world!
+			"##,
+			r##"
+				<p><del>Hi</del> Hello, world!</p>
+			"##,
+		);
+
+		test(
+			r##"
+				~~Hi~~ Hello, world!
+			"##,
+			r##"
+				<p><del>Hi</del> Hello, world!</p>
+			"##,
+		);
+
+		test(
+			r##"
+				__*~~Hi there~~Howdy* partner__!!!
+			"##,
+			r##"
+				<p><strong><em><del>Hi there</del>Howdy</em> partner</strong>!!!</p>
+			"##,
+		);
+
+		test(
+			r##"
+				~~__*Hi there*~~ partner__!!!
+			"##,
+			r##"
+				<p><del>__<em>Hi there</em></del> partner__!!!</p>
+			"##,
+		);
+	}
+
+	#[test]
+	fn example_491_strikethrough_is_inline() {
+		// example 491
+		test(
+			r##"
+				This ~~has a
+
+				new paragraph~~.
+			"##,
+			r##"
+				<p>This ~~has a</p>
+				<p>new paragraph~~.</p>
+			"##,
+		);
+	}
 }

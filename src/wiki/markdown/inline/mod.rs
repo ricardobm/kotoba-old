@@ -107,7 +107,7 @@ pub fn parse_inline<'a>(span: &Span<'a>, refs: &LinkReferenceMap<'a>, is_table: 
 						iter.skip_char();
 					}
 				}
-				Some('*') | Some('_') => {
+				Some('*') | Some('_') | Some('~') => {
 					if let Some(delim) = emphasis::parse_delim(&mut iter) {
 						helper.push_delim(start, iter.pos(), delim);
 					} else {
@@ -181,6 +181,15 @@ struct Container<'a> {
 
 impl<'a> Container<'a> {
 	fn can_be_closed_by(&self, delim: &Delim<'a>) -> bool {
+		if delim.is_st {
+			if !self.delim.is_st {
+				return false;
+			}
+			if !(self.delim.token.len() >= 2 && delim.token.len() >= 2) {
+				return false;
+			}
+		}
+
 		if self.delim.token.len() > 0
 			&& delim.can_close
 			&& self.delim.token.chars().next() == delim.token.chars().next()
@@ -280,9 +289,15 @@ impl<'a> ParserHelper<'a> {
 			//
 			// We always prefer `<strong>` over `<em>`, so if possible we match
 			// a length 2.
-			let len = std::cmp::min(2, std::cmp::min(delim.token.len(), par.delim.token.len()));
+			let len = if delim.is_st {
+				2
+			} else {
+				std::cmp::min(2, std::cmp::min(delim.token.len(), par.delim.token.len()))
+			};
 			debug_assert!(len > 0 && len <= 2);
-			let tag = if len == 1 {
+			let tag = if delim.is_st {
+				InlineTag::Strikethrough
+			} else if len == 1 {
 				InlineTag::Emphasis
 			} else {
 				InlineTag::Strong

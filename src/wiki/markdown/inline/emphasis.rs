@@ -14,6 +14,8 @@ pub struct Delim<'a> {
 	pub is_lf: bool,
 	/// Is this right-flanking?
 	pub is_rf: bool,
+	/// Is this strikethrough?
+	pub is_st: bool,
 	/// Can this open an emphasis/strong?
 	pub can_open: bool,
 	/// Can this close an emphasis/strong?
@@ -27,6 +29,7 @@ impl<'a> Default for Delim<'a> {
 			length:    0,
 			is_lf:     false,
 			is_rf:     false,
+			is_st:     false,
 			can_open:  false,
 			can_close: false,
 		}
@@ -35,7 +38,7 @@ impl<'a> Default for Delim<'a> {
 
 pub fn parse_delim<'a>(iter: &mut SpanIter<'a>) -> Option<Delim<'a>> {
 	lazy_static! {
-		static ref RE_DELIM: Regex = Regex::new(r"^([*]+|[_]+)").unwrap();
+		static ref RE_DELIM: Regex = Regex::new(r"^([*]+|[_]+|[~]{2})").unwrap();
 	}
 
 	let token = if let Some(m) = RE_DELIM.find(iter.chunk()) {
@@ -51,6 +54,8 @@ pub fn parse_delim<'a>(iter: &mut SpanIter<'a>) -> Option<Delim<'a>> {
 
 	// Underscore delimiters are not allowed intra-word.
 	let is_uc = token.starts_with('_');
+
+	let is_st = token.starts_with('~');
 
 	// A left-flanking delimiter run is a delimiter run that is
 	// 1) not followed by Unicode whitespace, and
@@ -97,6 +102,7 @@ pub fn parse_delim<'a>(iter: &mut SpanIter<'a>) -> Option<Delim<'a>> {
 		length,
 		is_lf,
 		is_rf,
+		is_st,
 		can_open,
 		can_close,
 	})
