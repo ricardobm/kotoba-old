@@ -6,8 +6,8 @@ mod markdown_spec_html_blocks {
 	use super::*;
 
 	#[test]
-	fn should_parse() {
-		// example 118 - ends with a blank line
+	fn example_118() {
+		// example 118
 		test(
 			r##"
 				<table><tr><td>
@@ -27,7 +27,10 @@ mod markdown_spec_html_blocks {
 				</td></tr></table>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_119() {
 		// example 119
 		test(
 			r##"
@@ -52,13 +55,19 @@ mod markdown_spec_html_blocks {
 				<p>okay.</p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_120() {
 		// example 120
 		test_raw(
 			" <div>\n  *hello*\n         <foo><a>",
 			" <div>\n  *hello*\n         <foo><a>",
 		);
+	}
 
+	#[test]
+	fn example_121() {
 		// example 121
 		test(
 			r##"
@@ -70,7 +79,10 @@ mod markdown_spec_html_blocks {
 				*foo*
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_122() {
 		// example 122
 		test(
 			r##"
@@ -86,7 +98,10 @@ mod markdown_spec_html_blocks {
 				</DIV>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_123() {
 		// example 123
 		test(
 			r##"
@@ -100,7 +115,10 @@ mod markdown_spec_html_blocks {
 				</div>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_124() {
 		// example 124
 		test(
 			r##"
@@ -114,7 +132,10 @@ mod markdown_spec_html_blocks {
 				</div>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_125() {
 		// example 125
 		test(
 			r##"
@@ -129,7 +150,10 @@ mod markdown_spec_html_blocks {
 				<p><em>bar</em></p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_126() {
 		// example 126
 		test(
 			r##"
@@ -141,7 +165,10 @@ mod markdown_spec_html_blocks {
 				*hi*
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_127() {
 		// example 127
 		test(
 			r##"
@@ -153,7 +180,10 @@ mod markdown_spec_html_blocks {
 				foo
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_128() {
 		// example 128
 		test(
 			r##"
@@ -165,7 +195,10 @@ mod markdown_spec_html_blocks {
 				*foo*
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_129() {
 		// example 129
 		test(
 			r##"
@@ -175,7 +208,10 @@ mod markdown_spec_html_blocks {
 				<div><a href="bar">*foo*</a></div>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_130() {
 		// example 130
 		test(
 			r##"
@@ -189,7 +225,10 @@ mod markdown_spec_html_blocks {
 				</td></tr></table>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_131() {
 		// example 131
 		test(
 			r##"
@@ -208,7 +247,7 @@ mod markdown_spec_html_blocks {
 	}
 
 	#[test]
-	fn should_parse_type_7() {
+	fn example_132_should_parse_type_7() {
 		// example 132
 		test(
 			r##"
@@ -222,7 +261,10 @@ mod markdown_spec_html_blocks {
 				</a>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_133_should_parse_type_7() {
 		// example 133
 		test(
 			r##"
@@ -236,7 +278,10 @@ mod markdown_spec_html_blocks {
 				</Warning>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_134_should_parse_type_7() {
 		// example 134
 		test(
 			r##"
@@ -250,7 +295,10 @@ mod markdown_spec_html_blocks {
 				</i>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_135_should_parse_type_7() {
 		// example 135
 		test(
 			r##"
@@ -262,7 +310,10 @@ mod markdown_spec_html_blocks {
 				*bar*
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_136_should_parse_type_7() {
 		// example 136
 		test(
 			r##"
@@ -276,7 +327,10 @@ mod markdown_spec_html_blocks {
 				</del>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_137_should_parse_type_7() {
 		// example 137
 		test(
 			r##"
@@ -292,7 +346,10 @@ mod markdown_spec_html_blocks {
 				</del>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_138_should_parse_type_7() {
 		// example 138
 		test(
 			r##"
@@ -305,7 +362,7 @@ mod markdown_spec_html_blocks {
 	}
 
 	#[test]
-	fn should_parse_type_1() {
+	fn example_139_should_parse_type_1() {
 		// example 139
 		test(
 			r##"
@@ -327,7 +384,10 @@ mod markdown_spec_html_blocks {
 				<p>okay</p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_140_should_parse_type_1() {
 		// example 140
 		test(
 			r##"
@@ -347,7 +407,10 @@ mod markdown_spec_html_blocks {
 				<p>okay</p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_141_should_parse_type_1() {
 		// example 141
 		test(
 			r##"
@@ -372,7 +435,7 @@ mod markdown_spec_html_blocks {
 	}
 
 	#[test]
-	fn should_handle_unclosed_type_1() {
+	fn example_142_should_handle_unclosed_type_1() {
 		// example 142
 		test(
 			r##"
@@ -388,7 +451,10 @@ mod markdown_spec_html_blocks {
 				foo
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_143_should_handle_unclosed_type_1() {
 		// example 143
 		test(
 			r##"
@@ -405,7 +471,10 @@ mod markdown_spec_html_blocks {
 				<p>bar</p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_144_should_handle_unclosed_type_1() {
 		// example 144
 		test(
 			r##"
@@ -424,7 +493,7 @@ mod markdown_spec_html_blocks {
 	}
 
 	#[test]
-	fn type_1_end_tag_can_occur_on_the_same_line() {
+	fn example_145_type_1_end_tag_can_occur_on_the_same_line() {
 		// example 145
 		test(
 			r##"
@@ -436,7 +505,10 @@ mod markdown_spec_html_blocks {
 				<p><em>foo</em></p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_146_type_1_end_tag_can_occur_on_the_same_line() {
 		// example 146
 		test(
 			r##"
@@ -451,7 +523,7 @@ mod markdown_spec_html_blocks {
 	}
 
 	#[test]
-	fn includes_anything_after_end_tag() {
+	fn example_147_includes_anything_after_end_tag() {
 		// example 147
 		test(
 			r##"
@@ -468,7 +540,7 @@ mod markdown_spec_html_blocks {
 	}
 
 	#[test]
-	fn supports_type_2_comments() {
+	fn example_148_supports_type_2_comments() {
 		// example 148
 		test(
 			r##"
@@ -489,7 +561,7 @@ mod markdown_spec_html_blocks {
 	}
 
 	#[test]
-	fn supports_type_3_processing_instructions() {
+	fn example_149_supports_type_3_processing_instructions() {
 		// example 149
 		test(
 			r##"
@@ -512,7 +584,7 @@ mod markdown_spec_html_blocks {
 	}
 
 	#[test]
-	fn supports_type_4_declarations() {
+	fn example_150_supports_type_4_declarations() {
 		// example 150
 		test(
 			r##"
@@ -525,7 +597,7 @@ mod markdown_spec_html_blocks {
 	}
 
 	#[test]
-	fn supports_type_5_cdata() {
+	fn example_151_supports_type_5_cdata() {
 		// example 151
 		test(
 			r##"
@@ -562,19 +634,22 @@ mod markdown_spec_html_blocks {
 	}
 
 	#[test]
-	fn can_be_indented() {
+	fn example_152_can_be_indented() {
 		// example 152
 		test_raw(
 			"   <!-- foo -->\n\n    <!-- foo -->",
 			"   <!-- foo -->\n<pre><code>&lt;!-- foo --&gt;</code></pre>",
 		);
+	}
 
+	#[test]
+	fn example_153_can_be_indented() {
 		// example 153
 		test_raw("   <div>\n\n    <div>", "   <div>\n<pre><code>&lt;div&gt;</code></pre>");
 	}
 
 	#[test]
-	fn handles_paragraphs_and_blanks_correctly() {
+	fn example_154_handles_paragraphs_and_blanks_correctly() {
 		// example 154 - types 1-6 can interrupt paragraph
 		test(
 			r##"
@@ -590,7 +665,10 @@ mod markdown_spec_html_blocks {
 				</div>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_155_handles_paragraphs_and_blanks_correctly() {
 		// example 155
 		test(
 			r##"
@@ -606,7 +684,10 @@ mod markdown_spec_html_blocks {
 				*foo*
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_156_handles_paragraphs_and_blanks_correctly() {
 		// example 156 - type 7 cannot interrupt paragraph
 		test(
 			r##"
@@ -620,7 +701,10 @@ mod markdown_spec_html_blocks {
 				baz</p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_157_handles_paragraphs_and_blanks_correctly() {
 		// blank lines interrupt the block:
 
 		// example 157
@@ -638,7 +722,10 @@ mod markdown_spec_html_blocks {
 				</div>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_158_handles_paragraphs_and_blanks_correctly() {
 		// example 158
 		test(
 			r##"
@@ -652,7 +739,10 @@ mod markdown_spec_html_blocks {
 				</div>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_159_handles_paragraphs_and_blanks_correctly() {
 		// example 159
 		test(
 			r##"
@@ -678,7 +768,10 @@ mod markdown_spec_html_blocks {
 				</table>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_160_handles_paragraphs_and_blanks_correctly() {
 		// example 160 - blank lines and indentation
 		test_raw(
 			"<table>\n\n  <tr>\n\n    <td>\n      Hi\n    </td>\n\n  </tr>\n\n</table>",

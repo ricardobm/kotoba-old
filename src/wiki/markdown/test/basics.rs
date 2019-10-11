@@ -4,8 +4,53 @@ mod markdown_basics {
 	use super::*;
 
 	#[test]
+	fn allow_empty_document() {
+		test("", "");
+		test("   \t", "");
+		test("\n\r\r\n", "");
+		test("    \n    \r    \r\n\t\n", "");
+	}
+
+	#[test]
+	fn zero_byte_should_be_replaced() {
+		test_raw("\0", "<p>\u{FFFD}</p>");
+		test_raw("    \0", "<pre><code>\u{FFFD}</code></pre>");
+		test_raw("[foo](</url/\0>)", "<p><a href=\"/url/\u{FFFD}\">foo</a></p>");
+	}
+
+	#[test]
 	fn should_allow_empty_input() {
 		test("", "");
+	}
+
+	#[test]
+	fn should_parse_with_any_line_breaks() {
+		test_raw("aaa\n\nbbb", "<p>aaa</p>\n<p>bbb</p>");
+		test_raw("aaa\r\rbbb", "<p>aaa</p>\n<p>bbb</p>");
+		test_raw("aaa\r\n\r\nbbb", "<p>aaa</p>\n<p>bbb</p>");
+
+		test_raw("\naaa\n\nbbb\n", "<p>aaa</p>\n<p>bbb</p>");
+		test_raw("\raaa\r\rbbb\r", "<p>aaa</p>\n<p>bbb</p>");
+		test_raw("\r\naaa\r\n\r\nbbb\r\n", "<p>aaa</p>\n<p>bbb</p>");
+
+		test_raw("\naaa\nbbb\n", "<p>aaa\nbbb</p>");
+		test_raw("\raaa\rbbb\r", "<p>aaa\nbbb</p>");
+		test_raw("\r\naaa\r\nbbb\r\n", "<p>aaa\nbbb</p>");
+	}
+
+	#[test]
+	fn should_trim_trailing_spaces() {
+		test_raw("aaa \n123 \n\nbbb ", "<p>aaa\n123</p>\n<p>bbb</p>");
+		test_raw("aaa \r123 \r\rbbb ", "<p>aaa\n123</p>\n<p>bbb</p>");
+		test_raw("aaa \r\n123 \r\n\r\nbbb ", "<p>aaa\n123</p>\n<p>bbb</p>");
+
+		test_raw("\naaa\n\nbbb\n", "<p>aaa</p>\n<p>bbb</p>");
+		test_raw("\raaa\r\rbbb\r", "<p>aaa</p>\n<p>bbb</p>");
+		test_raw("\r\naaa\r\n\r\nbbb\r\n", "<p>aaa</p>\n<p>bbb</p>");
+
+		test_raw("\naaa\nbbb\n", "<p>aaa\nbbb</p>");
+		test_raw("\raaa\rbbb\r", "<p>aaa\nbbb</p>");
+		test_raw("\r\naaa\r\nbbb\r\n", "<p>aaa\nbbb</p>");
 	}
 
 	#[test]
@@ -217,5 +262,25 @@ mod markdown_basics {
 			"<p><code>foo(rn)   bar   123</code></p>",
 		);
 		test_raw("`\rfoo(r)   bar  \n123\r`", "<p><code>foo(r)   bar   123</code></p>");
+	}
+
+	#[test]
+	fn should_support_table_with_no_head() {
+		test(
+			r##"
+				| --- | --- |
+				| abc | def |
+			"##,
+			r##"
+				<table>
+				<tbody>
+				<tr>
+				<td>abc</td>
+				<td>def</td>
+				</tr>
+				</tbody>
+				</table>
+			"##,
+		);
 	}
 }

@@ -6,7 +6,7 @@ mod markdown_spec_thematic_breaks {
 	use super::*;
 
 	#[test]
-	fn should_parse() {
+	fn example_13_should_parse() {
 		// example 13
 		test(
 			r##"
@@ -20,9 +20,10 @@ mod markdown_spec_thematic_breaks {
 				<hr/>
 			"##,
 		);
+	}
 
-		// wrong characters:
-
+	#[test]
+	fn example_14_wrong_characters() {
 		// example 14
 		test(
 			r##"
@@ -32,7 +33,10 @@ mod markdown_spec_thematic_breaks {
 				<p>+++</p>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_15_wrong_characters() {
 		// example 15
 		test(
 			r##"
@@ -42,9 +46,10 @@ mod markdown_spec_thematic_breaks {
 				<p>===</p>
 			"##,
 		);
+	}
 
-		// not enough characters:
-
+	#[test]
+	fn example_16_not_enough_characters() {
 		// example 16
 		test(
 			r##"
@@ -61,14 +66,15 @@ mod markdown_spec_thematic_breaks {
 	}
 
 	#[test]
-	fn allows_one_to_three_spaces() {
+	fn example_17_allows_one_to_three_spaces() {
 		// example 17
 		test_raw(" ***\n  ***\n   ***", "<hr/>\n<hr/>\n<hr/>");
 		test_raw(" ---\n  ---\n   ---", "<hr/>\n<hr/>\n<hr/>");
 		test_raw(" ___\n  ___\n   ___", "<hr/>\n<hr/>\n<hr/>");
+	}
 
-		// four spaces is too many:
-
+	#[test]
+	fn example_18_four_spaces_is_too_many() {
 		// example 18
 		test_raw("    ***", "<pre><code>***</code></pre>");
 		test_raw("    ---", "<pre><code>---</code></pre>");
@@ -77,7 +83,10 @@ mod markdown_spec_thematic_breaks {
 		test_raw("\t***", "<pre><code>***</code></pre>");
 		test_raw("\t---", "<pre><code>---</code></pre>");
 		test_raw("\t___", "<pre><code>___</code></pre>");
+	}
 
+	#[test]
+	fn example_19_four_spaces_is_too_many() {
 		// example 19
 		test_raw("Foo 1\n    ***", "<p>Foo 1\n***</p>");
 		test_raw("Foo 2\n    ---", "<p>Foo 2\n---</p>");
@@ -93,7 +102,7 @@ mod markdown_spec_thematic_breaks {
 	}
 
 	#[test]
-	fn allows_more_than_three_characters() {
+	fn example_20_allows_more_than_three_characters() {
 		// example 20
 		test("_____________________________________", "<hr/>");
 		test("-------------------------------------", "<hr/>");
@@ -101,17 +110,32 @@ mod markdown_spec_thematic_breaks {
 	}
 
 	#[test]
-	fn allows_spaces_and_only_spaces() {
+	fn example_21_allows_spaces_and_only_spaces() {
 		// example 21
 		test(" - - -", "<hr/>");
+	}
+
+	#[test]
+	fn example_22_allows_spaces_and_only_spaces() {
 		// example 22
 		test(" **  * ** * ** * **", "<hr/>");
+	}
+
+	#[test]
+	fn example_23_allows_spaces_and_only_spaces() {
 		// example 23
 		test("-     -      -      -", "<hr/>");
-		// example 24 - spaces are allowed at the end
-		test("- - - -    ", "<hr/>");
+	}
 
-		// example 25 - no other characters may occur
+	#[test]
+	fn example_end_spaces_are_allowed_at_the_end() {
+		// example 24
+		test("- - - -    ", "<hr/>");
+	}
+
+	#[test]
+	fn example_25_no_other_characters_may_occur() {
+		// example 25
 		test(
 			r##"
 				_ _ _ _ a
@@ -129,13 +153,13 @@ mod markdown_spec_thematic_breaks {
 	}
 
 	#[test]
-	fn requires_non_space_characters_to_be_the_same() {
+	fn example_26_requires_non_space_characters_to_be_the_same() {
 		// example 26
 		test(" *-*", "<p><em>-</em></p>");
 	}
 
 	#[test]
-	fn should_not_require_blank_lines() {
+	fn example_27_should_not_require_blank_lines() {
 		// example 27
 		test(
 			r##"
@@ -156,7 +180,7 @@ mod markdown_spec_thematic_breaks {
 	}
 
 	#[test]
-	fn can_interrupt_a_paragraph() {
+	fn example_28_can_interrupt_a_paragraph() {
 		// example 28
 		test(
 			r##"
@@ -199,7 +223,7 @@ mod markdown_spec_thematic_breaks {
 	}
 
 	#[test]
-	fn has_lower_precedence_than_setext_heading() {
+	fn example_29_has_lower_precedence_than_setext_heading() {
 		// example 29
 		test(
 			r##"
@@ -215,7 +239,7 @@ mod markdown_spec_thematic_breaks {
 	}
 
 	#[test]
-	fn has_higher_precedence_than_lists() {
+	fn example_30_has_higher_precedence_than_lists() {
 		// example 30
 		test(
 			r##"
@@ -233,7 +257,10 @@ mod markdown_spec_thematic_breaks {
 				</ul>
 			"##,
 		);
+	}
 
+	#[test]
+	fn example_31_has_higher_precedence_than_lists() {
 		// example 31
 		test(
 			r##"

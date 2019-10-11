@@ -6,7 +6,7 @@ mod markdown_spec_paragraphs {
 	use super::*;
 
 	#[test]
-	fn should_parse() {
+	fn example_189_should_parse() {
 		// example 189
 		test(
 			r##"
@@ -22,37 +22,7 @@ mod markdown_spec_paragraphs {
 	}
 
 	#[test]
-	fn should_parse_with_any_line_breaks() {
-		test_raw("aaa\n\nbbb", "<p>aaa</p>\n<p>bbb</p>");
-		test_raw("aaa\r\rbbb", "<p>aaa</p>\n<p>bbb</p>");
-		test_raw("aaa\r\n\r\nbbb", "<p>aaa</p>\n<p>bbb</p>");
-
-		test_raw("\naaa\n\nbbb\n", "<p>aaa</p>\n<p>bbb</p>");
-		test_raw("\raaa\r\rbbb\r", "<p>aaa</p>\n<p>bbb</p>");
-		test_raw("\r\naaa\r\n\r\nbbb\r\n", "<p>aaa</p>\n<p>bbb</p>");
-
-		test_raw("\naaa\nbbb\n", "<p>aaa\nbbb</p>");
-		test_raw("\raaa\rbbb\r", "<p>aaa\nbbb</p>");
-		test_raw("\r\naaa\r\nbbb\r\n", "<p>aaa\nbbb</p>");
-	}
-
-	#[test]
-	fn should_trim_trailing_spaces() {
-		test_raw("aaa \n123 \n\nbbb ", "<p>aaa\n123</p>\n<p>bbb</p>");
-		test_raw("aaa \r123 \r\rbbb ", "<p>aaa\n123</p>\n<p>bbb</p>");
-		test_raw("aaa \r\n123 \r\n\r\nbbb ", "<p>aaa\n123</p>\n<p>bbb</p>");
-
-		test_raw("\naaa\n\nbbb\n", "<p>aaa</p>\n<p>bbb</p>");
-		test_raw("\raaa\r\rbbb\r", "<p>aaa</p>\n<p>bbb</p>");
-		test_raw("\r\naaa\r\n\r\nbbb\r\n", "<p>aaa</p>\n<p>bbb</p>");
-
-		test_raw("\naaa\nbbb\n", "<p>aaa\nbbb</p>");
-		test_raw("\raaa\rbbb\r", "<p>aaa\nbbb</p>");
-		test_raw("\r\naaa\r\nbbb\r\n", "<p>aaa\nbbb</p>");
-	}
-
-	#[test]
-	fn can_contain_multiple_lines_but_no_blank_lines() {
+	fn example_190_can_contain_multiple_lines_but_no_blank_lines() {
 		// example 190
 		test(
 			r##"
@@ -93,7 +63,7 @@ mod markdown_spec_paragraphs {
 	}
 
 	#[test]
-	fn multiple_blank_lines_have_no_effect() {
+	fn example_191_multiple_blank_lines_have_no_effect() {
 		// example 191
 		test(
 			r##"
@@ -110,13 +80,13 @@ mod markdown_spec_paragraphs {
 	}
 
 	#[test]
-	fn leading_spaces_are_skipped() {
+	fn example_192_leading_spaces_are_skipped() {
 		// example 192
 		test_raw("  aaa\n bbb", "<p>aaa\nbbb</p>");
 	}
 
 	#[test]
-	fn lines_after_the_first_may_be_indented_by_any_amount() {
+	fn example_193_lines_after_the_first_may_be_indented_by_any_amount() {
 		// example 193
 		test_raw(
 			"aaa\n             bbb\n                                       ccc",
@@ -125,22 +95,25 @@ mod markdown_spec_paragraphs {
 	}
 
 	#[test]
-	fn first_line_may_be_indented_up_to_three_spaces() {
+	fn example_194_first_line_may_be_indented_up_to_three_spaces() {
 		// example 194
 		test_raw("   aaa\nbbb", "<p>aaa\nbbb</p>");
+	}
 
+	#[test]
+	fn example_195_first_line_may_be_indented_up_to_three_spaces() {
 		// example 195
 		test_raw("    aaa\nbbb", "<pre><code>aaa</code></pre>\n<p>bbb</p>");
 	}
 
 	#[test]
-	fn final_spaces_are_stripped() {
+	fn example_196_final_spaces_are_stripped() {
 		// example 196
 		test_raw("aaa     \nbbb     ", "<p>aaa<br/>\nbbb</p>");
 	}
 
 	#[test]
-	fn ignores_blank_lines_between_blocks() {
+	fn example_197_ignores_blank_lines_between_blocks() {
 		// example 197
 		test_raw("  \n\naaa\n  \n\n# aaa\n\n  ", "<p>aaa</p>\n<h1>aaa</h1>");
 	}

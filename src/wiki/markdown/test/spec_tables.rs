@@ -263,24 +263,4 @@ mod markdown_spec_tables {
 			"##,
 		);
 	}
-
-	#[test]
-	fn example_with_no_head() {
-		test(
-			r##"
-				| --- | --- |
-				| abc | def |
-			"##,
-			r##"
-				<table>
-				<tbody>
-				<tr>
-				<td>abc</td>
-				<td>def</td>
-				</tr>
-				</tbody>
-				</table>
-			"##,
-		);
-	}
 }
