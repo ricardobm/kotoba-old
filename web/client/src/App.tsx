@@ -45,13 +45,14 @@ class App extends React.Component {
 }
 
 interface DictResult {
-    query: string,
+    id: number,
+    expression: string,
     reading: string,
     total: number,
     elapsed: number,
     terms: DictItem[],
-    tags: { [key: number]: DictTag },
-    sources: DictSource[],
+    tags: { [key: string]: DictTag },
+    sources: { [key: string]: DictSource },
 }
 
 interface DictItem {
@@ -59,9 +60,9 @@ interface DictItem {
     reading: string,
     definition: DictDefinition[],
     romaji: string,
-    source: number[],
+    sources: string[],
     forms: DictForm[],
-    tags: number[],
+    tags: string[],
     frequency: number | null,
     score: number,
 }
@@ -69,7 +70,7 @@ interface DictItem {
 interface DictDefinition {
     text: string[],
     info: string[],
-    tags: number[],
+    tags: string[],
     link: DictLink[],
 }
 
@@ -132,7 +133,7 @@ class Dict extends React.Component<DictProps, DictState> {
     search(text: string) {
         this.setState({ search: text })
         this.props.navigate && this.props.navigate('/search/' + text)
-        fetch('/api/search', {
+        fetch('/api/dict/search', {
             method: 'POST',
             body: JSON.stringify({
                 query: text,
@@ -147,6 +148,11 @@ class Dict extends React.Component<DictProps, DictState> {
                 if (this.state.search !== text) {
                     return
                 }
+                let sources: any = {}
+                for (let it of data.sources) {
+                    sources[it.name] = it
+                }
+                data.sources = sources
                 this.setState({ result: data })
             })
     }
@@ -168,7 +174,7 @@ class Dict extends React.Component<DictProps, DictState> {
 
 const Result: React.FC<{ data: DictResult }> = ({ data }) =>
     <div>
-        <h1>Results for "{data.query}" ({data.reading})</h1>
+        <h1>Results for "{data.expression}" ({data.reading})</h1>
         <div>Found {data.total} results in {data.elapsed.toFixed(3)}s</div>
         <hr />
         {data.terms.map(it => <ResultItem item={it} data={data} />)
@@ -184,7 +190,7 @@ const ResultItem: React.FC<{ data: DictResult, item: DictItem }> = ({ data, item
         <h2><Term term={item.expression} reading={item.reading} frequency={item.frequency} /></h2>
         <em>
             Sources:&nbsp;
-            {item.source.map(src =>
+            {item.sources.map(src =>
                 <span title={`Revision ${data.sources[src].revision}`}>
                     {data.sources[src].name}
                 </span>
@@ -232,7 +238,7 @@ const ResultDefinition: React.FC<{ data: DictResult, item: DictDefinition }> = (
         }
     </li>
 
-const TagList: React.FC<{ tags: number[], data: DictResult, wrap?: boolean }> = ({ tags, data, wrap }) =>
+const TagList: React.FC<{ tags: string[], data: DictResult, wrap?: boolean }> = ({ tags, data, wrap }) =>
     <span>
         {!tags.length ? <span /> :
             <span>
