@@ -1,6 +1,6 @@
 import React from 'react'
 import logo from './logo.svg'
-import './App.css'
+import './css/App.scss'
 import { Router, RouteComponentProps, Link } from '@reach/router'
 
 type Item = {
