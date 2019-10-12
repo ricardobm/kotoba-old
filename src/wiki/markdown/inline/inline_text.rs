@@ -7,6 +7,7 @@ dbg_flag!(true);
 const REPLACEMENT_CHAR: char = '\u{FFFD}';
 
 /// Text parsing modes.
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum TextMode {
 	/// Parse raw text, without escapes nor entities.

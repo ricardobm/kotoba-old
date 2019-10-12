@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 
 use regex::Regex;
 
-#[allow(dead_code)]
 pub mod markdown;
 
 use util;

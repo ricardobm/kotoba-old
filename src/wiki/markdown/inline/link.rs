@@ -420,10 +420,3 @@ fn parse_link_title<'a>(iter: &mut SpanIter<'a>) -> Option<TextNode<'a>> {
 		TextMode::WithEscapesAndEntities,
 	))
 }
-
-fn is_special_char(c: char) -> bool {
-	match c {
-		'[' | ']' | '<' | '`' | '\\' | '!' => true,
-		_ => false,
-	}
-}

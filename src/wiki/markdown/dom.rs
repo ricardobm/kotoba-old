@@ -41,50 +41,6 @@ pub enum Event<'a> {
 	Reference(LinkReference<'a>),
 }
 
-impl<'a> Event<'a> {
-	pub fn is_list_open(&self) -> bool {
-		match self {
-			Event::Output(MarkupEvent::Open(Block::List(..))) => true,
-			_ => false,
-		}
-	}
-
-	pub fn is_list_close(&self) -> bool {
-		match self {
-			Event::Output(MarkupEvent::Close(Block::List(..))) => true,
-			_ => false,
-		}
-	}
-
-	pub fn is_list_item_open(&self) -> bool {
-		match self {
-			Event::Output(MarkupEvent::Open(Block::ListItem(..))) => true,
-			_ => false,
-		}
-	}
-
-	pub fn is_list_item_close(&self) -> bool {
-		match self {
-			Event::Output(MarkupEvent::Close(Block::ListItem(..))) => true,
-			_ => false,
-		}
-	}
-
-	pub fn is_open(&self) -> bool {
-		match self {
-			Event::Output(markup) => markup.is_open(),
-			_ => false,
-		}
-	}
-
-	pub fn is_close(&self) -> bool {
-		match self {
-			Event::Output(markup) => markup.is_close(),
-			_ => false,
-		}
-	}
-}
-
 /// Events generated when iterating markdown text that directly generate
 /// some markup.
 #[derive(Clone, Debug)]
@@ -106,24 +62,6 @@ pub enum MarkupEvent<'a> {
 	///
 	/// Always corresponds to an [Open] event.
 	Close(Block<'a>),
-}
-
-impl<'a> MarkupEvent<'a> {
-	fn is_open(&self) -> bool {
-		if let MarkupEvent::Open(..) = self {
-			true
-		} else {
-			false
-		}
-	}
-
-	fn is_close(&self) -> bool {
-		if let MarkupEvent::Close(..) = self {
-			true
-		} else {
-			false
-		}
-	}
 }
 
 pub struct MarkupWithLinks<'a, 'r>(pub &'r MarkupEvent<'a>, pub &'r LinkReferenceMap<'a>);
@@ -522,26 +460,6 @@ pub struct TableBody<'a> {
 }
 
 impl<'a> TableBody<'a> {
-	/// Number of rows in the body.
-	pub fn len(&self) -> usize {
-		self.table.inner.body.len()
-	}
-
-	/// Number of columns in the table.
-	pub fn cols(&self) -> usize {
-		self.table.cols()
-	}
-
-	/// Return a table row.
-	pub fn row(&self, index: usize) -> TableRow<'a> {
-		TableRow {
-			table: self.table.clone(),
-			cols:  self.table.cols(),
-			iter:  self.table.inner.body[index].iter(),
-			cur:   0,
-		}
-	}
-
 	pub fn iter(&self) -> TableBodyIter<'a> {
 		TableBodyIter {
 			next:  0,
@@ -550,6 +468,7 @@ impl<'a> TableBody<'a> {
 	}
 }
 
+#[allow(dead_code)]
 impl<'a> fmt::Debug for TableBody<'a> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "{:?}", self.iter())

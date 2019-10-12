@@ -45,6 +45,7 @@ macro_rules! time {
 #[allow(unused_macros)]
 macro_rules! dbg_flag {
 	($arg:literal) => {
+		#[allow(dead_code)]
 		const DEBUG_ENABLED: bool = $arg;
 	};
 }

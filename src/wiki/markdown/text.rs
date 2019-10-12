@@ -258,10 +258,6 @@ impl<'a> TextBuffer<'a> {
 		self.pos.next_indent_width(self.src)
 	}
 
-	pub fn next_line_pos(&mut self) -> Pos {
-		self.eol_pos(true)
-	}
-
 	/// Skip indentation of the current line and return the indentation width.
 	pub fn skip_indent(&mut self) -> usize {
 		let (columns, len) = common::indent_width(&self.src[self.pos.offset..], self.pos.column);

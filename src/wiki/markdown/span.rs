@@ -121,14 +121,6 @@ impl<'a> Span<'a> {
 		&self.buffer[self.start.offset..self.end.offset]
 	}
 
-	pub fn sub_text<T>(&self, range: T) -> &'a str
-	where
-		T: std::ops::RangeBounds<Pos>,
-	{
-		let range = super::range_from_pos(&range, self.buffer.len());
-		&self.buffer[range.start..range.end]
-	}
-
 	pub fn end(&self) -> Span<'a> {
 		self.sub(self.len()..)
 	}
@@ -260,14 +252,6 @@ impl<'a> SpanIter<'a> {
 	/// blockquote markers.
 	pub fn remaining_text(&self) -> &'a str {
 		&self.span.buffer[self.cursor.offset..self.maxpos.offset]
-	}
-
-	pub fn restore_from(&mut self, iter: &SpanIter<'a>) {
-		self.cursor = iter.cursor;
-		self.skip = iter.skip;
-		self.next_eol = iter.next_eol;
-		self.pending = iter.pending;
-		self.stripped = iter.stripped;
 	}
 
 	pub fn skip_to(&mut self, pos: Pos) {
@@ -418,11 +402,6 @@ impl<'a> SpanIter<'a> {
 		self.chunk().chars().next()
 	}
 
-	/// Returns the indentation width of the current text, without consuming it.
-	pub fn next_indent_width(&self) -> usize {
-		self.cursor.next_indent_width(self.buffer())
-	}
-
 	pub fn skip_char(&mut self) -> bool {
 		let len = self.chunk().len();
 		if len > 0 {
@@ -480,19 +459,6 @@ impl<'a> SpanIter<'a> {
 		None
 	}
 
-	/// Search for the specific string.
-	pub fn search_str(&self, needle: &str) -> Option<Pos> {
-		self.search_text(|s: &str| s.find(needle))
-	}
-
-	/// Search for a char that matches the searcher.
-	pub fn search_char<T>(&self, search: T) -> Option<Pos>
-	where
-		T: Fn(char) -> bool,
-	{
-		self.search_text(|s: &str| s.find(&search))
-	}
-
 	//=========================================
 	// Find methods
 	//=========================================
@@ -511,10 +477,6 @@ impl<'a> SpanIter<'a> {
 		} else {
 			None
 		}
-	}
-
-	pub fn find_str_in_chunk(&mut self, needle: &str) -> Option<Pos> {
-		self.find_in_chunk(|s: &str| s.find(needle))
 	}
 
 	pub fn find_char_in_chunk<T>(&mut self, search: T) -> Option<Pos>
