@@ -389,6 +389,8 @@ mod markdown_spec_html_blocks {
 	#[test]
 	fn example_140_should_parse_type_1() {
 		// example 140
+
+		// NOTE: we filter the `<script` out because of GFM extensions
 		test(
 			r##"
 				<script type="text/javascript">
@@ -399,7 +401,7 @@ mod markdown_spec_html_blocks {
 				okay
 			"##,
 			r##"
-				<script type="text/javascript">
+				&lt;script type="text/javascript">
 				// JavaScript example
 
 				document.getElementById("demo").innerHTML = "Hello JavaScript!";
@@ -412,6 +414,8 @@ mod markdown_spec_html_blocks {
 	#[test]
 	fn example_141_should_parse_type_1() {
 		// example 141
+
+		// NOTE: we filter the `<style` out because of GFM extensions
 		test(
 			r##"
 				<style
@@ -423,7 +427,7 @@ mod markdown_spec_html_blocks {
 				okay
 			"##,
 			r##"
-				<style
+				&lt;style
 					type="text/css">
 				h1 {color:red;}
 
@@ -437,6 +441,8 @@ mod markdown_spec_html_blocks {
 	#[test]
 	fn example_142_should_handle_unclosed_type_1() {
 		// example 142
+
+		// NOTE: we filter the `<style` out because of GFM extensions
 		test(
 			r##"
 				<style
@@ -445,7 +451,7 @@ mod markdown_spec_html_blocks {
 				foo
 			"##,
 			r##"
-				<style
+				&lt;style
 				  type="text/css">
 
 				foo
@@ -495,13 +501,15 @@ mod markdown_spec_html_blocks {
 	#[test]
 	fn example_145_type_1_end_tag_can_occur_on_the_same_line() {
 		// example 145
+
+		// NOTE: we filter the `<style` out because of GFM extensions
 		test(
 			r##"
 				<style>p{color:red;}</style>
 				*foo*
 			"##,
 			r##"
-				<style>p{color:red;}</style>
+				&lt;style>p{color:red;}</style>
 				<p><em>foo</em></p>
 			"##,
 		);
@@ -525,6 +533,8 @@ mod markdown_spec_html_blocks {
 	#[test]
 	fn example_147_includes_anything_after_end_tag() {
 		// example 147
+
+		// NOTE: we filter the `<script` out because of GFM extensions
 		test(
 			r##"
 				<script>
@@ -532,7 +542,7 @@ mod markdown_spec_html_blocks {
 				</script>1. *bar*
 			"##,
 			r##"
-				<script>
+				&lt;script>
 				foo
 				</script>1. *bar*
 			"##,

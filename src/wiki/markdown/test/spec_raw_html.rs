@@ -292,4 +292,24 @@ mod markdown_spec_raw_html {
 			"##,
 		);
 	}
+
+	#[test]
+	fn example_653_disallows_dangerous_tags() {
+		// example 652
+		test(
+			r##"
+				<strong> <title> <NOFRAMES> <em>
+
+				<blockquote>
+				  <xmp> is disallowed.  <XMP> is also disallowed.
+				</blockquote>
+			"##,
+			r##"
+				<p><strong> &lt;title&gt; &lt;NOFRAMES&gt; <em></p>
+				<blockquote>
+				  &lt;xmp> is disallowed.  &lt;XMP> is also disallowed.
+				</blockquote>
+			"##,
+		);
+	}
 }

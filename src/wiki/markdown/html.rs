@@ -20,7 +20,9 @@ pub fn output<'a>(f: &mut fmt::Formatter, event: &MarkupEvent<'a>, refs: &LinkRe
 		}
 		MarkupEvent::Raw(span) => {
 			for html in span.iter() {
-				f.write_str(html)?;
+				for s in super::inline::iter_allowed_html(html) {
+					f.write_str(s)?;
+				}
 			}
 			Ok(())
 		}

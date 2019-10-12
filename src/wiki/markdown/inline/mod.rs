@@ -17,6 +17,7 @@ pub use self::autolink::AutoLink;
 pub use self::inline_code::CodeNode;
 pub use self::inline_text::{TextMode, TextNode, TextOrChar, TextSpan};
 pub use self::link::{Image, Link};
+pub use self::raw_html::iter_allowed_html;
 
 dbg_flag!(false);
 
