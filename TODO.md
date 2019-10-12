@@ -5,6 +5,26 @@ TODO next
   - Sentence intellisense
   - Word information
   - Cross-document table of contents
+  - Ruby
+    - Document-wide link style definitions `**[図書館]: としょかん`
+    - Inline definitions `[図書館]^(としょかん)`
+    - Always x Optional (user controlled) - `[図書館]^(!としょかん)`
+    - Support for Japanese punctuation in syntax
+    - Splitting `[漢字]^(kan ji)`
+
+          <ruby>
+          漢 <rp>(</rp><rt>kan</rt><rp>)</rp>
+          字 <rp>(</rp><rt>ji</rt><rp>)</rp>
+          </ruby>
+          <style>
+              rp, rt {
+                  -webkit-user-select: none;
+                  -moz-user-select: none;
+                  -ms-user-select: none;
+                  user-select: none;
+              }
+          </style>
+
 - Improve sort ordering for dictionary results (match, all else...)
 
 Major features
