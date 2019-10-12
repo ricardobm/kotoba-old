@@ -1252,6 +1252,13 @@ impl<'a> BlockIterator<'a> {
 				code.end = self.buffer.position();
 			}
 			leaf
+		} else if let Leaf::Table { span, head, body, cols } = leaf {
+			// don't generate a partial table
+			if cols.is_some() {
+				Leaf::Table { span, head, body, cols }
+			} else {
+				Leaf::Paragraph { text: span }
+			}
 		} else {
 			leaf
 		}

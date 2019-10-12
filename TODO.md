@@ -3,7 +3,6 @@ TODO next
 
 - Wiki
   - Markdown rendering
-    - Strikethrough (examples 491, 492) and forbidden HTML (example 653)
   - Sentence intellisense
   - Word information
   - Cross-document table of contents
