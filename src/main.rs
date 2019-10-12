@@ -2,9 +2,6 @@
 #![feature(duration_float)]
 #![feature(mem_take)]
 
-#[cfg(test)]
-extern crate speculate;
-
 // Logging
 
 #[macro_use]
@@ -35,8 +32,8 @@ extern crate lazy_static;
 // Unicode related
 
 extern crate fnv;
-extern crate unicode_normalization;
 extern crate unicode_categories;
+extern crate unicode_normalization;
 
 extern crate zip;
 
