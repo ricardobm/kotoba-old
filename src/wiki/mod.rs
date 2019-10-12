@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use regex::Regex;
 
 #[allow(dead_code)]
-mod markdown;
+pub mod markdown;
 
 use util;
 

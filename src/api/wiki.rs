@@ -47,18 +47,22 @@ impl<'r> rocket::response::Responder<'r> for WikiResponse {
 		use rocket::Response;
 
 		let response = match self {
-			WikiResponse::File(wiki) => Response::build()
-				.header(ContentType::with_params("text", "plain", vec![("charset", "UTF-8")]))
-				.header(ContentDisposition {
-					disposition: DispositionType::Inline,
-					parameters:  vec![DispositionParam::Filename(
-						Charset::Ext("UTF-8".into()),
-						None,
-						format!("{}.md", wiki.name).into_bytes(),
-					)],
-				})
-				.sized_body(std::io::Cursor::new(wiki.text))
-				.finalize(),
+			WikiResponse::File(input) => {
+				let markdown = markdown::parse_markdown(&input.text);
+				let html = markdown::to_html(markdown).unwrap();
+				Response::build()
+					.header(ContentType::with_params("text", "html", vec![("charset", "UTF-8")]))
+					.header(ContentDisposition {
+						disposition: DispositionType::Inline,
+						parameters:  vec![DispositionParam::Filename(
+							Charset::Ext("UTF-8".into()),
+							None,
+							format!("{}.html", input.name).into_bytes(),
+						)],
+					})
+					.sized_body(std::io::Cursor::new(html))
+					.finalize()
+			}
 			WikiResponse::NotFound => Response::build().status(rocket::http::Status::NotFound).finalize(),
 			WikiResponse::BadRequest => Response::build().status(rocket::http::Status::BadRequest).finalize(),
 			WikiResponse::ServerError => Response::build()

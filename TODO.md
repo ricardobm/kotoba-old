@@ -2,7 +2,6 @@ TODO next
 =========
 
 - Wiki
-  - Markdown rendering
   - Sentence intellisense
   - Word information
   - Cross-document table of contents
