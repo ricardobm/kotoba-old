@@ -21,7 +21,7 @@ pub use self::raw_html::iter_allowed_html;
 
 dbg_flag!(false);
 
-/// An inline element.
+/// An inline element parsed with [parse_inline].
 #[derive(Clone, Debug)]
 pub enum Elem<'a> {
 	// An inline element tag.
@@ -59,6 +59,13 @@ impl InlineTag {
 
 use self::emphasis::Delim;
 
+/// Parses a [Span] element as Markdown inline text.
+///
+/// - `span` is the element to parse, usually from a [MarkupEvent::Inline]
+///   or a [MarkupEvent::InlineCell].
+/// - `refs` contains the document's link reference definitions.
+/// - `is_table` if true enables parsing of `\|` escapes that are required
+///   by the GFM table syntax even on raw blocks.
 pub fn parse_inline<'a>(span: &Span<'a>, refs: &LinkReferenceMap<'a>, is_table: bool) -> Vec<Elem<'a>> {
 	let mut iter = span.iter();
 	let mut helper = ParserHelper::new(iter.pos());

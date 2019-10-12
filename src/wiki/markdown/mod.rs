@@ -1,3 +1,11 @@
+//! CommonMarkdown language parsing and HTML generation.
+//!
+//! Based on the spec from https://spec.commonmark.org/0.29/ with GFM
+//! extensions from https://github.github.com/gfm/ (`0.29-gfm`) both
+//! dated 2019-04-06.
+//!
+//! The root functions of this module are [parse_markdown] and [to_html].
+
 use std::collections::VecDeque;
 use std::fmt::Write;
 
@@ -21,7 +29,10 @@ mod dom;
 use self::dom::*;
 
 mod html;
+pub use self::html::output;
+
 mod inline;
+pub use self::inline::parse_inline;
 
 use util;
 
@@ -91,7 +102,11 @@ pub fn to_html<'a>(iter: MarkdownIterator<'a>) -> util::Result<String> {
 	Ok(output)
 }
 
-/// Iterates over [Element]s in a markdown text.
+/// Iterates over [Event]s in a markdown text.
+///
+/// This iterator parses the block structure of Markdown. Block elements
+/// provide text [Span]s that reference the original input and can be further
+/// processed as inlines or raw text.
 pub struct MarkdownIterator<'a> {
 	blocks:      BlockIterator<'a>,
 	loose_lists: bool,

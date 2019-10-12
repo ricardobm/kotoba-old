@@ -28,10 +28,10 @@ pub enum HeaderLevel {
 	H6 = 6,
 }
 
-/// Events generated when iterating markdown text.
+/// Events generated when iterating blocks in markdown text.
 #[derive(Clone, Debug)]
 pub enum Event<'a> {
-	/// Event that generates output.
+	/// Event that generates markup.
 	Output(MarkupEvent<'a>),
 	/// Generated for a link reference definition.
 	///
@@ -41,7 +41,7 @@ pub enum Event<'a> {
 	Reference(LinkReference<'a>),
 }
 
-/// Events generated when iterating markdown text that directly generate
+/// Events generated when iterating markdown blocks that directly generate
 /// some markup.
 #[derive(Clone, Debug)]
 pub enum MarkupEvent<'a> {
@@ -64,6 +64,8 @@ pub enum MarkupEvent<'a> {
 	Close(Block<'a>),
 }
 
+/// Wrapper to store a [MarkupEvent] with the [LinkReferenceMap] necessary
+/// for output.
 pub struct MarkupWithLinks<'a, 'r>(pub &'r MarkupEvent<'a>, pub &'r LinkReferenceMap<'a>);
 
 impl<'a, 'r> fmt::Display for MarkupWithLinks<'a, 'r> {
@@ -510,7 +512,9 @@ impl<'a> fmt::Debug for TableBodyIter<'a> {
 	}
 }
 
-/// Link reference.
+/// Link reference definition from a Markdown document.
+///
+/// This is designed to be stored within a LinkReferenceMap.
 #[derive(Clone, Debug)]
 pub struct LinkReference<'a> {
 	/// Link label text. This can contain inline elements.
@@ -522,6 +526,8 @@ pub struct LinkReference<'a> {
 	pub url: Span<'a>,
 }
 
+/// Provides a map of [LinkReference] definitions in a Markdown document
+/// and the lookup and matching logic from the spec.
 #[derive(Clone)]
 pub struct LinkReferenceMap<'a> {
 	map: HashMap<Span<'a>, LinkReference<'a>>,

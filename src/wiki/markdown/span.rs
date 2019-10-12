@@ -9,6 +9,7 @@ use super::{Pos, Range};
 /// Note that the raw source of the span may contain block marks (e.g. `>`),
 /// stripped indentation and escape sequences, and as such is not useful for
 /// direct usage.
+///
 /// Block of inline markdown text that can be independently parsed into [Inline]
 /// elements.
 #[derive(Clone, Eq)]

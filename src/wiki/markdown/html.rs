@@ -4,6 +4,7 @@ use std::fmt::Write;
 use super::inline::{parse_inline, CodeNode, Elem, TextMode, TextNode, TextOrChar, TextSpan};
 use super::{Block, HeaderLevel, LinkReferenceMap, MarkupEvent};
 
+/// Outputs a [MarkupEvent] as HTML to the given [std::fmt::Formatter].
 pub fn output<'a>(f: &mut fmt::Formatter, event: &MarkupEvent<'a>, refs: &LinkReferenceMap<'a>) -> fmt::Result {
 	match event {
 		MarkupEvent::Inline(span) => {
