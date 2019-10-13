@@ -7,24 +7,12 @@ import { scan, debounceTime, takeUntil, tap } from 'rxjs/operators'
 import PingPong from './pages/PingPong'
 import { Switch, Route } from 'react-router'
 import { Link } from 'react-router-dom'
+import Todos from './pages/Todos'
 
-type Item = {
-	id: string
-	text: string
-}
-
-interface PageState {
-	items: Item[]
-	loading: boolean
-	error: string
-}
+interface PageState {}
 
 class App extends React.Component {
-	state: PageState = {
-		items: [],
-		loading: true,
-		error: '',
-	}
+	state: PageState = {}
 
 	componentDidMount() {
 		const click = fromEvent(document, 'click')
@@ -64,8 +52,8 @@ class App extends React.Component {
 				<Route path="/ping_pong">
 					<PingPong />
 				</Route>
-				<Route path="/items">
-					<Items items={this.state.items} loading={this.state.loading} error={this.state.error} />
+				<Route path="/todo" onEnter>
+					<Todos />
 				</Route>
 				<Route path="/search">
 					<Dict />
@@ -360,22 +348,6 @@ const ResultTag: React.FC<{ tag: DictTag; src: string }> = ({ tag, src }) => (
 	</span>
 )
 
-const LoadingMessage: React.FC<{ loading: boolean }> = ({ loading }) =>
-	loading ? <div className="loading">Loading...</div> : <div />
-
-const ErrorMessage: React.FC<{ message: string }> = ({ message }) =>
-	message ? <div className="error">Error: {message}</div> : <div />
-
-const ListItem: React.FC<{ item: Item }> = ({ item }) => <div>{item.text}</div>
-
-const List: React.FC<{ items: Item[] }> = ({ items }) => (
-	<div>
-		{items.map(it => (
-			<ListItem key={it.id} item={it} />
-		))}
-	</div>
-)
-
 const Home: React.FC = () => (
 	<div className="App">
 		<header className="App-header">
@@ -386,8 +358,8 @@ const Home: React.FC = () => (
 			<a className="App-link" href="https://reactjs.org" target="_blank" rel="noopener noreferrer">
 				Learn React
 			</a>
-			<Link to="/items" className="App-link">
-				Items
+			<Link to="/todo" className="App-link">
+				TODO
 			</Link>
 			<Link to="/search" className="App-link">
 				Search
@@ -396,17 +368,6 @@ const Home: React.FC = () => (
 				Ping pong
 			</Link>
 		</header>
-	</div>
-)
-
-const Items: React.FC<PageState> = state => (
-	<div className="App">
-		<LoadingMessage loading={state.loading} />
-		<ErrorMessage message={state.error} />
-		<List items={state.items} />
-		<Link to="/" className="App-link">
-			Home
-		</Link>
 	</div>
 )
 

@@ -38,17 +38,15 @@ const PingPong: React.FC<IProps> = self => {
 	)
 }
 
-const mapStateToProps = (state: AppState) =>
-	({
-		label: state.ping_pong.ping ? 'PING' : 'PONG',
-		running: state.ping_pong.ping != null,
-	} as IState)
+const mapStateToProps = (state: AppState): IState => ({
+	label: state.ping_pong.ping ? 'PING' : 'PONG',
+	running: state.ping_pong.ping != null,
+})
 
-const mapDispatchToProps = (dispatch: Dispatch<Action>) =>
-	({
-		serve: () => dispatch(ping_pong.serve()),
-		reset: () => dispatch(ping_pong.reset()),
-	} as IDispatch)
+const mapDispatchToProps = (dispatch: Dispatch<Action>): IDispatch => ({
+	serve: () => dispatch(ping_pong.serve()),
+	reset: () => dispatch(ping_pong.reset()),
+})
 
 export default connect(
 	mapStateToProps,

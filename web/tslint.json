@@ -28,7 +28,8 @@
 		"whitespace": false,
 		"typedef-whitespace": false,
 		"object-literal-shorthand": false,
-		"one-line": false
+		"one-line": false,
+		"no-empty-interface": false
 	},
 	"rulesDirectory": []
 }
