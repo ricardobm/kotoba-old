@@ -1,5 +1,5 @@
-import { Epic, combineEpics, ofType } from 'redux-observable'
-import { filter, mapTo, delay, takeUntil, switchMap, tap, switchAll, map, startWith } from 'rxjs/operators'
+import { Epic, ofType } from 'redux-observable'
+import { mapTo, delay, takeUntil, switchMap, startWith } from 'rxjs/operators'
 import { merge } from 'rxjs'
 
 export interface State {

@@ -4,6 +4,7 @@ import * as ping_pong from '../store/ping_pong'
 import { AppState } from '../store'
 import { connect } from 'react-redux'
 import { Dispatch, Action } from 'redux'
+import { Link } from 'react-router-dom'
 
 interface IDispatch {
 	serve: () => ping_pong.Action
@@ -21,7 +22,7 @@ const PingPong: React.FC<IProps> = self => {
 	const onServe = () => self.serve()
 	const onReset = () => self.reset()
 	return (
-		<div>
+		<div className="App">
 			<p>{self.running ? self.label : 'Waiting serve...'}</p>
 			<button onClick={onServe} disabled={self.running}>
 				Serve
@@ -30,6 +31,9 @@ const PingPong: React.FC<IProps> = self => {
 			<button onClick={onReset} disabled={!self.running}>
 				Reset
 			</button>
+			<Link to="/" className="App-link">
+				Go back
+			</Link>
 		</div>
 	)
 }

@@ -1,18 +1,19 @@
 import React from 'react'
 import logo from './logo.svg'
 import './css/App.scss'
-import { Router, RouteComponentProps, Link } from '@reach/router'
 import { fromEvent } from 'rxjs'
 import { scan, debounceTime, takeUntil, tap } from 'rxjs/operators'
 
 import PingPong from './pages/PingPong'
+import { Switch, Route } from 'react-router'
+import { Link } from 'react-router-dom'
 
 type Item = {
 	id: string
 	text: string
 }
 
-interface PageState extends RouteComponentProps {
+interface PageState {
 	items: Item[]
 	loading: boolean
 	error: string
@@ -56,12 +57,20 @@ class App extends React.Component {
 
 	render() {
 		return (
-			<Router>
-				<Home path="/" />
-				<Items items={this.state.items} loading={this.state.loading} error={this.state.error} path="/items" />
-				<Dict path="/search" />
-				<Dict path="/search/:search" />
-			</Router>
+			<Switch>
+				<Route exact path="/">
+					<Home />
+				</Route>
+				<Route path="/ping_pong">
+					<PingPong />
+				</Route>
+				<Route path="/items">
+					<Items items={this.state.items} loading={this.state.loading} error={this.state.error} />
+				</Route>
+				<Route path="/search">
+					<Dict />
+				</Route>
+			</Switch>
 		)
 	}
 }
@@ -126,7 +135,7 @@ interface DictSource {
 	revision: string
 }
 
-interface DictProps extends RouteComponentProps {
+interface DictProps {
 	search?: string
 	id?: string
 }
@@ -153,7 +162,7 @@ class Dict extends React.Component<DictProps, DictState> {
 
 	search(text: string) {
 		this.setState({ search: text })
-		this.props.navigate && this.props.navigate('/search/' + text)
+
 		fetch('/api/dict/search', {
 			method: 'POST',
 			body: JSON.stringify({
@@ -183,7 +192,6 @@ class Dict extends React.Component<DictProps, DictState> {
 			<div>
 				<input
 					type="text"
-					value={this.state.search}
 					autoFocus
 					ref={this.inputEl}
 					onFocus={() => this.selectAll()}
@@ -206,7 +214,7 @@ const Result: React.FC<{ data: DictResult }> = ({ data }) => (
 		</div>
 		<hr />
 		{data.terms
-			.map(it => <ResultItem item={it} data={data} />)
+			.map(it => <ResultItem key={it.expression + '/' + it.expression} item={it} data={data} />)
 			.reduce((acc, val): any => (acc ? [acc, <hr />, val] : [val]), null)}
 	</div>
 )
@@ -368,10 +376,9 @@ const List: React.FC<{ items: Item[] }> = ({ items }) => (
 	</div>
 )
 
-const Home: React.FC<RouteComponentProps> = () => (
+const Home: React.FC = () => (
 	<div className="App">
 		<header className="App-header">
-			<PingPong></PingPong>
 			<img src={logo} className="App-logo" alt="logo" />
 			<p>
 				Edit <code>src/App.tsx</code> and save to reload.
@@ -384,6 +391,9 @@ const Home: React.FC<RouteComponentProps> = () => (
 			</Link>
 			<Link to="/search" className="App-link">
 				Search
+			</Link>
+			<Link to="/ping_pong" className="App-link">
+				Ping pong
 			</Link>
 		</header>
 	</div>
