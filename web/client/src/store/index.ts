@@ -6,6 +6,7 @@ import { createBrowserHistory } from 'history'
 
 import todo from './todo'
 import ping_pong, { pingPongEpic } from './ping_pong'
+import dictionary, { dictionaryEpic } from './dictionary'
 
 export const history = createBrowserHistory()
 
@@ -13,9 +14,10 @@ const rootReducer = combineReducers({
 	router: connectRouter(history),
 	todo,
 	ping_pong,
+	dictionary,
 })
 
-const rootEpic = combineEpics(pingPongEpic)
+const rootEpic = combineEpics(pingPongEpic, dictionaryEpic)
 
 export type AppState = ReturnType<typeof rootReducer>
 

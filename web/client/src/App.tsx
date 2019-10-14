@@ -8,6 +8,7 @@ import PingPong from './pages/PingPong'
 import { Switch, Route } from 'react-router'
 import { Link } from 'react-router-dom'
 import Todos from './pages/Todos'
+import Dictionary from './pages/Dictionary'
 
 interface PageState {}
 
@@ -55,7 +56,10 @@ class App extends React.Component {
 				<Route path="/todo" onEnter>
 					<Todos />
 				</Route>
-				<Route path="/search">
+				<Route path="/search/:query?">
+					<Dictionary />
+				</Route>
+				<Route path="/search_old">
 					<Dict />
 				</Route>
 			</Switch>
