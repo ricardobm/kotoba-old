@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 
 import * as ping_pong from '../store/ping_pong'
 import { AppState } from '../store'
@@ -18,17 +18,24 @@ interface IState {
 
 interface IProps extends IDispatch, IState {}
 
-const PingPong: React.FC<IProps> = self => {
-	const onServe = () => self.serve()
-	const onReset = () => self.reset()
+const PingPong: React.FC<IProps> = state => {
+	const onServe = () => state.serve()
+	const onReset = () => state.reset()
+
+	useEffect(() => {
+		return () => {
+			state.reset()
+		}
+	}, [])
+
 	return (
 		<div className="App">
-			<p>{self.running ? self.label : 'Waiting serve...'}</p>
-			<button onClick={onServe} disabled={self.running}>
+			<p>{state.running ? state.label : 'Waiting serve...'}</p>
+			<button onClick={onServe} disabled={state.running}>
 				Serve
 			</button>
 			&nbsp;
-			<button onClick={onReset} disabled={!self.running}>
+			<button onClick={onReset} disabled={!state.running}>
 				Reset
 			</button>
 			<Link to="/" className="App-link">
