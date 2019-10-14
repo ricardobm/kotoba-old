@@ -3,12 +3,10 @@ import { connect } from 'react-redux'
 import { AppState } from '../store'
 import { Action } from 'redux'
 import { ThunkDispatch } from 'redux-thunk'
-import React, { useEffect, useLayoutEffect } from 'react'
+import React, { useEffect, useLayoutEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 
-interface IState extends todo.State {
-	inputEl: React.RefObject<HTMLInputElement>
-}
+interface IState extends todo.State {}
 
 interface IDispatch {
 	request: () => Promise<todo.Action>
@@ -20,11 +18,13 @@ interface IDispatch {
 interface IProps extends IState, IDispatch {}
 
 const Todos: React.FC<IProps> = state => {
+	const inputEl = useRef<HTMLInputElement>(null)
+
 	const handleAdd = () => {
-		const inputEl = state.inputEl.current!
-		const input = inputEl.value.trim()
-		inputEl.value = ''
-		inputEl.focus()
+		const elem = inputEl.current!
+		const input = elem.value.trim()
+		elem.value = ''
+		elem.focus()
 		input && state.add(input)
 	}
 
@@ -32,10 +32,10 @@ const Todos: React.FC<IProps> = state => {
 		if (!state.loaded && !state.loading) {
 			state.request()
 		}
-	}, [])
+	}, []) // eslint-disable-line react-hooks/exhaustive-deps
 
 	useLayoutEffect(() => {
-		const input = state.inputEl.current
+		const input = inputEl.current
 		input && input.focus()
 		setTimeout(() => input && input.focus(), 250)
 	}, [])
@@ -48,7 +48,7 @@ const Todos: React.FC<IProps> = state => {
 			<div>
 				<input
 					type="text"
-					ref={state.inputEl}
+					ref={inputEl}
 					onKeyPress={ev => {
 						if (ev.which === 13 || ev.keyCode === 13) {
 							handleAdd()
@@ -89,7 +89,6 @@ const List: React.FC<{ items: string[]; onDelete?: DeleteHandler }> = ({ items, 
 
 const mapStateToProps = (state: AppState): IState => ({
 	...state.todo,
-	inputEl: React.createRef<HTMLInputElement>(),
 })
 
 const mapDispatchToProps = (dispatch: ThunkDispatch<any, any, Action>): IDispatch => ({

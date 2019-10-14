@@ -26,7 +26,7 @@ const PingPong: React.FC<IProps> = state => {
 		return () => {
 			state.reset()
 		}
-	}, [])
+	}, []) // eslint-disable-line react-hooks/exhaustive-deps
 
 	return (
 		<div className="App">
