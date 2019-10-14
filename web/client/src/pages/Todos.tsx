@@ -3,7 +3,7 @@ import { connect } from 'react-redux'
 import { AppState } from '../store'
 import { Action } from 'redux'
 import { ThunkDispatch } from 'redux-thunk'
-import React, { useEffect } from 'react'
+import React, { useEffect, useLayoutEffect } from 'react'
 import { Link } from 'react-router-dom'
 
 interface IState extends todo.State {
@@ -32,7 +32,13 @@ const Todos: React.FC<IProps> = state => {
 		if (!state.loaded && !state.loading) {
 			state.request()
 		}
-	})
+	}, [])
+
+	useLayoutEffect(() => {
+		const input = state.inputEl.current
+		input && input.focus()
+		setTimeout(() => input && input.focus(), 250)
+	}, [])
 
 	return (
 		<div className="App">
