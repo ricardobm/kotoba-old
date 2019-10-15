@@ -1,20 +1,30 @@
 import { Dispatch } from 'redux'
 import { ofType, ActionsObservable, StateObservable } from 'redux-observable'
-import { debounceTime, map, tap } from 'rxjs/operators'
+import { debounceTime, map, mergeMap, takeUntil, filter, catchError, retry } from 'rxjs/operators'
 import { push } from 'connected-react-router'
+import { merge, of } from 'rxjs'
+import { ajax } from 'rxjs/ajax'
 
 export interface State {
 	/** Current query. */
 	query: string
+
+	failed: boolean
+	loading: boolean
+	data?: DictResult
 }
 
 const INITIAL_STATE: State = {
 	query: '',
+	failed: false,
+	loading: false,
 }
 
 enum Actions {
 	SEARCH = '@dictionary/search',
-	START_QUERY = '@dictionary/start_query',
+	REQUEST = '@dictionary/request',
+	SUCCESS = '@dictionary/success',
+	FAILURE = '@dictionary/failure',
 }
 
 /** Dispatch a search query. */
@@ -23,10 +33,18 @@ interface Search {
 	args: DictQuery
 }
 
-/** Actually starts loading a search query. */
-interface StartQuery {
-	type: Actions.START_QUERY
+interface Request {
+	type: Actions.REQUEST
 	args: DictQuery
+}
+
+interface Success {
+	type: Actions.SUCCESS
+	data?: DictResult
+}
+
+interface Failure {
+	type: Actions.FAILURE
 }
 
 export const search = (args: DictQuery): Search => ({
@@ -34,29 +52,76 @@ export const search = (args: DictQuery): Search => ({
 	args: args,
 })
 
-export const startQuery = (args: DictQuery) => {
-	return async (dispatch: Dispatch) => {
-		console.log(args)
-		dispatch(push(`/search/${args.query}`))
-		return dispatch({ type: Actions.START_QUERY, args })
-	}
-}
+export const request = (args: DictQuery): Request => ({
+	type: Actions.REQUEST,
+	args,
+})
 
-export type Action = Search | StartQuery
+export const success = (data?: DictResult): Success => ({
+	type: Actions.SUCCESS,
+	data,
+})
+
+export const failure = (): Failure => ({
+	type: Actions.FAILURE,
+})
+
+export type Action = Search | Request | Success | Failure
 
 export const dictionaryEpic = (action: ActionsObservable<Action>, state: StateObservable<State>) => {
-	return action.pipe(
-		ofType(Actions.SEARCH),
+	const searchEpic = action.ofType<Search>(Actions.SEARCH).pipe(
 		debounceTime(250),
-		tap(q => console.log(q)),
-		map(q => startQuery(q.args))
+		map(q => request(q.args))
 	)
+
+	const locationEpic = action.ofType<Request>(Actions.REQUEST).pipe(map(q => push(`/search/${q.args.query}`)))
+
+	const requestEpic = action.ofType<Request>(Actions.REQUEST).pipe(
+		filter(q => !!q.args.query),
+		mergeMap(q =>
+			ajax({
+				url: '/api/dict/search',
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: {
+					query: q.args.query,
+					options: {
+						limit: 100,
+						mode: 'Contains',
+					},
+				},
+			}).pipe(
+				retry(2),
+				takeUntil(action.ofType(Actions.SEARCH)),
+				map(data => success(data.response)),
+				catchError(err => {
+					console.error(err)
+					return of(failure())
+				})
+			)
+		)
+	)
+
+	const emptyEpic = action.ofType<Request>(Actions.REQUEST).pipe(
+		filter(q => !q.args.query),
+		map(() => success())
+	)
+
+	return merge(searchEpic, locationEpic, requestEpic, emptyEpic)
 }
 
 export default function reducer(state: State = INITIAL_STATE, action: Action): State {
 	switch (action.type) {
 		case Actions.SEARCH:
 			return { ...state, query: action.args.query }
+		case Actions.REQUEST:
+			return { ...state, loading: true }
+		case Actions.SUCCESS:
+			return { ...state, loading: false, failed: false, data: action.data }
+		case Actions.FAILURE:
+			return { ...state, loading: false, failed: true }
 	}
 	return state
 }
