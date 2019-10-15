@@ -77,14 +77,14 @@ pub struct WordSearch {
 	/// De-inflected term that matched the text.
 	pub term: String,
 	/// Terms for the match.
-	pub list: Vec<TermRow>,
+	pub list: Vec<(usize, TermRow)>,
 	/// De-inflection transformations.
 	pub info: Vec<&'static str>,
 }
 
 /// Trait for doing database searches.
 pub trait Search {
-	fn search_terms<S>(&self, log: &Logger, query: S, options: &SearchOptions) -> (Vec<TermRow>, usize)
+	fn search_terms<S>(&self, log: &Logger, query: S, options: &SearchOptions) -> (Vec<(usize, TermRow)>, usize)
 	where
 		S: AsRef<str>;
 
@@ -273,7 +273,7 @@ fn is_word_split(c: char) -> bool {
 
 /// Implement searching for the main database.
 impl Search for Root {
-	fn search_terms<S>(&self, log: &Logger, query: S, options: &SearchOptions) -> (Vec<TermRow>, usize)
+	fn search_terms<S>(&self, log: &Logger, query: S, options: &SearchOptions) -> (Vec<(usize, TermRow)>, usize)
 	where
 		S: AsRef<str>,
 	{
@@ -392,7 +392,7 @@ impl Search for Root {
 
 		let mut out = Vec::new();
 		for index in indexes {
-			out.push(self.terms[index].clone());
+			out.push((index, self.terms[index].clone()));
 		}
 
 		trace!(log, "found {} matches", out.len(); t_query);
@@ -452,7 +452,7 @@ impl Search for Root {
 					return Some(WordSearch {
 						text: original,
 						term: form.term,
-						list: indexes.map(|x| self.terms[x].clone()).collect(),
+						list: indexes.map(|x| (x, self.terms[x].clone())).collect(),
 						info: form.from,
 					});
 				}
@@ -465,7 +465,7 @@ impl Search for Root {
 				Some(WordSearch {
 					text: original,
 					term: word,
-					list: indexes.map(|x| self.terms[x].clone()).collect(),
+					list: indexes.map(|x| (x, self.terms[x].clone())).collect(),
 					info: vec![],
 				})
 			} else {

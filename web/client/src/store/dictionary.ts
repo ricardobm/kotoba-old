@@ -1,5 +1,4 @@
-import { Dispatch } from 'redux'
-import { ofType, ActionsObservable, StateObservable } from 'redux-observable'
+import { ActionsObservable, StateObservable } from 'redux-observable'
 import { debounceTime, map, mergeMap, takeUntil, filter, catchError, retry } from 'rxjs/operators'
 import { push } from 'connected-react-router'
 import { merge, of } from 'rxjs'
@@ -70,7 +69,7 @@ export type Action = Search | Request | Success | Failure
 
 export const dictionaryEpic = (action: ActionsObservable<Action>, state: StateObservable<State>) => {
 	const searchEpic = action.ofType<Search>(Actions.SEARCH).pipe(
-		debounceTime(250),
+		debounceTime(50),
 		map(q => request(q.args))
 	)
 
@@ -151,6 +150,7 @@ export interface DictResult {
  * Single term from a dictionary query.
  */
 export interface DictTerm {
+	id: string
 	expression: string
 	reading: string
 	definition: DictDefinition[]
@@ -198,7 +198,7 @@ export interface DictTag {
 	category: string
 	description: string
 	order: number
-	source: number
+	source: string
 }
 
 /**

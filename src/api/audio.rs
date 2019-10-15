@@ -207,7 +207,7 @@ pub fn query_audio(log: RequestLog, input: Json<Request>, app: State<&App>) -> J
 		};
 		let (terms, _) = db.search_terms(&log, &expression, &options);
 		let mut found_reading = None;
-		for it in terms {
+		for (_, it) in terms {
 			if let Some(reading) = it.reading_for(&expression) {
 				found_reading = Some(reading.clone());
 			}

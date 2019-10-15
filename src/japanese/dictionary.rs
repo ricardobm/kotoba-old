@@ -73,7 +73,7 @@ pub struct Response {
 	pub tags: HashMap<String, Tag>,
 
 	/// List of sources used in the results.
-	pub sources: Vec<Source>,
+	pub sources: HashMap<String, Source>,
 
 	/// Arguments used in the search.
 	pub args: SearchArgs,
@@ -112,6 +112,7 @@ impl Kanji {
 /// Japanese term result.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Term {
+	pub id:         String,
 	pub expression: String,
 	pub reading:    String,
 	pub romaji:     String,
@@ -123,8 +124,14 @@ pub struct Term {
 }
 
 impl Term {
-	pub fn from_row(term: db::TermRow, tags: &HashMap<db::TagId, db::TagRow>, sources: &Vec<db::SourceRow>) -> Term {
+	pub fn from_row(
+		index: usize,
+		term: db::TermRow,
+		tags: &HashMap<db::TagId, db::TagRow>,
+		sources: &Vec<db::SourceRow>,
+	) -> Term {
 		Term {
+			id:         format!("{}", index),
 			expression: term.expression,
 			reading:    term.reading,
 			romaji:     term.romaji,
@@ -286,7 +293,7 @@ impl Dictionary {
 		// Next we append kanji from the results themselves...
 		let kanji = if let Some(mut result) = kanji {
 			let mut to_search = Vec::new();
-			for it in terms.iter() {
+			for (_, it) in terms.iter() {
 				let kanji = std::iter::once(&it.expression)
 					.chain(it.forms.iter().map(|x| &x.expression))
 					.map(|x| x.chars())
@@ -323,7 +330,7 @@ impl Dictionary {
 			}
 		};
 
-		for it in &terms {
+		for (_, it) in &terms {
 			for id in it.tag_ids() {
 				push_tag(id);
 			}
@@ -355,8 +362,8 @@ impl Dictionary {
 
 		let sources = &self.db.sources;
 
-		for it in terms {
-			response.terms.push(Term::from_row(it, &tag_map, sources));
+		for (index, it) in terms {
+			response.terms.push(Term::from_row(index, it, &tag_map, sources));
 		}
 
 		if let Some(kanji) = kanji {
@@ -368,7 +375,7 @@ impl Dictionary {
 		}
 
 		for src in sources.iter() {
-			response.sources.push(Source::from_row(src));
+			response.sources.insert(src.name.clone(), Source::from_row(src));
 		}
 
 		response
@@ -397,7 +404,7 @@ impl Dictionary {
 	/// The best attempt includes matching de-inflected forms of the word.
 	pub fn match_prefix<S>(&self, query: S, out_tags: Option<&mut HashMap<String, Tag>>) -> Option<WordSearch>
 	where
-		S: AsRef<str>
+		S: AsRef<str>,
 	{
 		let sources = &self.db.sources;
 		let mut tag_map = HashMap::new();
@@ -410,8 +417,7 @@ impl Dictionary {
 		};
 
 		if let Some(result) = self.db.match_prefix(query) {
-
-			for it in result.list.iter() {
+			for (_, it) in result.list.iter() {
 				for tag in it.tag_ids() {
 					push_tag(tag);
 				}
@@ -425,10 +431,14 @@ impl Dictionary {
 				}
 			}
 
-			Some(WordSearch{
+			Some(WordSearch {
 				text: result.text,
 				term: result.term,
-				list: result.list.into_iter().map(|x| Term::from_row(x, &tag_map, sources)).collect(),
+				list: result
+					.list
+					.into_iter()
+					.map(|(i, x)| Term::from_row(i, x, &tag_map, sources))
+					.collect(),
 				info: result.info,
 			})
 		} else {
@@ -440,9 +450,14 @@ impl Dictionary {
 	///
 	/// This is similar to [query] with a [SearchMode::Is] without fuzzy
 	/// mode, but supports searching for de-inflected forms.
-	pub fn search_word<S>(&self, word: S, deinflect: bool, out_tags: Option<&mut HashMap<String, Tag>>) -> Option<WordSearch>
+	pub fn search_word<S>(
+		&self,
+		word: S,
+		deinflect: bool,
+		out_tags: Option<&mut HashMap<String, Tag>>,
+	) -> Option<WordSearch>
 	where
-		S: AsRef<str>
+		S: AsRef<str>,
 	{
 		let sources = &self.db.sources;
 		let mut tag_map = HashMap::new();
@@ -455,8 +470,7 @@ impl Dictionary {
 		};
 
 		if let Some(result) = self.db.search_word(word, deinflect) {
-
-			for it in result.list.iter() {
+			for (_, it) in result.list.iter() {
 				for tag in it.tag_ids() {
 					push_tag(tag);
 				}
@@ -470,10 +484,14 @@ impl Dictionary {
 				}
 			}
 
-			Some(WordSearch{
+			Some(WordSearch {
 				text: result.text,
 				term: result.term,
-				list: result.list.into_iter().map(|x| Term::from_row(x, &tag_map, sources)).collect(),
+				list: result
+					.list
+					.into_iter()
+					.map(|(i, x)| Term::from_row(i, x, &tag_map, sources))
+					.collect(),
 				info: result.info,
 			})
 		} else {
