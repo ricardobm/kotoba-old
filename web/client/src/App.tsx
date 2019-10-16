@@ -10,6 +10,8 @@ import { Link } from 'react-router-dom'
 import Todos from './pages/Todos'
 import Dictionary from './pages/Dictionary'
 
+import { TiMediaEject } from 'react-icons/ti'
+
 interface PageState {}
 
 class App extends React.Component {
@@ -67,6 +69,7 @@ class App extends React.Component {
 const Home: React.FC = () => (
 	<div className="App">
 		<header className="App-header">
+			<TiMediaEject />
 			<img src={logo} className="App-logo" alt="logo" />
 			<p>
 				Edit <code>src/App.tsx</code> and save to reload.
