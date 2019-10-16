@@ -1,10 +1,12 @@
-import * as todo from '../store/todo'
 import { connect } from 'react-redux'
 import { AppState } from '../store'
-import { Action } from 'redux'
+import { Action, Dispatch } from 'redux'
 import { ThunkDispatch } from 'redux-thunk'
 import React, { useEffect, useLayoutEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+
+import * as app from '../store/app'
+import * as todo from '../store/todo'
+import LinkTo from '../util/LinkTo'
 
 interface IState extends todo.State {}
 
@@ -13,11 +15,12 @@ interface IDispatch {
 	add: (text: string) => todo.Action
 	del: (index: number) => todo.Action
 	setTitle: (title: string) => todo.Action
+	dispatch: Dispatch<Action>
 }
 
 interface IProps extends IState, IDispatch {}
 
-const Todos: React.FC<IProps> = state => {
+const Todos: React.FC<IProps> = self => {
 	const inputEl = useRef<HTMLInputElement>(null)
 
 	const handleAdd = () => {
@@ -25,12 +28,13 @@ const Todos: React.FC<IProps> = state => {
 		const input = elem.value.trim()
 		elem.value = ''
 		elem.focus()
-		input && state.add(input)
+		input && self.add(input)
 	}
 
 	useEffect(() => {
-		if (!state.loaded && !state.loading) {
-			state.request()
+		self.dispatch(app.setTitle('TODO'))
+		if (!self.loaded && !self.loading) {
+			self.request()
 		}
 	}, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -42,9 +46,9 @@ const Todos: React.FC<IProps> = state => {
 
 	return (
 		<div className="App">
-			<LoadingMessage loading={state.loading} />
-			<ErrorMessage message={state.error} />
-			<List items={state.todos} onDelete={index => state.del(index)} />
+			<LoadingMessage loading={self.loading} />
+			<ErrorMessage message={self.error} />
+			<List items={self.todos} onDelete={index => self.del(index)} />
 			<div>
 				<input
 					type="text"
@@ -54,16 +58,14 @@ const Todos: React.FC<IProps> = state => {
 							handleAdd()
 						}
 					}}
-					disabled={state.loading}
+					disabled={self.loading}
 				/>
 				&nbsp;
-				<button onClick={handleAdd} disabled={state.loading}>
+				<button onClick={handleAdd} disabled={self.loading}>
 					Add
 				</button>
 			</div>
-			<Link to="/" className="App-link">
-				Home
-			</Link>
+			<LinkTo to="/">Home</LinkTo>
 		</div>
 	)
 }
@@ -96,6 +98,7 @@ const mapDispatchToProps = (dispatch: ThunkDispatch<any, any, Action>): IDispatc
 	add: arg => dispatch(todo.add(arg)),
 	del: arg => dispatch(todo.del(arg)),
 	setTitle: arg => dispatch(todo.setTitle(arg)),
+	dispatch,
 })
 
 export default connect(

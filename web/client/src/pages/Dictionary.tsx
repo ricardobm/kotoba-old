@@ -2,13 +2,16 @@ import React, { useEffect, useRef, useLayoutEffect } from 'react'
 import { AppState } from '../store'
 import { Dispatch, Action } from 'redux'
 import { connect } from 'react-redux'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 
+import * as app from '../store/app'
 import * as dictionary from '../store/dictionary'
 import { DictResult, DictTerm, DictDefinition, DictTag } from '../store/dictionary'
+import LinkTo from '../util/LinkTo'
 
 interface IDispatch {
 	search: (query: string) => dictionary.Action
+	dispatch: Dispatch<Action>
 }
 
 interface IState extends dictionary.State {}
@@ -25,8 +28,10 @@ const Dictionary: React.FC<IProps> = self => {
 	const urlQueryRef = useRef(query || '')
 	const selfRef = useRef(self)
 	useEffect(() => {
-		if (urlQueryRef.current !== selfRef.current.query) {
-			selfRef.current.search(urlQueryRef.current)
+		const self = selfRef.current
+		self.dispatch(app.setTitle('Dictionary'))
+		if (urlQueryRef.current !== self.query) {
+			self.search(urlQueryRef.current)
 		}
 	}, [])
 
@@ -50,9 +55,7 @@ const Dictionary: React.FC<IProps> = self => {
 						doSearch(query)
 					}}
 				/>
-				<Link to="/" className="App-link">
-					Home
-				</Link>
+				<LinkTo to="/">Home</LinkTo>
 			</div>
 			<div>
 				{self.failed && <div>Failed to load</div>}
@@ -75,6 +78,7 @@ const mapStateToProps = (state: AppState): IState => ({ ...state.dictionary })
 
 const mapDispatchToProps = (dispatch: Dispatch<Action>): IDispatch => ({
 	search: (query: string) => dispatch(dictionary.search({ query })),
+	dispatch,
 })
 
 export default connect(

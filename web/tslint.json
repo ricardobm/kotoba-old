@@ -7,7 +7,7 @@
 		"no-console": [false],
 		"quotemark": [false],
 		"member-access": [true, "no-public"],
-		"object-literal-key-quotes": [true, "consistent"],
+		"object-literal-key-quotes": false,
 		"no-string-literal": false,
 		"no-empty": false,
 		"interface-over-type-literal": false,
