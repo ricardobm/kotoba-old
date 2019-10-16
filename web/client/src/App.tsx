@@ -1,8 +1,6 @@
 import React from 'react'
 import logo from './logo.svg'
 import './css/App.scss'
-import { fromEvent } from 'rxjs'
-import { scan, debounceTime, takeUntil, tap } from 'rxjs/operators'
 
 import PingPong from './pages/PingPong'
 import { Switch, Route } from 'react-router'
@@ -12,40 +10,7 @@ import Dictionary from './pages/Dictionary'
 
 import { TiMediaEject } from 'react-icons/ti'
 
-interface PageState {}
-
 class App extends React.Component {
-	state: PageState = {}
-
-	componentDidMount() {
-		const click = fromEvent(document, 'click')
-		const double = fromEvent(document, 'dblclick').pipe(tap(() => console.log('Double click!')))
-
-		function handleOnClick() {
-			click
-				.pipe(
-					debounceTime(1000),
-					takeUntil(double),
-					scan(count => count + 1, 0)
-				)
-				.subscribe({
-					next: count => console.log(`Clicked ${count} times!`),
-					complete: () => {
-						console.log(`Completed!`)
-						handleOnClick()
-					},
-				})
-		}
-
-		handleOnClick()
-
-		fetch('/api/list')
-			.then(data => data.json())
-			.then(data => this.setState({ items: data }))
-			.catch(() => this.setState({ error: 'Failed to load!' }))
-			.finally(() => this.setState({ loading: false }))
-	}
-
 	render() {
 		return (
 			<Switch>
