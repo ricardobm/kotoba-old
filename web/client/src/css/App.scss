@@ -1,33 +1,70 @@
 .App {
-    text-align: center;
+	text-align: center;
 }
 
 .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-    height: 40vmin;
-    pointer-events: none;
+	animation: App-logo-spin infinite 20s linear;
+	height: 40vmin;
+	pointer-events: none;
 }
 
 .App-header {
-    background-color: #282c34;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+	background-color: #282c34;
+	min-height: 100vh;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	font-size: calc(10px + 2vmin);
+	color: white;
 }
 
 .App-link {
-    color: #61dafb;
+	color: #61dafb;
 }
 
 @keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
+
+// spell-checker: disable
+
+//============================================================================//
+// Japanese text style
+//============================================================================//
+//
+// YahuHanJP (https://yakuhanjp.qranoko.jp/) removes extraneous spaces from
+// japanese symbols. For a sample see:
+//
+//     「約物半角専用のWebフォント」を優先的に当てることによって、
+//     Webテキストの日本語に含まれる約物を半角にすることができました。
+//     例えば「かっこ」や『二重かっこ』、【バッジに使いそうなかっこ】
+//     などを半角にできます。ウェイトは7種類。Noto Sans Japanese
+//     に沿っています。
+//
+// Freely available japanese fonts in https://googlefonts.github.io/japanese/
+//
+// From tests `'M PLUS Rounded 1c'` seems to provides the best readability, with
+// `'Noto Sans JP'` coming in second.
+//
+
+@import url('https://fonts.googleapis.com/css?family=M+PLUS+Rounded+1c');
+@import url('https://cdn.jsdelivr.net/npm/yakuhanjp@3.3.0/dist/css/yakuhanjp.min.css');
+
+$japanese-font: 'M PLUS Rounded 1c';
+
+// Enable for Noto Sans instead:
+// @import url('https://fonts.googleapis.com/css?family=Noto+Sans+JP');
+// $japanese-font: 'Noto Sans JP';
+
+.japanese {
+	font-family: YakuHanJP, $japanese-font, 'Hiragino Sans', 'Hiragino Kaku Gothic Pro', '游ゴシック', '游ゴシック体',
+		YuGothic, 'Yu Gothic', 'ＭＳ ゴシック', 'MS Gothic', sans-serif !important;
+}
+
+// spell-checker: enable
