@@ -15,6 +15,7 @@ import {
 	ListItem,
 	ListItemIcon,
 	ListItemText,
+	Hidden,
 } from '@material-ui/core'
 
 import clsx from 'clsx'
@@ -39,8 +40,12 @@ export interface IProps {
 
 const drawerWidth = 250
 
-const useStyles = makeStyles((theme: Theme) =>
-	createStyles({
+const appMenuToggleClass = 'app-menu-toggle-button'
+
+const useStyles = makeStyles((theme: Theme) => {
+	const menuButtonWidth = theme.spacing(7) + 1
+	const isMobile = theme.breakpoints.down('sm')
+	return createStyles({
 		root: {
 			display: 'flex',
 		},
@@ -52,7 +57,7 @@ const useStyles = makeStyles((theme: Theme) =>
 				easing: theme.transitions.easing.sharp,
 				duration: theme.transitions.duration.leavingScreen,
 			}),
-			'& button:first-of-type': {
+			[`& button.${appMenuToggleClass}`]: {
 				transition: theme.transitions.create(['margin', 'opacity'], {
 					easing: theme.transitions.easing.sharp,
 					duration: theme.transitions.duration.leavingScreen,
@@ -66,7 +71,7 @@ const useStyles = makeStyles((theme: Theme) =>
 				easing: theme.transitions.easing.sharp,
 				duration: theme.transitions.duration.enteringScreen,
 			}),
-			'& button:first-of-type': {
+			[`& button.${appMenuToggleClass}`]: {
 				marginRight: -36,
 				transition: theme.transitions.create(['margin', 'opacity'], {
 					easing: theme.transitions.easing.sharp,
@@ -102,8 +107,8 @@ const useStyles = makeStyles((theme: Theme) =>
 				duration: theme.transitions.duration.leavingScreen,
 			}),
 			overflowX: 'hidden',
-			width: theme.spacing(7) + 1,
-			[theme.breakpoints.down('sm')]: {
+			width: menuButtonWidth,
+			[isMobile]: {
 				width: 0,
 				marginLeft: -1, // hide the right border when collapsed
 			},
@@ -126,10 +131,14 @@ const useStyles = makeStyles((theme: Theme) =>
 		},
 		content: {
 			padding: theme.spacing(3),
+			paddingLeft: menuButtonWidth,
 			flexGrow: 1,
+			[isMobile]: {
+				paddingLeft: theme.spacing(3),
+			},
 		},
 	})
-)
+})
 
 const MainMenu: React.FC<IProps> = props => {
 	const [open, setOpen] = React.useState(false)
@@ -138,13 +147,74 @@ const MainMenu: React.FC<IProps> = props => {
 
 	const dispatch = useDispatch()
 
-	const goHome = () => nav.goHome(dispatch)
-	const goPages = () => nav.goTodo(dispatch)
-	const goDecks = () => nav.goPingPong(dispatch)
-	const goDictionary = () => nav.goDictionary(dispatch)
+	const go = (fn: (x: any) => void, isMobile: boolean) => {
+		fn(dispatch)
+		if (isMobile) {
+			closeDrawer()
+		}
+	}
+
+	const goHome = (isMobile: boolean) => go(nav.goHome, isMobile)
+	const goPages = (isMobile: boolean) => go(nav.goTodo, isMobile)
+	const goDecks = (isMobile: boolean) => go(nav.goPingPong, isMobile)
+	const goDictionary = (isMobile: boolean) => go(nav.goDictionary, isMobile)
 
 	const theme = useTheme()
 	const classes = useStyles()
+
+	const menuItems = (isMobile: boolean) => (
+		<React.Fragment>
+			<div className={classes.drawerHeader}>
+				<IconButton onClick={closeDrawer}>
+					{theme.direction === 'ltr' ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+				</IconButton>
+			</div>
+			<Divider />
+			<List>
+				<ListItem button onClick={() => goHome(isMobile)}>
+					<ListItemIcon>
+						<HomeIcon />
+					</ListItemIcon>
+					<ListItemText primary="Home" />
+				</ListItem>
+				<ListItem button onClick={() => goPages(isMobile)}>
+					<ListItemIcon>
+						<MenuBookIcon />
+					</ListItemIcon>
+					<ListItemText primary="Pages" />
+				</ListItem>
+				<ListItem button onClick={() => goDecks(isMobile)}>
+					<ListItemIcon>
+						<LoyaltyIcon />
+					</ListItemIcon>
+					<ListItemText primary="Decks" />
+				</ListItem>
+				<ListItem button onClick={() => goDictionary(isMobile)}>
+					<ListItemIcon>
+						<TranslateIcon />
+					</ListItemIcon>
+					<ListItemText primary="Dictionary" />
+				</ListItem>
+			</List>
+		</React.Fragment>
+	)
+
+	const isDesktop = { smUp: true }
+	const isMobile = { xsDown: true }
+
+	const drawerClasses = {
+		className: clsx(classes.drawer, {
+			[classes.drawerOpen]: open,
+			[classes.drawerClose]: !open,
+		}),
+		classes: {
+			paper: clsx({
+				[classes.drawerOpen]: open,
+				[classes.drawerClose]: !open,
+			}),
+		},
+	}
+
 	return (
 		<div className={classes.root}>
 			<AppBar
@@ -157,7 +227,7 @@ const MainMenu: React.FC<IProps> = props => {
 					<IconButton
 						color="inherit"
 						onClick={openDrawer}
-						className={clsx(classes.menuButton, {
+						className={clsx([classes.menuButton, appMenuToggleClass], {
 							[classes.hide]: open,
 						})}
 					>
@@ -168,54 +238,29 @@ const MainMenu: React.FC<IProps> = props => {
 					</Typography>
 				</Toolbar>
 			</AppBar>
-			<Drawer
-				anchor="left"
-				variant="permanent"
-				open={open}
-				className={clsx(classes.drawer, {
-					[classes.drawerOpen]: open,
-					[classes.drawerClose]: !open,
-				})}
-				classes={{
-					paper: clsx({
-						[classes.drawerOpen]: open,
-						[classes.drawerClose]: !open,
-					}),
-				}}
-			>
-				<div className={classes.drawerHeader}>
-					<IconButton onClick={closeDrawer}>
-						{theme.direction === 'ltr' ? <ChevronLeftIcon /> : <ChevronRightIcon />}
-					</IconButton>
-				</div>
-				<Divider />
-				<List>
-					<ListItem button onClick={goHome}>
-						<ListItemIcon>
-							<HomeIcon />
-						</ListItemIcon>
-						<ListItemText primary="Home" />
-					</ListItem>
-					<ListItem button onClick={goPages}>
-						<ListItemIcon>
-							<MenuBookIcon />
-						</ListItemIcon>
-						<ListItemText primary="Pages" />
-					</ListItem>
-					<ListItem button onClick={goDecks}>
-						<ListItemIcon>
-							<LoyaltyIcon />
-						</ListItemIcon>
-						<ListItemText primary="Decks" />
-					</ListItem>
-					<ListItem button onClick={goDictionary}>
-						<ListItemIcon>
-							<TranslateIcon />
-						</ListItemIcon>
-						<ListItemText primary="Dictionary" />
-					</ListItem>
-				</List>
-			</Drawer>
+
+			<Hidden {...isMobile} implementation="js">
+				<Drawer anchor="left" variant="permanent" open {...drawerClasses}>
+					{menuItems(false)}
+				</Drawer>
+			</Hidden>
+
+			<Hidden {...isDesktop} implementation="js">
+				<Drawer
+					anchor="left"
+					variant="temporary"
+					open={open}
+					{...drawerClasses}
+					onEscapeKeyDown={closeDrawer}
+					onBackdropClick={closeDrawer}
+					ModalProps={{
+						keepMounted: true, // Better open performance on mobile.
+					}}
+				>
+					{menuItems(true)}
+				</Drawer>
+			</Hidden>
+
 			<main className={classes.content}>
 				<div className={classes.toolbar} />
 				{props.children}
