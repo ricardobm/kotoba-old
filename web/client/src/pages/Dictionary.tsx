@@ -2,82 +2,126 @@ import React, { useEffect, useRef, useLayoutEffect } from 'react'
 import { AppState } from '../store'
 import { Dispatch, Action } from 'redux'
 import { connect } from 'react-redux'
-import { useParams } from 'react-router-dom'
+
+import { FixedSizeList as List } from 'react-window'
+import AutoSizer from 'react-virtualized-auto-sizer'
 
 import * as app from '../store/app'
 import * as dictionary from '../store/dictionary'
 import { DictResult, DictTerm, DictDefinition, DictTag } from '../store/dictionary'
 import LinkTo from '../util/LinkTo'
+import { makeStyles, createStyles } from '@material-ui/core'
 
 interface IDispatch {
-	search: (query: string) => dictionary.Action
 	dispatch: Dispatch<Action>
 }
 
 interface IState extends dictionary.State {}
 
-interface IProps extends IDispatch, IState {}
+interface IOwnProps {
+	initialQuery: string
+}
+
+interface IProps extends IDispatch, IState, IOwnProps {}
+
+const useStyles = makeStyles(() => {
+	return createStyles({
+		root: {
+			flexGrow: 1,
+			display: 'flex',
+			flexDirection: 'column',
+		},
+		header: {
+			flexShrink: 0,
+		},
+		results: {
+			flexGrow: 1,
+		},
+	})
+})
 
 const Dictionary: React.FC<IProps> = self => {
+	const dispatch = self.dispatch
 	const doSearch = (query: string) => {
-		self.search(query)
+		dispatch(dictionary.search({ query }))
 	}
 
 	const inputEl = useRef<HTMLInputElement>(null)
-	const { query } = useParams()
-	const urlQueryRef = useRef(query || '')
-	const selfRef = useRef(self)
 	useEffect(() => {
-		const self = selfRef.current
-		self.dispatch(app.setTitle('Dictionary'))
-		if (urlQueryRef.current !== self.query) {
-			self.search(urlQueryRef.current)
+		dispatch(app.setTitle(`Dictionary ${self.initialQuery && ' - ' + self.initialQuery}`))
+		if (self.initialQuery !== self.query) {
+			dispatch(dictionary.request({ query: self.initialQuery }))
 		}
-	}, [])
+
+		const input = inputEl.current!
+		const inputValue = input.value
+		const targetValue = self.initialQuery
+		if (inputValue !== targetValue) {
+			setTimeout(() => {
+				if (input.value === inputValue) {
+					input.value = targetValue
+				}
+			}, 250)
+		}
+	}, [self.initialQuery, dispatch, self.query])
 
 	useLayoutEffect(() => {
 		setTimeout(() => inputEl.current!.select(), 100)
 	}, [])
 
+	const classes = useStyles()
 	const data = self.data
-
 	return (
-		<div>
-			<div>
-				<input
-					type="text"
-					ref={inputEl}
-					value={self.query || ''}
-					autoFocus
-					onFocus={ev => ev.currentTarget.select()}
-					onChange={ev => {
-						const query = ev.currentTarget.value.trim()
-						doSearch(query)
-					}}
-				/>
-				<LinkTo to="/">Home</LinkTo>
-			</div>
-			<div>
-				{self.failed && <div>Failed to load</div>}
-				{self.loading && <div>Loading...</div>}
+		<div className={classes.root}>
+			<div className={classes.header}>
+				<div>
+					<input
+						type="text"
+						ref={inputEl}
+						defaultValue={self.initialQuery}
+						autoFocus
+						onFocus={ev => ev.currentTarget.select()}
+						onChange={ev => {
+							const query = ev.currentTarget.value.trim()
+							doSearch(query)
+						}}
+					/>
+					<LinkTo to="/">Home</LinkTo>
+				</div>
 				{data && (
 					<div>
 						Found {data.terms.length} results in {data.elapsed.toFixed(3)}s for {data.expression} (
 						{data.reading})
-						{data.terms.map(it => (
-							<Entry key={it.id} item={it} data={data} />
-						))}
 					</div>
+				)}
+			</div>
+			<div className={classes.results}>
+				{data && (
+					<AutoSizer disableWidth>
+						{({ height }) => {
+							return (
+								<List width="100%" height={height} itemSize={300} itemCount={data.terms.length}>
+									{({ index, style }) => {
+										const it = data.terms[index]
+										return (
+											<div style={style} key={it.id}>
+												<Entry item={it} data={data} />
+											</div>
+										)
+									}}
+								</List>
+							)
+						}}
+					</AutoSizer>
 				)}
 			</div>
 		</div>
 	)
 }
 
-const mapStateToProps = (state: AppState): IState => ({ ...state.dictionary })
+const mapStateToProps = (state: AppState, ownProps?: IOwnProps): IState => ({ ...state.dictionary, ...ownProps })
 
 const mapDispatchToProps = (dispatch: Dispatch<Action>): IDispatch => ({
-	search: (query: string) => dispatch(dictionary.search({ query })),
 	dispatch,
 })
 

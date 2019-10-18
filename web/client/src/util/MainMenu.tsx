@@ -30,11 +30,9 @@ import ChevronRightIcon from '@material-ui/icons/ChevronRight'
 
 import * as nav from '../base/nav'
 import { useDispatch } from 'react-redux'
-import { Location } from 'history'
 
 export interface IProps {
 	title: string
-	location: Location<any>
 	children?: React.ReactNode
 }
 
@@ -48,6 +46,7 @@ const useStyles = makeStyles((theme: Theme) => {
 	return createStyles({
 		root: {
 			display: 'flex',
+			minHeight: '100%',
 		},
 
 		// Top application bar
@@ -128,9 +127,13 @@ const useStyles = makeStyles((theme: Theme) => {
 		// Content
 		toolbar: {
 			...theme.mixins.toolbar,
+			flexGrow: 0,
+			flexShrink: 0,
 		},
 		content: {
-			padding: theme.spacing(3),
+			display: 'flex',
+			minHeight: '100%',
+			flexDirection: 'column',
 			paddingLeft: menuButtonWidth,
 			flexGrow: 1,
 			[isMobile]: {

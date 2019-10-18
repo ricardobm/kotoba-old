@@ -3,6 +3,9 @@ import { debounceTime, map, mergeMap, takeUntil, filter, catchError, retry } fro
 import { push } from 'connected-react-router'
 import { merge, of } from 'rxjs'
 import { ajax } from 'rxjs/ajax'
+import { History } from 'history'
+
+const SEARCH_DEBOUNCE = 200
 
 export interface State {
 	/** Current query. */
@@ -39,11 +42,15 @@ interface Request {
 
 interface Success {
 	type: Actions.SUCCESS
-	data?: DictResult
+	data: {
+		query: string
+		result?: DictResult
+	}
 }
 
 interface Failure {
 	type: Actions.FAILURE
+	query: string
 }
 
 export const search = (args: DictQuery): Search => ({
@@ -56,24 +63,29 @@ export const request = (args: DictQuery): Request => ({
 	args,
 })
 
-export const success = (data?: DictResult): Success => ({
+export const success = (query: string, result?: DictResult): Success => ({
 	type: Actions.SUCCESS,
-	data,
+	data: { query, result },
 })
 
-export const failure = (): Failure => ({
+export const failure = (query: string): Failure => ({
 	type: Actions.FAILURE,
+	query,
 })
 
 export type Action = Search | Request | Success | Failure
 
-export const dictionaryEpic = (action: ActionsObservable<Action>, state: StateObservable<State>) => {
-	const searchEpic = action.ofType<Search>(Actions.SEARCH).pipe(
-		debounceTime(50),
-		map(q => request(q.args))
-	)
+export const dictionaryEpic = (history: History<any>) => (
+	action: ActionsObservable<Action>,
+	state: StateObservable<State>
+) => {
+	const searchURL = (q: string) => `/search/${q}`
 
-	const locationEpic = action.ofType<Request>(Actions.REQUEST).pipe(map(q => push(`/search/${q.args.query}`)))
+	const searchEpic = action.ofType<Search>(Actions.SEARCH).pipe(
+		debounceTime(SEARCH_DEBOUNCE),
+		filter(q => searchURL(q.args.query) !== history.location.pathname),
+		map(q => push(searchURL(q.args.query)))
+	)
 
 	const requestEpic = action.ofType<Request>(Actions.REQUEST).pipe(
 		filter(q => !!q.args.query),
@@ -94,10 +106,10 @@ export const dictionaryEpic = (action: ActionsObservable<Action>, state: StateOb
 			}).pipe(
 				retry(2),
 				takeUntil(action.ofType(Actions.SEARCH)),
-				map(data => success(data.response)),
+				map(data => success(q.args.query, data.response)),
 				catchError(err => {
 					console.error(err)
-					return of(failure())
+					return of(failure(q.args.query))
 				})
 			)
 		)
@@ -105,20 +117,18 @@ export const dictionaryEpic = (action: ActionsObservable<Action>, state: StateOb
 
 	const emptyEpic = action.ofType<Request>(Actions.REQUEST).pipe(
 		filter(q => !q.args.query),
-		map(() => success())
+		map(q => success(q.args.query))
 	)
 
-	return merge(searchEpic, locationEpic, requestEpic, emptyEpic)
+	return merge(searchEpic, requestEpic, emptyEpic)
 }
 
 export default function reducer(state: State = INITIAL_STATE, action: Action): State {
 	switch (action.type) {
-		case Actions.SEARCH:
-			return { ...state, query: action.args.query }
 		case Actions.REQUEST:
-			return { ...state, loading: true }
+			return { ...state, loading: true, query: action.args.query }
 		case Actions.SUCCESS:
-			return { ...state, loading: false, failed: false, data: action.data }
+			return { ...state, loading: false, failed: false, data: action.data.result, query: action.data.query }
 		case Actions.FAILURE:
 			return { ...state, loading: false, failed: true }
 	}
