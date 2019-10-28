@@ -1,7 +1,11 @@
 TODO next
 =========
 
+- Word lookup
+- Kanji lookup
+- Pronunciation
 - Wiki
+  - Main functionality
   - Sentence intellisense
   - Word information
   - Cross-document table of contents
@@ -55,10 +59,6 @@ Client
 ======
 
 - Properly organize client code
-- Use redux
-- SASS
-- Find a UI library
 - UI persistence
-- History navigation
-- Debounce calls
 - Wiki quick navigation
+- Wiki editor
