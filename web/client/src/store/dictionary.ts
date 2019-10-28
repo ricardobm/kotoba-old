@@ -99,7 +99,7 @@ export const dictionaryEpic = (history: History<any>) => (
 				body: {
 					query: q.args.query,
 					options: {
-						limit: 100,
+						limit: 1000,
 						mode: 'Contains',
 					},
 				},

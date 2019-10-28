@@ -3,7 +3,6 @@ import { AppState } from '../store'
 import { Dispatch, Action } from 'redux'
 import { connect } from 'react-redux'
 
-import { FixedSizeList as List } from 'react-window'
 import AutoSizer from 'react-virtualized-auto-sizer'
 
 import * as app from '../store/app'
@@ -11,6 +10,7 @@ import * as dictionary from '../store/dictionary'
 import { DictResult, DictTerm, DictDefinition, DictTag } from '../store/dictionary'
 import LinkTo from '../util/LinkTo'
 import { makeStyles, createStyles } from '@material-ui/core'
+import VirtualScroller from '../ui/VirtualScroller'
 
 interface IDispatch {
 	dispatch: Dispatch<Action>
@@ -100,16 +100,15 @@ const Dictionary: React.FC<IProps> = self => {
 					<AutoSizer disableWidth>
 						{({ height }) => {
 							return (
-								<List width="100%" height={height} itemSize={300} itemCount={data.terms.length}>
-									{({ index, style }) => {
-										const it = data.terms[index]
-										return (
-											<div style={style} key={it.id}>
-												<Entry item={it} data={data} />
-											</div>
-										)
+								<VirtualScroller
+									data={data.terms}
+									itemCount={data.terms.length}
+									height={height}
+									render={(index, children) => {
+										const it = children[index]
+										return <Entry index={index + 1} item={it} data={data} />
 									}}
-								</List>
+								/>
 							)
 						}}
 					</AutoSizer>
@@ -130,7 +129,7 @@ export default connect(
 	mapDispatchToProps
 )(Dictionary)
 
-const Entry: React.FC<{ data: DictResult; item: DictTerm }> = ({ data, item }) => {
+const Entry: React.FC<{ data: DictResult; item: DictTerm; index: number }> = ({ data, item, index }) => {
 	const getSource = (key: string) => {
 		const src = data.sources[key]
 		return (
@@ -145,6 +144,16 @@ const Entry: React.FC<{ data: DictResult; item: DictTerm }> = ({ data, item }) =
 		<div>
 			<hr />
 			<h2>
+				<em
+					style={{
+						fontWeight: 'normal',
+						fontSize: '0.7em',
+						paddingRight: '15px',
+						color: '#A0A0A0',
+					}}
+				>
+					{index})
+				</em>
 				<Term term={item.expression} reading={item.reading} frequency={item.frequency} />
 			</h2>
 			<em>

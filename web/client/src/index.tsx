@@ -2,6 +2,9 @@ import 'react-app-polyfill/ie11'
 import 'react-app-polyfill/stable'
 
 import React from 'react'
+
+import whyDidYouRender from '@welldone-software/why-did-you-render'
+
 import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
 import App from './App'
@@ -12,6 +15,8 @@ import { ConnectedRouter } from 'connected-react-router'
 import { configureStore, history } from './store'
 
 import './css/index.scss'
+
+whyDidYouRender(React)
 
 ReactDOM.render(
 	<Provider store={configureStore()}>
