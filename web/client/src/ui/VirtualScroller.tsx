@@ -5,6 +5,9 @@ import Measure, { ContentRect } from 'react-measure'
 import { WithStyles } from '@material-ui/styles'
 import { deepEqual } from '../util/common'
 
+const DEBUG = false
+const DEBUG_TIME = false
+
 /**
  * Default minimum overscan height for the `VirtualScroller`.
  */
@@ -159,9 +162,6 @@ const styles = (theme: Theme) => {
 	})
 }
 
-const DEBUG = true
-const DEBUG_TIME = false
-
 /**
  * Provides virtual vertical scrolling for a list of items.
  *
@@ -291,7 +291,7 @@ class VirtualScroller extends React.Component<VirtualScrollerProps, State> {
 		}
 
 		const items: any[] = []
-		for (let i = layout.minIndex; i < layout.maxIndex; i++) {
+		for (let i = layout.minIndex; i < layout.maxIndex && i < this.props.itemCount; i++) {
 			items.push(
 				<div {...{ [DATA_INDEX_KEY]: i }} key={i} className={classes.row}>
 					{props.render(i, props.data)}
@@ -553,8 +553,8 @@ class VirtualScroller extends React.Component<VirtualScrollerProps, State> {
 
 	/** This is called in an animation frame to check for layout changes. */
 	private checkLayout() {
-		const LAYOUT_DEBOUNCE_MS = 200
-		const LAYOUT_THROTTLE_MS = 200
+		const LAYOUT_DEBOUNCE_MS = 50
+		const LAYOUT_THROTTLE_MS = 50
 
 		// Check if the layout information has changed.
 		const info = this.getLayoutInfo()
@@ -631,7 +631,7 @@ class VirtualScroller extends React.Component<VirtualScrollerProps, State> {
 	 */
 	private computeLayout(info: LayoutInfo): Layout {
 		const log = DEBUG ? console.log.bind(console, '[LAYOUT]') : () => {}
-		DEBUG_TIME && console.time('layout - new')
+		DEBUG_TIME && console.time('layout')
 
 		const itemCount = info.itemCount
 
@@ -751,7 +751,7 @@ class VirtualScroller extends React.Component<VirtualScrollerProps, State> {
 			offset = nextOffset
 		}
 
-		DEBUG_TIME && console.timeEnd('layout - new')
+		DEBUG_TIME && console.timeEnd('layout')
 
 		const layout = { minIndex, maxIndex, minIndexOffset, totalHeight, scroll }
 		log(`RESULT: ${layoutToString(layout)}`)
