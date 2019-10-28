@@ -2,9 +2,11 @@ use rocket::State;
 use rocket_contrib::json::Json;
 
 use app::App;
+use graph;
 
 use logging;
 use logging::ServerLogger;
+use logging::RequestLog;
 
 #[get("/")]
 fn index() -> &'static str {
@@ -56,6 +58,22 @@ fn list() -> Json<Vec<Item>> {
 	Json(out)
 }
 
+#[get("/graphiql")]
+fn graphiql() -> rocket::response::content::Html<String> {
+	rocket::response::content::Html(graph::graphiql::source("Hongo - GraphiQL", "/api/graphql"))
+}
+
+#[post("/graphql", data = "<request>")]
+fn graphql(
+	app: State<&App>,
+	log: RequestLog,
+	request: juniper_rocket::GraphQLRequest,
+	schema: State<graph::Schema>,
+) -> juniper_rocket::GraphQLResponse {
+	let context = graph::Context { app: &app, log };
+	request.execute(&schema, &context)
+}
+
 use api;
 
 pub fn launch(app: &'static App) {
@@ -63,6 +81,7 @@ pub fn launch(app: &'static App) {
 		.attach(ServerLogger {})
 		.manage(app)
 		.manage(app.dictionary())
+		.manage(graph::Schema::new(graph::Query, graph::Mutation))
 		.mount(
 			"/api",
 			routes![
@@ -77,6 +96,8 @@ pub fn launch(app: &'static App) {
 				api::audio::get_audio_file,
 				api::wiki::get,
 				api::wiki::post,
+				graphiql,
+				graphql,
 			],
 		)
 		.launch();

@@ -41,6 +41,8 @@ extern crate zip;
 
 #[macro_use]
 extern crate rocket;
+extern crate juniper;
+extern crate juniper_rocket;
 extern crate rocket_contrib;
 extern crate uuid;
 
@@ -69,6 +71,7 @@ mod base;
 mod api;
 mod app;
 mod audio;
+mod graph;
 mod japanese;
 mod kana;
 mod logging;

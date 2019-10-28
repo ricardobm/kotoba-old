@@ -44,6 +44,8 @@ slog-stdlog = "4.0.0"
 slog-scope = "4.1.2"
 yoin = "*"
 unicase = "2.5.1"
+juniper = "0.14.1"
+juniper_rocket = "0.5.1"
 
 [dependencies.rocket_contrib]
 version = "0.4.2"
