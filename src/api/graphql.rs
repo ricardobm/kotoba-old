@@ -1,6 +1,29 @@
+use rocket::response::content::Html;
+use rocket::State;
+
+use app::App;
+use graph;
+use logging::RequestLog;
+
+#[get("/graphiql")]
+pub fn ide() -> Html<String> {
+	Html(graphiql_source("Hongo - GraphiQL", "/api/graphql"))
+}
+
+#[post("/graphql", data = "<request>")]
+pub fn query(
+	app: State<&App>,
+	log: RequestLog,
+	request: juniper_rocket::GraphQLRequest,
+	schema: State<graph::Schema>,
+) -> juniper_rocket::GraphQLResponse {
+	let context = graph::Context { app: &app, log };
+	request.execute(&schema, &context)
+}
+
 // spell-checker: disable
 
-pub fn source(title: &str, url: &str) -> String {
+fn graphiql_source(title: &str, url: &str) -> String {
 	return format!(
 		r#"
 			<!DOCTYPE html>
