@@ -27,7 +27,7 @@ pub struct DictQuery;
 #[juniper::object(Context = Context)]
 impl DictQuery {
 	/// Lookup terms in the dictionary.
-	fn terms(context: &Context, filter: Option<String>, options: Option<SearchOptions>) -> TermResult {
+	fn search(context: &Context, filter: Option<String>, options: Option<SearchOptions>) -> TermResult {
 		let db = context.app.db();
 		let (mode, offset, limit) = if let Some(options) = options {
 			let mode = options.mode.unwrap_or_default();
