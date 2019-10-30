@@ -8,7 +8,7 @@ use japanese;
 use kana::*;
 
 /// Available search modes for terms.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq, juniper::GraphQLEnum)]
 pub enum SearchMode {
 	/// Search for exact word.
 	Is,
@@ -22,7 +22,7 @@ pub enum SearchMode {
 
 impl Default for SearchMode {
 	fn default() -> SearchMode {
-		SearchMode::Contains
+		SearchMode::Prefix
 	}
 }
 

@@ -1,6 +1,9 @@
 use app::App;
 use logging::RequestLog;
 
+mod dict;
+pub use self::dict::DictQuery;
+
 pub struct Context {
 	pub app: &'static App,
 	pub log: RequestLog,
@@ -8,18 +11,24 @@ pub struct Context {
 
 impl juniper::Context for Context {}
 
+/// Root query for the schema.
 pub struct Query;
 
 #[juniper::object(Context = Context)]
 impl Query {
-	#[graphql(description = "Application name")]
+	/// Application name.
 	fn app_name() -> &str {
 		"Hongo"
 	}
 
-	#[graphql(description = "Application version")]
+	/// Application version.
 	fn app_version() -> &str {
 		"0.1"
+	}
+
+	/// Query the Japanese dictionary.
+	fn dict() -> DictQuery {
+		DictQuery
 	}
 }
 
