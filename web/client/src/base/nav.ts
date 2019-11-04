@@ -3,6 +3,7 @@ import { push } from 'connected-react-router'
 
 export const homeURL = '/'
 export const todoURL = '/todo'
+export const wikiURL = '/wiki'
 export const dictionaryURL = '/search'
 export const pingPongURL = '/ping-pong'
 
@@ -12,6 +13,10 @@ export function goHome(dispatch: Dispatch<Action>) {
 
 export function goTodo(dispatch: Dispatch<Action>) {
 	dispatch(push(todoURL))
+}
+
+export function goWiki(dispatch: Dispatch<Action>) {
+	dispatch(push(wikiURL))
 }
 
 export function goDictionary(dispatch: Dispatch<Action>) {

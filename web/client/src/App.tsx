@@ -19,6 +19,7 @@ import Home from './pages/Home'
 
 import { createAppTheme } from './base/theme'
 import * as nav from './base/nav'
+import Wiki from './pages/Wiki'
 
 interface IDispatch {}
 
@@ -41,6 +42,9 @@ const App: React.FC<IProps> = self => {
 					</Route>
 					<Route path={nav.todoURL}>
 						<Todos />
+					</Route>
+					<Route path={nav.wikiURL}>
+						<Wiki />
 					</Route>
 					<Route
 						path={`${nav.dictionaryURL}/:query?`}

@@ -158,7 +158,7 @@ const MainMenu: React.FC<IProps> = props => {
 	}
 
 	const goHome = (isMobile: boolean) => go(nav.goHome, isMobile)
-	const goPages = (isMobile: boolean) => go(nav.goTodo, isMobile)
+	const goPages = (isMobile: boolean) => go(nav.goWiki, isMobile)
 	const goDecks = (isMobile: boolean) => go(nav.goPingPong, isMobile)
 	const goDictionary = (isMobile: boolean) => go(nav.goDictionary, isMobile)
 
