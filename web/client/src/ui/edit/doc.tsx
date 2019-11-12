@@ -354,10 +354,38 @@ class ParsingContext {
 	private _ids: { [key: string]: number } = {}
 	private _parent?: ParsingContext
 	private _rootId?: string
+	private _selection: Selection | null
+
+	anchorNode?: Base
+	focusNode?: Base
+	anchorOffset?: number
+	focusOffset?: number
 
 	constructor(parent?: ParsingContext, rootId?: string) {
 		this._parent = parent
 		this._rootId = rootId
+		this._selection = (parent && parent._selection) || document.getSelection()
+	}
+
+	sel() {
+		return this._selection
+	}
+
+	setSelection({ anchor, focus, offset }: { anchor?: Base; focus?: Base; offset: number }) {
+		if (this._parent) {
+			this._parent.setSelection({ anchor, focus, offset })
+		} else {
+			if (focus && anchor) {
+				throw new Error('cannot specify anchor and focus node at the same time')
+			}
+			if (anchor) {
+				this.anchorNode = anchor
+				this.anchorOffset = offset
+			} else if (focus) {
+				this.focusNode = focus
+				this.focusOffset = offset
+			}
+		}
 	}
 
 	sub(id: string) {
@@ -386,11 +414,23 @@ class ParsingContext {
 	}
 }
 
+export interface ParsedDocument {
+	content: Block[]
+	selection?: DocumentSelection
+}
+
+export interface DocumentSelection {
+	anchorNode: Base
+	anchorOffset: number
+	focusNode: Base
+	focusOffset: number
+}
+
 /**
  * Parse the child nodes of the given root element as block elements in a
  * document.
  */
-export function parseDocument(root: Node, ctx?: ParsingContext): Block[] {
+export function parseDocument(root: Node, ctx?: ParsingContext): ParsedDocument {
 	ctx = ctx || new ParsingContext()
 
 	const out: Block[] = []
@@ -411,21 +451,35 @@ export function parseDocument(root: Node, ctx?: ParsingContext): Block[] {
 	if (inlines.length) {
 		out.push(paragraph(ctx.id(P, null), inlines))
 	}
-	return out
+	const anchorNode = ctx.anchorNode
+	const focusNode = ctx.focusNode
+	return {
+		content: out,
+		selection: anchorNode &&
+			focusNode && {
+				anchorNode,
+				focusNode,
+				anchorOffset: ctx.anchorOffset!,
+				focusOffset: ctx.focusOffset!,
+			},
+	}
 }
 
 function parseElem(node: Node, ctx: ParsingContext): Base[] {
 	const out: Base[] = []
 
 	if (node.nodeType === Node.TEXT_NODE) {
-		node.textContent && out.push(text(ctx.id(TEXT, node), node.textContent))
+		if (node.textContent) {
+			const textNode = text(ctx.id(TEXT, node), node.textContent)
+			pushText(out, textNode, node, ctx)
+		}
 	} else if (node.nodeType === Node.ELEMENT_NODE) {
 		const elem = node as Element
 		const type = elem.tagName.toLowerCase()
 		switch (type) {
 			case BLOCKQUOTE: {
 				const id = ctx.id(BLOCKQUOTE, node)
-				out.push(blockquote(id, parseDocument(node, ctx.sub(id))))
+				out.push(blockquote(id, parseDocument(node, ctx.sub(id)).content))
 				break
 			}
 
@@ -489,7 +543,7 @@ function parseElem(node: Node, ctx: ParsingContext): Base[] {
 					// Parse the contents of the element as blocks. If the element
 					// has just inline content, it will be returned wrapped as a
 					// paragraph.
-					out.push(...parseDocument(elem, ctx))
+					out.push(...parseDocument(elem, ctx).content)
 				} else {
 					const [content] = parseInlineElem(elem, ctx)
 					out.push(...content)
@@ -517,7 +571,7 @@ function isParagraphElem(tagName: string) {
 		case 'hgroup':
 		case 'main':
 		case 'nav':
-		case P:
+		case 'p':
 		case 'section':
 			return true
 		default:
@@ -533,7 +587,8 @@ function parseInlineContent(root: Node, ctx: ParsingContext): Inline[] {
 		const elem = root as Element
 		if (elem.children.length === 0) {
 			if (elem.textContent) {
-				out.push(text(ctx.id(TEXT, elem), elem.textContent))
+				const textNode = text(ctx.id(TEXT, elem), elem.textContent)
+				pushText(out, textNode, elem, ctx)
 			}
 			return out
 		}
@@ -554,11 +609,26 @@ function parseInlineContent(root: Node, ctx: ParsingContext): Inline[] {
 	return out
 }
 
+function pushText(out: Base[], text: Text, node: Node, ctx: ParsingContext) {
+	const sel = ctx.sel()
+	const txtNode = node.childNodes.length === 1 ? node.childNodes[0] : node
+	if (sel && txtNode === sel.anchorNode) {
+		ctx.setSelection({ anchor: text, offset: sel.anchorOffset })
+	}
+	if (sel && txtNode === sel.focusNode) {
+		ctx.setSelection({ focus: text, offset: sel.focusOffset })
+	}
+	out.push(text)
+}
+
 function parseInlineElem(root: Node, ctx: ParsingContext): [Inline[], boolean] {
 	const out: Inline[] = []
 	let forceLineBreak = false
 	if (root.nodeType === Node.TEXT_NODE) {
-		root.textContent && out.push(text(ctx.id(TEXT, root), root.textContent))
+		if (root.textContent) {
+			const textNode = text(ctx.id(TEXT, root), root.textContent)
+			root.textContent && pushText(out, textNode, root, ctx)
+		}
 	} else if (root.nodeType === Node.ELEMENT_NODE) {
 		const elem = root as Element
 		const type = elem.tagName.toLowerCase()
@@ -609,29 +679,29 @@ function parseInlineElem(root: Node, ctx: ParsingContext): [Inline[], boolean] {
 				out.push(lineBreak(ctx.id(BR, elem)))
 				break
 
-			case CODE:
 			case 'kbd':
 			case 'samp':
 			case 'tt':
+			case CODE:
 				if (elem.textContent) {
 					const id = ctx.id(CODE, elem)
 					out.push(code(id, elem.textContent))
 				}
 				break
 
-			case DEL:
-			case 's': {
+			case 's':
+			case DEL: {
 				const id = ctx.id(DEL, elem)
 				out.push(formatted(id, DEL, parseInlineContent(elem, ctx.sub(id))))
 				break
 			}
 
 			case 'dfn':
-			case EM:
 			case 'i':
 			case 'q':
 			case 'var':
-			case 'u': {
+			case 'u':
+			case EM: {
 				// TODO: support underline
 				const id = ctx.id(EM, elem)
 				out.push(formatted(id, EM, parseInlineContent(elem, ctx.sub(id))))
@@ -687,7 +757,7 @@ function parseList(root: Element, ctx: ParsingContext): ListItem[] {
 	const out: ListItem[] = []
 	for (const el of root.children) {
 		const id = ctx.id(LI, el)
-		out.push(listItem(id, parseDocument(el, ctx.sub(id))))
+		out.push(listItem(id, parseDocument(el, ctx.sub(id)).content))
 	}
 	return out
 }

@@ -40,6 +40,8 @@ export interface EditorProps extends WithStyles<typeof styles> {
 interface EditorState {
 	width: number
 	height: number
+	document: doc.DocNode[]
+	selection?: doc.DocumentSelection
 }
 
 const styles = (theme: Theme) => {
@@ -70,10 +72,11 @@ class Editor extends React.Component<EditorProps, EditorState> {
 	constructor(props: EditorProps) {
 		super(props)
 		this.handleResize = this.handleResize.bind(this)
-		this.handleInput = this.handleInput.bind(this)
+		this.handleEditorChange = this.handleEditorChange.bind(this)
 		this.state = {
 			width: 0,
 			height: 0,
+			document: props.document || [],
 		}
 	}
 
@@ -81,13 +84,36 @@ class Editor extends React.Component<EditorProps, EditorState> {
 
 	componentWillUnmount() {}
 
-	componentDidUpdate() {}
+	componentDidUpdate() {
+		const sel = this.state.selection
+		const getText = (id: string) => {
+			let el: Node | null = document.getElementById(id)
+			while (el && el.childNodes.length > 0) {
+				el = el.childNodes[0]
+			}
+			return el
+		}
+		if (sel) {
+			const anchor = getText(sel.anchorNode.id)
+			const focus = getText(sel.focusNode.id)
+			if (anchor && focus) {
+				const range = document.createRange()
+				range.setStart(anchor, sel.anchorOffset)
+				range.setEnd(focus, sel.focusOffset)
+				const selection = document.getSelection()
+				if (selection) {
+					selection.removeAllRanges()
+					selection.addRange(range)
+				}
+			}
+		}
+	}
 
 	render() {
 		const props = this.props
-		const _state = this.state
+		const state = this.state
 		const classes = props.classes
-		const document = props.document || []
+		const document = state.document
 
 		const style: React.CSSProperties = {
 			width: '100%',
@@ -126,7 +152,7 @@ class Editor extends React.Component<EditorProps, EditorState> {
 						</AppBar>
 						<div className={classes.editor}>
 							{document.map(x => (
-								<EditorBlock node={x} key={x.id} />
+								<EditorBlock node={x} key={x.id} onChange={this.handleEditorChange} />
 							))}
 							<div>TOOLBAR END</div>
 						</div>
@@ -136,9 +162,11 @@ class Editor extends React.Component<EditorProps, EditorState> {
 		)
 	}
 
-	private handleInput(ev: React.FormEvent) {
-		const txt = doc.parseDocument(ev.currentTarget)
-		console.log(doc.toMarkdown(txt))
+	private handleEditorChange(before: doc.DocNode, after: doc.DocNode, selection?: doc.DocumentSelection) {
+		const document = this.state.document
+		const index = this.state.document.indexOf(before)
+		document[index] = after
+		this.setState({ document, selection })
 	}
 
 	private handleResize(rect: ContentRect) {
@@ -157,11 +185,13 @@ const blockStyles = (theme: Theme) => {
 
 interface BlockProps extends WithStyles<typeof blockStyles> {
 	node: doc.DocNode
+	onChange?: (before: doc.DocNode, after: doc.DocNode, sel?: doc.DocumentSelection) => void
 }
 
 class EditorBlockBase extends React.Component<BlockProps> {
 	constructor(props: BlockProps) {
 		super(props)
+		this.handleChange = this.handleChange.bind(this)
 	}
 
 	render() {
@@ -174,12 +204,21 @@ class EditorBlockBase extends React.Component<BlockProps> {
 		switch (node.type) {
 			case doc.P:
 				return (
-					<div contentEditable suppressContentEditableWarning>
+					<div contentEditable suppressContentEditableWarning onInput={this.handleChange}>
 						{doc.renderInline(node.text)}
 					</div>
 				)
 			default:
 				return <pre>{doc.toMarkdown([node])}</pre>
+		}
+	}
+
+	handleChange(ev: React.FormEvent) {
+		const parsed = doc.parseDocument(ev.currentTarget)
+		console.log(parsed)
+		console.log(doc.toMarkdown(parsed.content))
+		if (this.props.onChange) {
+			this.props.onChange(this.props.node, parsed.content[0], parsed.selection)
 		}
 	}
 }
