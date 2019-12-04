@@ -621,6 +621,18 @@ function pushText(out: Base[], text: Text, node: Node, ctx: ParsingContext) {
 	out.push(text)
 }
 
+function pushCode(out: Base[], code: Code, node: Node, ctx: ParsingContext) {
+	const sel = ctx.sel()
+	const txtNode = node.childNodes.length === 1 ? node.childNodes[0] : node
+	if (sel && txtNode === sel.anchorNode) {
+		ctx.setSelection({ anchor: code, offset: sel.anchorOffset })
+	}
+	if (sel && txtNode === sel.focusNode) {
+		ctx.setSelection({ focus: code, offset: sel.focusOffset })
+	}
+	out.push(code)
+}
+
 function parseInlineElem(root: Node, ctx: ParsingContext): [Inline[], boolean] {
 	const out: Inline[] = []
 	let forceLineBreak = false
@@ -685,7 +697,7 @@ function parseInlineElem(root: Node, ctx: ParsingContext): [Inline[], boolean] {
 			case CODE:
 				if (elem.textContent) {
 					const id = ctx.id(CODE, elem)
-					out.push(code(id, elem.textContent))
+					pushCode(out, code(id, elem.textContent), elem, ctx)
 				}
 				break
 
@@ -814,26 +826,20 @@ function parseRows(rows: NodeListOf<Element>, ctx: ParsingContext): TableRow[] {
 // Rendering
 //============================================================================//
 
-export function renderInline(nodes: Inline[]) {
-	return nodes.map(x => <InlineNode key={x.id} node={x} />)
-}
+export const renderInline = (nodes: Inline[]) => nodes.map(renderInlineNode).join('')
 
-const InlineNode: React.FC<{ node: Inline }> = ({ node }) => {
+const renderInlineNode = (node: Inline): string => {
 	switch (node.type) {
 		case TEXT:
-			return <span id={node.id}>{node.text}</span>
+			return `<span id="${node.id}">${escapeHTML(node.text)}</span>`
 		case EM:
-			return <em id={node.id}>{renderInline(node.text)}</em>
+			return `<em>${renderInline(node.text)}</em>`
 		case STRONG:
-			return <strong id={node.id}>{renderInline(node.text)}</strong>
+			return `<strong>${renderInline(node.text)}</strong>`
 		case CODE:
-			return <code id={node.id}>{node.text}</code>
+			return `<code id="${node.id}">${escapeHTML(node.text)}</code>`
 		default:
-			return (
-				<em>
-					(<b>{node.type}</b> ~ <code>{toMarkdown([node])}</code>)
-				</em>
-			)
+			return `<em><b>${node.type}</b><code>${toMarkdown([node])}</code></em>`
 	}
 }
 

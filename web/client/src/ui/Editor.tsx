@@ -204,9 +204,11 @@ class EditorBlockBase extends React.Component<BlockProps> {
 		switch (node.type) {
 			case doc.P:
 				return (
-					<div contentEditable suppressContentEditableWarning onInput={this.handleChange}>
-						{doc.renderInline(node.text)}
-					</div>
+					<div
+						contentEditable
+						onInput={this.handleChange}
+						dangerouslySetInnerHTML={{ __html: doc.renderInline(node.text) }}
+					></div>
 				)
 			default:
 				return <pre>{doc.toMarkdown([node])}</pre>
