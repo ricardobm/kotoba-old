@@ -69,3 +69,36 @@ export function query(options: QueryOptions) {
 		})
 	)
 }
+
+const obs = query({
+	query: `query ($term: String) {
+		dict {
+			search(filter: $term) {
+				terms {
+					expression
+					reading
+					romaji
+					frequency
+					definition {
+						text info
+					}
+				}
+			}
+		}
+	}`,
+	variables: {
+		term: 'koe',
+	},
+})
+
+obs.subscribe({
+	next(value) {
+		console.log('[NEXT]', value)
+	},
+	error(err) {
+		console.log('[ERRO]', err)
+	},
+	complete() {
+		console.log('[DONE]')
+	},
+})

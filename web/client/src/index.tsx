@@ -16,6 +16,8 @@ import { configureStore, history } from './store'
 
 import './css/index.scss'
 
+import './services/graphql'
+
 whyDidYouRender(React)
 
 ReactDOM.render(
