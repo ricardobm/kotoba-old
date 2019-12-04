@@ -18,7 +18,7 @@ pub struct Query;
 impl Query {
 	/// Application name.
 	fn app_name() -> &str {
-		"Hongo"
+		"Kotoba"
 	}
 
 	/// Application version.

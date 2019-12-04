@@ -22,7 +22,7 @@ export type Action = SetTitle
 export default function reducer(state: State = INITIAL_STATE, action: Action): State {
 	switch (action.type) {
 		case Actions.SET_TITLE:
-			document.title = `Hongo - ${action.title}`
+			document.title = `Kotoba - ${action.title}`
 			return { ...state, title: action.title }
 	}
 	return state

@@ -7,7 +7,7 @@ use logging::RequestLog;
 
 #[get("/graphiql")]
 pub fn ide() -> Html<String> {
-	Html(graphiql_source("Hongo - GraphiQL", "/api/graphql"))
+	Html(graphiql_source("Kotoba - GraphiQL", "/api/graphql"))
 }
 
 #[post("/graphql", data = "<request>")]

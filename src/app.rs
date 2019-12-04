@@ -12,7 +12,7 @@ use util::{Cache, CacheKey, CacheMap, CacheVal};
 use wiki::{WikiController};
 
 /// Name of the root data directory. Used when looking up the data directory.
-const DATA_DIR: &str = "hongo-data";
+const DATA_DIR: &str = "kotoba-data";
 
 /// If `true` will import the dictionary data from zip files.
 const FROM_ZIP: bool = false;
