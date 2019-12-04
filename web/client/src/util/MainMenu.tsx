@@ -134,11 +134,11 @@ const useStyles = makeStyles((theme: Theme) => {
 			display: 'flex',
 			minHeight: '100%',
 			flexDirection: 'column',
-			paddingLeft: menuButtonWidth,
+			paddingLeft: 0,
 			flexGrow: 1,
-			[isMobile]: {
-				paddingLeft: theme.spacing(3),
-			},
+			// [isMobile]: {
+			// 	paddingLeft: theme.spacing(3),
+			// },
 		},
 	})
 })
