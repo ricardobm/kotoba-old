@@ -4,6 +4,7 @@ use crate::graph;
 use crate::graphql;
 
 use rocket_contrib::json::Json;
+use rocket_include_static_resources::StaticResponse;
 
 #[derive(Serialize)]
 struct IndexInfo {
@@ -24,11 +25,19 @@ fn index() -> Json<IndexInfo> {
 	Json(out)
 }
 
+#[get("/favicon.ico")]
+fn favicon() -> StaticResponse {
+	static_response!("favicon")
+}
+
 pub fn launch(app: &'static App) {
 	rocket::ignite()
+		.attach(StaticResponse::fairing(|resources| {
+			static_resources_initialize!(resources, "favicon", "static/favicon.ico");
+		}))
 		.manage(app)
 		.manage(graph::Schema::new(graph::Query, graph::Mutation))
-		.mount("/", routes![index])
+		.mount("/", routes![index, favicon])
 		.mount("/api", routes![graphql::query, graphql::ide])
 		.launch();
 }

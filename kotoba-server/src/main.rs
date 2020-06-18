@@ -15,6 +15,9 @@ extern crate juniper;
 extern crate juniper_rocket;
 extern crate rocket_contrib;
 
+#[macro_use]
+extern crate rocket_include_static_resources;
+
 mod app;
 mod common;
 mod graph;

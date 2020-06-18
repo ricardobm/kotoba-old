@@ -13,5 +13,6 @@ juniper_rocket = "0.5.2"
 lazy_static = "1.4.0"
 rocket = "0.4.5"
 rocket_contrib = { version = "0.4.5", default-features = false, features = ["json"] }
+rocket-include-static-resources = "0.9.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
