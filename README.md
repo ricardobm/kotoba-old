@@ -1,2 +1,2 @@
-# hongo
-Japanese learning pad
+# Kotoba
+Japanese dictionary
