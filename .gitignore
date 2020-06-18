@@ -1,1 +1,9 @@
 .vscode
+
+# Don't ignore the settings file
+!.vscode/settings.json
+
+# Rust
+
+target/
+**/*.rs.bk
