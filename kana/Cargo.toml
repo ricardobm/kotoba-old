@@ -1,0 +1,24 @@
+[package]
+name = "kana"
+version = "0.1.0"
+authors = ["Ricardo B. Machado <ricardobm@gmail.com>"]
+license = "MIT"
+description = "Library for kana manipulation and fast translation between katakana, hiragana and romaji"
+repository = "https://github.com/ricardobm/kotoba"
+keywords = ["japanese", "kana"]
+publish = false
+
+[lib]
+name = "kana"
+path = "src/lib.rs"
+
+[dependencies]
+fnv = "1.0"
+lazy_static = "1.4"
+
+[[example]]
+name = "cli"
+path = "examples/cli.rs"
+
+[dev-dependencies]
+rustyline = "6.2.0"
