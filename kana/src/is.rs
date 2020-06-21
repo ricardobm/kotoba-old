@@ -63,6 +63,19 @@ pub fn is_japanese_punctuation(chr: char) -> bool {
 	}
 }
 
+/// Returns true if the character is japanese. The `include_roman` flag controls
+/// if full-width letters, digit and punctuation are considered.
+pub fn is_japanese(chr: char, include_roman: bool) -> bool {
+	use super::CharKind;
+	match super::get_kind(chr) {
+		CharKind::Hiragana | CharKind::Katakana | CharKind::KatakanaHalfWidth => true,
+		CharKind::Kanji | CharKind::JapaneseSymbol => true,
+		CharKind::BarLine | CharKind::JapanesePunctuation | CharKind::JapaneseMark => true,
+		CharKind::RomanDigit | CharKind::RomanLetter | CharKind::RomanPunctuation => include_roman,
+		CharKind::Romaji | CharKind::PunctuationASCII | CharKind::None => false,
+	}
+}
+
 // spell-checker: disable
 
 #[cfg(test)]
