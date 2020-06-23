@@ -1,3 +1,12 @@
+# Attribution and License
+
+Contains data from:
+
+- http://www.edrdg.org/edrdg/licence.html
+  - Compiled from https://foosoft.net/projects/yomichan/
+- https://kanjivg.tagaini.net/
+- http://hochanh.github.io/rtk/
+
 # Importing data
 
 This directory is for Yomichan compatible zip files. For details on the files
