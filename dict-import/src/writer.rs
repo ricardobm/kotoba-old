@@ -254,9 +254,15 @@ impl Writer {
 			});
 		}
 
-		// Flatten the dictionary map into a vector sorted by the indexes:
+		// Flatten the dictionary map into a vector sorted by the term frequency and then index:
 		let mut dictionary = term_map.into_iter().collect::<Vec<_>>();
-		dictionary.sort_by(|a, b| a.0.cmp(&b.0));
+		dictionary.sort_by(|(idx_a, term_a), (idx_b, term_b)| {
+			if term_a.freq != term_b.freq {
+				term_b.freq.cmp(&term_a.freq)
+			} else {
+				idx_a.cmp(&idx_b)
+			}
+		});
 
 		let dictionary = dictionary.into_iter().map(|x| x.1).collect::<Vec<_>>();
 		println!("... - compiled dictionary data ({:?})", start.elapsed());
@@ -414,8 +420,8 @@ impl Writer {
 
 		let mut data_dir = std::env::current_dir().unwrap();
 		data_dir.push(output_directory);
-		let data_dir = std::fs::canonicalize(data_dir).unwrap();
 		std::fs::create_dir_all(&data_dir)?;
+		let data_dir = std::fs::canonicalize(data_dir).unwrap();
 
 		//--------------------------------------------------------------------//
 		// tags.json

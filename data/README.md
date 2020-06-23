@@ -12,8 +12,8 @@ Contains data from:
 This directory is for Yomichan compatible zip files. For details on the files
 see https://foosoft.net/projects/yomichan/.
 
-Running `make import` in the main project will import all files in this directory
-and generate the intermediate output files used by the dictionary.
+Running `make import-data` in the main project will import all files in this
+directory and generate the intermediate output files used by the dictionary.
 
 # Output format
 
