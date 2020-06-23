@@ -414,6 +414,7 @@ impl Writer {
 
 		let mut data_dir = std::env::current_dir().unwrap();
 		data_dir.push(output_directory);
+		let data_dir = std::fs::canonicalize(data_dir).unwrap();
 		std::fs::create_dir_all(&data_dir)?;
 
 		//--------------------------------------------------------------------//

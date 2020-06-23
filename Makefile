@@ -1,9 +1,9 @@
-.PHONY: server import kana-cli
+.PHONY: server import-data kana-cli
 
 server:
 	@cd kotoba-server; cargo run
 
-import:
+import-data:
 	@cd dict-import; cargo run --release
 
 kana-cli:

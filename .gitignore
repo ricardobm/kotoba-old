@@ -1,5 +1,7 @@
 .vscode/*
 
+build/
+
 # Don't ignore the settings file
 !.vscode/settings.json
 

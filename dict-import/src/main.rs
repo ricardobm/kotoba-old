@@ -23,16 +23,17 @@ use import::import_file;
 use writer::Writer;
 
 /// Directory with the data to be imported, relative to `Cargo.toml`.
-const IMPORT_DATA_DIRECTORY: &'static str = "data";
+const IMPORT_DATA_DIRECTORY: &'static str = "../data";
 
 /// Output directory for the generated data, relative to `Cargo.toml`.
-const OUTPUT_DATA_DIRECTORY: &'static str = "output";
+const OUTPUT_DATA_DIRECTORY: &'static str = "../build/imported";
 
 fn main() {
 	let start = std::time::Instant::now();
 
 	let mut data_dir = std::env::current_dir().unwrap();
 	data_dir.push(IMPORT_DATA_DIRECTORY);
+	let data_dir = fs::canonicalize(data_dir).unwrap();
 
 	let data_dir_str = data_dir.to_string_lossy();
 	let data_dir = match fs::metadata(&data_dir) {
