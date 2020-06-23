@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use serde::Deserialize;
+use serde::Serialize;
 
 /// Dictionary data imported from a Yomichan internal format.
 #[derive(Deserialize)]
@@ -116,6 +117,7 @@ impl fmt::Display for Term {
 }
 
 /// Dictionary entry for a kanji.
+#[derive(Serialize)]
 pub struct Kanji {
 	/// Kanji character.
 	pub character: char,
@@ -138,6 +140,9 @@ pub struct Kanji {
 
 	/// Source database name.
 	pub source: String,
+
+	/// Frequency information for this kanji.
+	pub frequency: u32,
 }
 
 impl fmt::Display for Kanji {

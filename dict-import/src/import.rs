@@ -159,6 +159,7 @@ where
 						meanings: it.4,
 						stats: it.5,
 						source: dict.title.clone(),
+						frequency: 0,
 					});
 				}
 			}

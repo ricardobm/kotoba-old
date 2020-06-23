@@ -126,6 +126,30 @@ impl Writer {
 		};
 
 		//
+		// Kanji:
+		//
+
+		let kanji_freq = self.freq_kanji;
+		let mut kanji: Vec<_> = self
+			.kanji
+			.into_iter()
+			.map(move |mut k| {
+				k.frequency = kanji_freq
+					.get(&k.character.to_string())
+					.cloned()
+					.unwrap_or_default();
+				k
+			})
+			.collect();
+		kanji.sort_by(|a, b| {
+			if a.frequency != b.frequency {
+				b.frequency.cmp(&a.frequency)
+			} else {
+				a.character.cmp(&b.character)
+			}
+		});
+
+		//
 		// String interning:
 		//
 
@@ -393,7 +417,27 @@ impl Writer {
 		std::fs::create_dir_all(&data_dir)?;
 
 		//--------------------------------------------------------------------//
-		// dictionary.json
+		// tags.json
+		//--------------------------------------------------------------------//
+
+		println!("... writing tags.json");
+		let mut tags_path = data_dir.clone();
+		tags_path.push("tags.json");
+		let tags_file = BufWriter::new(fs::File::create(tags_path)?);
+		serde_json::to_writer_pretty(tags_file, &tags)?;
+
+		//--------------------------------------------------------------------//
+		// kanji.json
+		//--------------------------------------------------------------------//
+
+		let mut kanji_path = data_dir.clone();
+		kanji_path.push("kanji.json");
+
+		let kanji_file = BufWriter::new(fs::File::create(kanji_path)?);
+		serde_json::to_writer_pretty(kanji_file, &kanji)?;
+
+		//--------------------------------------------------------------------//
+		// Dictionary data
 		//--------------------------------------------------------------------//
 
 		println!("... writing dictionary ({} entries)", dictionary.len());
@@ -430,16 +474,6 @@ impl Writer {
 		for it in sources.iter() {
 			write!(sources_file, "{}\n", it)?;
 		}
-
-		//--------------------------------------------------------------------//
-		// tags.json
-		//--------------------------------------------------------------------//
-
-		println!("... writing tags.json");
-		let mut tags_path = data_dir.clone();
-		tags_path.push("tags.json");
-		let tags_file = BufWriter::new(fs::File::create(tags_path)?);
-		serde_json::to_writer_pretty(tags_file, &tags)?;
 
 		//--------------------------------------------------------------------//
 		// terms.txt
