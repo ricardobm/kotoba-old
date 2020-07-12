@@ -1,0 +1,22 @@
+[package]
+name = "dict-data"
+version = "0.1.0"
+description = "Japanese dictionary database"
+keywords = ["japanese"]
+publish = false
+
+[lib]
+name = "dict_data"
+path = "src/lib.rs"
+
+[[example]]
+name = "sample"
+
+[[example]]
+name = "query"
+
+[dependencies]
+zip = "0.5"
+
+[dev-dependencies]
+rustyline = "6.2"
