@@ -24,7 +24,7 @@ use raw::RawUint32;
 const IMPORTED_DATA_DIRECTORY: &'static str = "../build/imported";
 
 /// Directory where to build the database files.
-const OUTPUT_DATA_DIRECTORY: &'static str = "../build/database";
+const OUTPUT_DATA_DIRECTORY: &'static str = "../data/database";
 
 fn main() {
 	generate();

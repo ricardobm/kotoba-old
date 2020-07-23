@@ -23,7 +23,7 @@ use import::import_file;
 use writer::Writer;
 
 /// Directory with the data to be imported, relative to `Cargo.toml`.
-const IMPORT_DATA_DIRECTORY: &'static str = "../data";
+const IMPORT_DATA_DIRECTORY: &'static str = "../data/source";
 
 /// Output directory for the generated data, relative to `Cargo.toml`.
 const OUTPUT_DATA_DIRECTORY: &'static str = "../build/imported";
