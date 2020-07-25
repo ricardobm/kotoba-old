@@ -1,10 +1,12 @@
-// The database top directory relative to the Cargo.toml file.
+/// Resolves to a literal string with the path to thetop directory for database
+/// files relative to `Cargo.toml`.
 macro_rules! data_dir {
 	() => {
 		"../data/database"
 	};
 }
 
+/// Simple `include_bytes!` wrapper to include a database file from its name.
 #[allow(unused_macros)]
 macro_rules! get_file_data {
 	($name: tt) => {
@@ -12,6 +14,7 @@ macro_rules! get_file_data {
 	};
 }
 
+/// Loads a database file during development.
 #[allow(unused_macros)]
 macro_rules! load_file_data {
 	($name: tt) => {
@@ -28,6 +31,7 @@ macro_rules! load_file_data {
 	};
 }
 
+/// Evaluates to a database file data as a `&'static [u8]` from the filename.
 #[cfg(not(any(debug_assertions, feature = "no-embed")))]
 macro_rules! get_file {
 	($name: tt) => {
@@ -35,6 +39,7 @@ macro_rules! get_file {
 	};
 }
 
+/// Evaluates to a database file data as a `&'static [u8]` from the filename.
 #[cfg(any(debug_assertions, feature = "no-embed"))]
 macro_rules! get_file {
 	($name: tt) => {
@@ -42,27 +47,41 @@ macro_rules! get_file {
 	};
 }
 
+/// Returns the contents of `chars.zip`.
 #[inline]
-pub fn chars() -> &'static [u8] {
-	get_file!("chars.zip")
+pub fn chars() -> Zip {
+	zip(get_file!("chars.zip"))
 }
 
+/// Returns the contents of `dict.zip`.
 #[inline]
-pub fn dict() -> &'static [u8] {
-	get_file!("dict.zip")
+pub fn dict() -> Zip {
+	zip(get_file!("dict.zip"))
 }
 
+/// Returns the contents of `kanji.zip`.
 #[inline]
-pub fn kanji() -> &'static [u8] {
-	get_file!("kanji.zip")
+pub fn kanji() -> Zip {
+	zip(get_file!("kanji.zip"))
 }
 
+/// Returns the contents of `meta.zip`.
 #[inline]
-pub fn meta() -> &'static [u8] {
-	get_file!("meta.zip")
+pub fn meta() -> Zip {
+	zip(get_file!("meta.zip"))
 }
 
+/// Returns the contents of `text.zip`.
 #[inline]
-pub fn text() -> &'static [u8] {
-	get_file!("text.zip")
+pub fn text() -> Zip {
+	zip(get_file!("text.zip"))
+}
+
+/// Simple alias to a ZipArchive.
+pub type Zip = zip::ZipArchive<std::io::Cursor<&'static [u8]>>;
+
+/// Creates a Zip from the data bytes.
+pub fn zip(data: &'static [u8]) -> Zip {
+	let data = std::io::Cursor::new(data);
+	Zip::new(data).unwrap()
 }

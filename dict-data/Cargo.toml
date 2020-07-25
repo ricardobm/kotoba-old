@@ -15,6 +15,9 @@ name = "sample"
 [[example]]
 name = "query"
 
+[[example]]
+name = "loading"
+
 [dependencies]
 lazy_static = "1.4"
 zip = "0.5"

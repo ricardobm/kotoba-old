@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate lazy_static;
 
+extern crate zip;
+
 mod files;
 
 pub fn version() -> &'static str {
@@ -8,16 +10,18 @@ pub fn version() -> &'static str {
 }
 
 pub fn load() {
+	use files::Zip;
+
 	lazy_static! {
-		static ref CHARS: &'static [u8] = files::chars();
-		static ref DICT: &'static [u8] = files::dict();
-		static ref KANJI: &'static [u8] = files::kanji();
-		static ref META: &'static [u8] = files::meta();
-		static ref TEXT: &'static [u8] = files::text();
+		static ref CHARS: Zip = files::chars();
+		static ref DICT: Zip = files::dict();
+		static ref KANJI: Zip = files::kanji();
+		static ref META: Zip = files::meta();
+		static ref TEXT: Zip = files::text();
 	}
 
 	let total = CHARS.len() + DICT.len() + KANJI.len() + META.len() + TEXT.len();
-	println!("Loaded {} from 5 files", bytes(total));
+	println!("Loaded {} files", bytes(total));
 }
 
 fn bytes(value: usize) -> String {
