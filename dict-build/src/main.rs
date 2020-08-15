@@ -241,29 +241,29 @@ fn generate_dict(input_dir: PathBuf, output_dir: PathBuf) {
 			cur_file_data = Vec::new();
 			cur_file_index = Vec::new();
 			cur_file = file_num;
-
-			let mut definitions: Vec<DictDefinition> = serde_json::from_str(line).unwrap();
-			definitions.sort_by_key(|x| -x.score);
-
-			fn push_list(out: &mut Vec<RawUint32>, data: Vec<u32>) {
-				out.push(data.len().into());
-				out.extend(data.into_iter().map(|x| RawUint32::from(x)));
-			}
-
-			let mut data: Vec<RawUint32> = Vec::new();
-			data.push(definitions.len().into());
-			for entry in definitions {
-				data.push(entry.source.into());
-				push_list(&mut data, entry.text);
-				push_list(&mut data, entry.rules);
-				push_list(&mut data, entry.tags_term);
-				push_list(&mut data, entry.tags_text);
-			}
-
-			cur_file_index.push(cur_file_data.len().into());
-			cur_file_index.push(data.len().into());
-			cur_file_data.append(&mut data);
 		}
+
+		let mut definitions: Vec<DictDefinition> = serde_json::from_str(line).unwrap();
+		definitions.sort_by_key(|x| -x.score);
+
+		fn push_list(out: &mut Vec<RawUint32>, data: Vec<u32>) {
+			out.push(data.len().into());
+			out.extend(data.into_iter().map(|x| RawUint32::from(x)));
+		}
+
+		let mut data: Vec<RawUint32> = Vec::new();
+		data.push(definitions.len().into());
+		for entry in definitions {
+			data.push(entry.source.into());
+			push_list(&mut data, entry.text);
+			push_list(&mut data, entry.rules);
+			push_list(&mut data, entry.tags_term);
+			push_list(&mut data, entry.tags_text);
+		}
+
+		cur_file_index.push(cur_file_data.len().into());
+		cur_file_index.push(data.len().into());
+		cur_file_data.append(&mut data);
 	}
 
 	push_file(&mut dict, cur_file, cur_file_data, cur_file_index);
